@@ -1,4 +1,88 @@
-# CLAUDE.md — Journal (Day One Replacement)
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+> **Note:** Sections §1–§12 below are the original **decision document** (in German). They are the
+> **source of truth** for architecture and are intentionally not in English (per §11, only this doc is
+> German; all code/comments/commits/API are English). This English preamble (§0) is the operating
+> guide; if it ever conflicts with §1–§12, §1–§12 win on decisions.
+
+---
+
+## 0. Operating Guide (read first)
+
+### Current state
+**Pre-scaffold.** The repo currently contains *only* this `CLAUDE.md` — no code, no commits, no
+`package.json`/`go.mod`/`docker-compose.yml` yet. None of the commands below exist until the relevant
+build step (§10) is done. The directory is named `mneme`; the design doc calls the product "journal" —
+treat them as the same project.
+
+### What this is (one line)
+Open-source, local-first, **end-to-end-encrypted** journal (a Day One replacement). The server is a
+**dumb encrypted-blob relay** — it never sees plaintext, keys, or the mnemonic. See §1 (threat model)
+and §7 (why the server is trivial).
+
+### The five things that constrain almost every decision
+1. **Server is outside the trust boundary.** No server-side crypto except TLS + opaque blob storage.
+   Admin cannot read and cannot recover. (§1, §3 Non-Goals)
+2. **The 12-word BIP39 mnemonic *is* the account.** No login, no email, no password. `owner_id` is
+   derived from the seed. Forgotten mnemonic = data permanently lost, by design. (§3, §6)
+3. **All crypto lives in the frontend** (libsodium-wasm), once, for every client — because the PWA has
+   no Rust shell. Client and server share **only** the wire-format (`packages/proto`), never crypto. (§3, §4)
+4. **Every ciphertext is version-prefixed from day one:** `[version:1B][nonce:24B][ct+tag]`,
+   XChaCha20-Poly1305 with a random 24-byte nonce. Never AES-GCM. (§3, §6, §11)
+5. **Isolated tenants only** — no shared entries, no multi-recipient key wrapping; per-entry
+   Last-Write-Wins, no CRDT. (§3)
+
+### Architecture in three layers
+- **`apps/client/`** — Vite + Preact + TS. The single web codebase for both the PWA *and* the content
+  inside every Tauri shell. Holds crypto, the local wa-sqlite (OPFS + FTS5) DB which is the
+  **source of truth**, the TipTap editor, and the offline sync outbox. (§4, §5a)
+- **`apps/desktop/src-tauri/`** — Tauri 2 shell (Rust) for desktop *and* mobile. Rust only here:
+  shell + native plugins (notifications, OS keychain, biometrics). Builds **locally only** — not in
+  Codespaces (no display; iOS needs macOS/Xcode). (§3, §9)
+- **`server/`** — Go relay. HTTP handlers, device challenge-response auth, LWW oplog push/pull, S3
+  (MinIO) blob coordination, reminder scheduler + push. Postgres stores only opaque blobs + metadata,
+  every handler strictly scoped to `owner_id`. (§4, §5b)
+
+### Commands (available only after the matching build step)
+```bash
+# Infra + Go server (after §10 step 1)
+docker compose up -d                 # postgres + minio + server
+docker compose --profile fullstack up   # also runs the client dev server in compose
+
+# Client dev (after §10 step 2) — pnpm workspace
+pnpm install
+pnpm --filter client dev --host      # PWA on :5173 (server on :8080)
+
+# Go server (in ./server)
+go build -o journald ./cmd/journald
+go test ./...                        # single package: go test ./internal/sync/...
+
+# Tauri shells (after §10 step 8) — LOCAL ONLY, never Codespaces
+# (commands TBD when apps/desktop is scaffolded)
+```
+Codespaces (`.devcontainer/`) covers the **server + PWA** end-to-end; Tauri is out of scope there.
+
+### Lint / format (per §11)
+TS: strict mode (eslint + prettier). Go: `gofmt` / `golangci-lint`. Rust: `clippy`.
+
+### Sequencing
+Follow §10's build order strictly: scaffold+infra → client plaintext (validate UX) → crypto →
+sync → media → reminders/push → feature completion → Tauri shells. **Do not add crypto or sync
+before the plaintext client UX is validated.**
+
+### Hard guardrails (will silently break security/privacy if violated)
+- IDs are **ULID, never date-encoded** — date-encoded IDs leak the writing chronology. (§3, §11)
+- **Never** put the entry date in cleartext IDs; never log/DOM the key; auto-lock on inactivity. (§3, §6)
+- Every new ciphertext persistence path **must** include the version byte. (§3, §11)
+- Reminders fire generic ("Erinnerung") — `fire_at` is a *consciously accepted* cleartext leak; the
+  client decrypts content locally. Don't try to "fix" accepted leaks in §3. (§3)
+- Migrations are versioned and **forward-only**. (§11)
+
+---
+
+# Journal (Day One Replacement) — Decision Document
 
 > Briefing für Claude Code. Dieses Dokument ist die **Entscheidungs-Quelle der Wahrheit**.
 > Architektur-Entscheidungen unter „Locked Decisions" sind getroffen — **nicht neu aufrollen**,

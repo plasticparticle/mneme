@@ -1,4 +1,4 @@
-# Mneme 🔒🪶
+# Mneme
 
 > A private place to remember — an open-source, local-first, end-to-end-encrypted journal.
 > Think *Day One*, except nobody (not us, not your server admin, not a well-funded adversary
@@ -13,16 +13,16 @@ encrypts everything before it leaves the building.
 
 ## The pitch (a.k.a. why this exists)
 
-- **🔐 End-to-end encrypted.** Your words are scrambled on your device before they go anywhere.
+- **End-to-end encrypted.** Your words are scrambled on your device before they go anywhere.
   The server stores opaque blobs and reminder times and *nothing it can actually read*.
-- **🏠 Local-first.** The real database lives on your device. The cloud is just a courier.
+- **Local-first.** The real database lives on your device. The cloud is just a courier.
   Offline? Keep writing. The courier will catch up later.
-- **🗝️ No accounts, no passwords, no email.** A 12-word recovery phrase **is** your account.
+- **No accounts, no passwords, no email.** A 12-word recovery phrase **is** your account.
   This is wonderfully simple and mildly terrifying — see the warning, which we promise to keep
   repeating until you write the words down.
-- **🧘 Zen writing.** Serif body text, a quiet toolbar, dark "paper" mode. Designed for showing
+- **Zen writing.** Serif body text, a quiet toolbar, dark "paper" mode. Designed for showing
   up and writing the true thing, not for fiddling with margins.
-- **🧰 Self-hostable.** It's a single Go binary and some friends in a `docker-compose.yml`.
+- **Self-hostable.** It's a single Go binary and some friends in a `docker-compose.yml`.
   Your homelab can run it without breaking a sweat. (The server is *that* lazy. By design.)
 
 > [!WARNING]
@@ -33,7 +33,7 @@ encrypts everything before it leaves the building.
 
 ---
 
-## 🚧 Current state: it's early, and we're being honest about it
+## Current state: it's early, and we're being honest about it
 
 Right now Mneme is a **gorgeous front-end with stage fright**. The full UI for all four screens
 is built and runs — but the crypto, the local database, the sync, and the server are still
@@ -45,7 +45,7 @@ backstage, stretching. What you can play with today:
 | Journals library + "new journal" sheet | ✅ UI built |
 | Calendar (month grid, day list, heatmap) | ✅ UI built |
 | Entry editor (zen writing surface) | ✅ UI built |
-| Responsive desktop ⇄ mobile + dark mode | ✅ Works |
+| Responsive desktop / mobile + dark mode | ✅ Works |
 | Actual encryption, local DB, sync, server | 🔜 Coming, in that order |
 
 So: the data you see is lovingly hand-crafted sample content. Nothing is encrypted yet because
@@ -58,7 +58,7 @@ and slightly chaotic stylistic ones.
 
 ---
 
-## 🏃 Quick start
+## Quick start
 
 You'll need **Node 20+** and **pnpm 10** (the repo pins it; `corepack` will sort you out).
 
@@ -85,7 +85,7 @@ your browser remembers via `localStorage`, so you go straight to the journals ne
 
 ---
 
-## 🧪 Testing & verifying
+## Testing and verifying
 
 We don't have a sprawling test suite yet (there isn't much logic to test — it's mostly pixels
 behaving themselves). What we *do* have are two honest gates:
@@ -101,7 +101,7 @@ something and it is, annoyingly, usually right.
 
 ---
 
-## 🛠️ Developing
+## Developing
 
 ### The map
 
@@ -143,7 +143,7 @@ mneme/
 
 ---
 
-## 🗺️ Roadmap (the abridged §10)
+## Roadmap (the abridged §10)
 
 1. ✅ Scaffold the client + design system *(you are here)*
 2. 🔜 Local SQLite (wa-sqlite + OPFS + full-text search) and a real TipTap editor
@@ -154,7 +154,7 @@ mneme/
 
 ---
 
-## 📜 License
+## License
 
 Open source. (Specific license to be added — for now, assume "be kind, and don't pretend you
 wrote it.")

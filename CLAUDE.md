@@ -12,9 +12,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## 0. Operating Guide (read first)
 
 ### Current state
-**Scaffolding the client.** The directory is named `mneme`; the design doc calls the product "journal" —
-treat them as the same project. The Go server / Postgres / MinIO / Tauri shells are **not** scaffolded yet
-(later §10 steps).
+The directory is named `mneme`; the design doc calls the product "journal" — treat them as the same
+project. Scaffolded so far:
+- **`apps/client/`** — Vite + Preact + TS app, all four screens built (UX only; no crypto/DB/sync wired).
+- **`server/`** — the Go relay (`journald`): `/healthz` + `/readyz`, embedded forward-only migrations,
+  device challenge-response auth (Ed25519), and the LWW oplog `sync/push`+`sync/pull`. Owner-scoped,
+  opaque blobs only. Reminders CRUD + scheduler (logs, no push transport yet). Media (`internal/blobs`)
+  and push delivery are stubs.
+- **Infra** — `docker-compose.yml` (Postgres + MinIO + server), `server/Dockerfile`, `.devcontainer/`.
+
+Not yet: client-side crypto/local DB/sync wiring (§10 steps 3–4), media (step 5), push (step 6),
+Tauri shells (step 8).
 
 ### Frontend design source
 The product visual design is a **handoff bundle from Claude Design** (claude.ai/design), available at:

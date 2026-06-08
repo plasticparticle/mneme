@@ -1,0 +1,74 @@
+package api
+
+import (
+	"crypto/ed25519"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+	"time"
+
+	"github.com/plasticparticle/mneme/server/internal/config"
+)
+
+func testConfig() config.Config {
+	return config.Config{ListenAddr: ":0", SessionTTL: time.Hour}
+}
+
+func TestHealthz(t *testing.T) {
+	srv := New(nil, testConfig())
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+
+	srv.Routes().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	var body map[string]string
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body["status"] != "ok" {
+		t.Fatalf("status = %q, want ok", body["status"])
+	}
+}
+
+func TestProtectedRouteRequiresToken(t *testing.T) {
+	srv := New(nil, testConfig())
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/sync/pull", nil)
+
+	srv.Routes().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401 (auth runs before any store access)", rec.Code)
+	}
+}
+
+func TestDeriveIDDeterministic(t *testing.T) {
+	pub := []byte("a-32-byte-public-key-fixture-xx!")
+	if got, want := deriveID(pub), deriveID(pub); got != want {
+		t.Fatalf("deriveID not deterministic: %q vs %q", got, want)
+	}
+	if deriveID(pub) == deriveID([]byte("different-32-byte-public-key-xx!")) {
+		t.Fatal("deriveID collided on distinct inputs")
+	}
+}
+
+func TestRegisterMessageVerifies(t *testing.T) {
+	pub, priv, err := ed25519.GenerateKey(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ownerPub := make([]byte, x25519PubLen)
+	msg := registerMessage(ownerPub, pub)
+	sig := ed25519.Sign(priv, msg)
+
+	if !ed25519.Verify(pub, msg, sig) {
+		t.Fatal("registerMessage signature did not verify")
+	}
+	if ed25519.Verify(pub, registerMessage([]byte("tampered-owner-key-bytes-32-byte"), pub), sig) {
+		t.Fatal("signature verified against a different owner key — message binding is broken")
+	}
+}

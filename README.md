@@ -46,7 +46,9 @@ backstage, stretching. What you can play with today:
 | Calendar (month grid, day list, heatmap) | ✅ UI built |
 | Entry editor (zen writing surface) | ✅ UI built |
 | Responsive desktop / mobile + dark mode | ✅ Works |
-| Actual encryption, local DB, sync, server | 🔜 Coming, in that order |
+| Backend relay (auth + encrypted-blob sync) | ✅ Built — see [`server/`](./server) |
+| Client-side encryption, local DB, client↔server sync | 🔜 Coming, in that order |
+| Media uploads, reminders push, native shells | 🔜 Later |
 
 So: the data you see is lovingly hand-crafted sample content. Nothing is encrypted yet because
 nothing is *real* yet. Don't pour your soul into it expecting it to persist. It won't. It's a
@@ -85,6 +87,21 @@ your browser remembers via `localStorage`, so you go straight to the journals ne
 
 ---
 
+## The backend
+
+There's also a Go relay (`journald`) — a deliberately clueless server that stores opaque encrypted
+blobs and shuffles them between your devices. The whole thing runs from the repo root:
+
+```bash
+docker compose up -d        # Postgres + MinIO + the relay, on :8080
+curl localhost:8080/healthz # {"status":"ok"}
+```
+
+Details, the API surface, and how to run its tests live in [`server/README.md`](./server/README.md).
+The client isn't wired to it yet — that's a later step — but the relay stands on its own and is tested.
+
+---
+
 ## Testing and verifying
 
 We don't have a sprawling test suite yet (there isn't much logic to test — it's mostly pixels
@@ -120,7 +137,9 @@ mneme/
 │           ├── screens/   # Onboarding · Journals · Calendar · Editor
 │           ├── app.tsx    # the shell: sidebar on desktop, bottom-nav on mobile
 │           └── main.tsx   # the "go" button
-└── (server/, packages/proto/, apps/desktop/ — arriving in later build steps)
+├── server/                # the Go relay (journald) — auth + encrypted-blob sync
+├── docker-compose.yml     # Postgres + MinIO + server
+└── (packages/proto/, apps/desktop/ — arriving in later build steps)
 ```
 
 ### The stack, and why
@@ -145,12 +164,13 @@ mneme/
 
 ## Roadmap (the abridged §10)
 
-1. ✅ Scaffold the client + design system *(you are here)*
-2. 🔜 Local SQLite (wa-sqlite + OPFS + full-text search) and a real TipTap editor
-3. 🔜 Crypto layer — BIP39 → keys → XChaCha20-Poly1305, all in the browser
-4. 🔜 Sync — the Go relay, offline outbox, last-write-wins
-5. 🔜 Media, reminders, push notifications, templates, export/import
-6. 🔜 Native desktop + mobile shells (Tauri 2), built locally
+1. ✅ Scaffold the client + design system
+2. ✅ The Go relay — device auth + last-write-wins encrypted-blob sync *(you are here)*
+3. 🔜 Local SQLite (wa-sqlite + OPFS + full-text search) and a real TipTap editor
+4. 🔜 Crypto layer — BIP39 → keys → XChaCha20-Poly1305, all in the browser
+5. 🔜 Wire the client to the relay — offline outbox, push/pull
+6. 🔜 Media, reminders push, templates, export/import
+7. 🔜 Native desktop + mobile shells (Tauri 2), built locally
 
 ---
 

@@ -1,0 +1,114 @@
+package api
+
+import (
+	"encoding/base64"
+	"net/http"
+
+	"github.com/plasticparticle/mneme/server/internal/store"
+)
+
+const maxPullLimit = 500
+
+// POST /v1/sync/push — upload encrypted entry blobs. Last-write-wins per entry on
+// lww_clock. The server treats ciphertext as opaque bytes.
+func (s *Server) handlePush(w http.ResponseWriter, r *http.Request) {
+	owner := principalOf(r.Context()).OwnerID
+
+	var req struct {
+		Entries []struct {
+			EntryID    string `json:"entry_id"`
+			LWWClock   int64  `json:"lww_clock"`
+			Ciphertext string `json:"ciphertext"` // base64
+			Deleted    bool   `json:"deleted"`
+		} `json:"entries"`
+	}
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+
+	type result struct {
+		EntryID string `json:"entry_id"`
+		Applied bool   `json:"applied"`
+	}
+	results := make([]result, 0, len(req.Entries))
+
+	for _, e := range req.Entries {
+		if e.EntryID == "" {
+			writeError(w, http.StatusBadRequest, "entry_id is required")
+			return
+		}
+		ct, err := base64.StdEncoding.DecodeString(e.Ciphertext)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "ciphertext must be base64")
+			return
+		}
+		// Opaque, but a well-formed blob carries at least the version byte (§3).
+		if len(ct) < 1 {
+			writeError(w, http.StatusBadRequest, "ciphertext is empty")
+			return
+		}
+		applied, err := s.store.PushEntry(r.Context(), owner, store.EntryBlob{
+			EntryID:    e.EntryID,
+			LWWClock:   e.LWWClock,
+			Ciphertext: ct,
+			Deleted:    e.Deleted,
+		})
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "push failed")
+			return
+		}
+		results = append(results, result{EntryID: e.EntryID, Applied: applied})
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"results": results})
+}
+
+// POST /v1/sync/pull — download entries changed since a cursor. Returns the next
+// cursor; when it equals the request cursor, the client is fully caught up.
+func (s *Server) handlePull(w http.ResponseWriter, r *http.Request) {
+	owner := principalOf(r.Context()).OwnerID
+
+	var req struct {
+		Since int64 `json:"since"`
+		Limit int   `json:"limit"`
+	}
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	limit := req.Limit
+	if limit <= 0 || limit > maxPullLimit {
+		limit = maxPullLimit
+	}
+
+	entries, err := s.store.PullEntries(r.Context(), owner, req.Since, limit)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "pull failed")
+		return
+	}
+
+	type item struct {
+		EntryID    string `json:"entry_id"`
+		LWWClock   int64  `json:"lww_clock"`
+		Ciphertext string `json:"ciphertext"`
+		Deleted    bool   `json:"deleted"`
+		Seq        int64  `json:"seq"`
+	}
+	out := make([]item, 0, len(entries))
+	cursor := req.Since
+	for _, e := range entries {
+		out = append(out, item{
+			EntryID:    e.EntryID,
+			LWWClock:   e.LWWClock,
+			Ciphertext: base64.StdEncoding.EncodeToString(e.Ciphertext),
+			Deleted:    e.Deleted,
+			Seq:        e.Seq,
+		})
+		cursor = e.Seq
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"entries": out,
+		"cursor":  cursor,
+		"more":    len(entries) == limit,
+	})
+}

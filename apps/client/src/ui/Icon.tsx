@@ -1,0 +1,70 @@
+import type { JSX, VNode } from 'preact';
+
+// Simple, consistent line glyphs (24 viewbox, 1.7 stroke, round).
+// Ported from the design handoff's ui.jsx icon set.
+
+export type IconName =
+  | 'lock' | 'plus' | 'search' | 'left' | 'right' | 'down' | 'cal' | 'book'
+  | 'books' | 'tag' | 'mic' | 'image' | 'check' | 'quote' | 'bold' | 'italic'
+  | 'list' | 'checklist' | 'heading' | 'settings' | 'more' | 'moon' | 'feather'
+  | 'pin' | 'clock' | 'copy' | 'eye' | 'eyeoff' | 'shield' | 'arrowR' | 'sun'
+  | 'grid' | 'timeline' | 'x';
+
+interface IconProps {
+  name: IconName;
+  size?: number;
+  stroke?: number;
+  style?: JSX.CSSProperties;
+  color?: string;
+}
+
+export function Icon({ name, size = 20, stroke = 1.7, style = {}, color = 'currentColor' }: IconProps): VNode {
+  const P = {
+    fill: 'none' as const,
+    stroke: color,
+    strokeWidth: stroke,
+    strokeLinecap: 'round' as const,
+    strokeLinejoin: 'round' as const,
+  };
+  const paths: Record<IconName, VNode> = {
+    lock: <><rect x="5" y="11" width="14" height="9" rx="2" {...P} /><path d="M8 11V8a4 4 0 0 1 8 0v3" {...P} /></>,
+    plus: <><path d="M12 5v14M5 12h14" {...P} /></>,
+    search: <><circle cx="11" cy="11" r="6.5" {...P} /><path d="M16 16l4 4" {...P} /></>,
+    left: <><path d="M15 5l-7 7 7 7" {...P} /></>,
+    right: <><path d="M9 5l7 7-7 7" {...P} /></>,
+    down: <><path d="M5 9l7 7 7-7" {...P} /></>,
+    cal: <><rect x="4" y="5" width="16" height="16" rx="2.5" {...P} /><path d="M4 9h16M8 3v4M16 3v4" {...P} /></>,
+    book: <><path d="M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3V4z" {...P} /><path d="M5 4v13a3 3 0 0 1 3-3h11" {...P} /></>,
+    books: <><rect x="4" y="4" width="6" height="16" rx="1.5" {...P} /><rect x="13" y="7" width="6" height="13" rx="1.5" {...P} /></>,
+    tag: <><path d="M4 12V5a1 1 0 0 1 1-1h7l8 8-8 8-8-8z" {...P} /><circle cx="8.5" cy="8.5" r="1.3" fill={color} stroke="none" /></>,
+    mic: <><rect x="9" y="3" width="6" height="11" rx="3" {...P} /><path d="M5 11a7 7 0 0 0 14 0M12 18v3" {...P} /></>,
+    image: <><rect x="4" y="5" width="16" height="14" rx="2.5" {...P} /><circle cx="9" cy="10" r="1.6" {...P} /><path d="M5 17l4.5-4 3.5 3 3-2.5 3 3" {...P} /></>,
+    check: <><path d="M5 12.5l4.5 4.5L19 6.5" {...P} /></>,
+    quote: <><path d="M9 7c-2.5 1-4 3-4 6h4v4H4v-6c0-3 1.5-5 5-6zM20 7c-2.5 1-4 3-4 6h4v4h-5v-6c0-3 1.5-5 5-6z" {...P} /></>,
+    bold: <><path d="M7 5h6a3.5 3.5 0 0 1 0 7H7zM7 12h7a3.5 3.5 0 0 1 0 7H7z" {...P} /></>,
+    italic: <><path d="M10 5h7M7 19h7M14 5l-4 14" {...P} /></>,
+    list: <><path d="M9 6h11M9 12h11M9 18h11M4.5 6h.01M4.5 12h.01M4.5 18h.01" {...P} /></>,
+    checklist: <><path d="M11 6h9M11 12h9M11 18h9" {...P} /><path d="M4 6.5l1.3 1.3L7.5 5M4 17.5l1.3 1.3L7.5 16" {...P} /></>,
+    heading: <><path d="M6 5v14M16 5v14M6 12h10" {...P} /></>,
+    settings: <><circle cx="12" cy="12" r="3" {...P} /><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.5 5.5l2 2M16.5 16.5l2 2M18.5 5.5l-2 2M7.5 16.5l-2 2" {...P} /></>,
+    more: <><circle cx="5" cy="12" r="1.4" fill={color} stroke="none" /><circle cx="12" cy="12" r="1.4" fill={color} stroke="none" /><circle cx="19" cy="12" r="1.4" fill={color} stroke="none" /></>,
+    moon: <><path d="M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5z" {...P} /></>,
+    feather: <><path d="M20 4C13 4 7 8 6 16l-2 4M9 13h7M6.5 16.5L17 6" {...P} /></>,
+    pin: <><path d="M12 21s6-5.3 6-10a6 6 0 1 0-12 0c0 4.7 6 10 6 10z" {...P} /><circle cx="12" cy="11" r="2.2" {...P} /></>,
+    clock: <><circle cx="12" cy="12" r="8" {...P} /><path d="M12 8v4.5l3 2" {...P} /></>,
+    copy: <><rect x="9" y="9" width="11" height="11" rx="2" {...P} /><path d="M5 15V5a2 2 0 0 1 2-2h8" {...P} /></>,
+    eye: <><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z" {...P} /><circle cx="12" cy="12" r="2.6" {...P} /></>,
+    eyeoff: <><path d="M3 3l18 18M10.6 10.6a2.6 2.6 0 0 0 3.6 3.6M9.3 5.3A9.7 9.7 0 0 1 12 5c6.5 0 10 7 10 7a16 16 0 0 1-3.5 4.2M6 6.5A16 16 0 0 0 2 12s3.5 7 10 7a9.6 9.6 0 0 0 2.4-.3" {...P} /></>,
+    shield: <><path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3z" {...P} /><path d="M9 12l2 2 4-4" {...P} /></>,
+    arrowR: <><path d="M4 12h15M13 6l6 6-6 6" {...P} /></>,
+    sun: <><circle cx="12" cy="12" r="4" {...P} /><path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5L19 19M19 5l-1.5 1.5M6.5 17.5L5 19" {...P} /></>,
+    grid: <><rect x="4" y="4" width="6.5" height="6.5" rx="1.5" {...P} /><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.5" {...P} /><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.5" {...P} /><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.5" {...P} /></>,
+    timeline: <><path d="M6 4v16" {...P} /><circle cx="6" cy="8" r="1.6" {...P} /><circle cx="6" cy="16" r="1.6" {...P} /><path d="M11 8h9M11 16h9" {...P} /></>,
+    x: <><path d="M6 6l12 12M18 6L6 18" {...P} /></>,
+  };
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" style={{ display: 'block', flexShrink: 0, ...style }}>
+      {paths[name]}
+    </svg>
+  );
+}

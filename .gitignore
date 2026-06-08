@@ -1,0 +1,15 @@
+node_modules/
+dist/
+*.log
+.DS_Store
+.playwright-mcp/
+.env
+.env.*
+!.env.example
+
+# Go
+/server/journald
+*.test
+
+# Tauri
+/apps/desktop/src-tauri/target/

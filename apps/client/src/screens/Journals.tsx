@@ -1,0 +1,253 @@
+import type { VNode, ComponentChildren } from 'preact';
+import { useState } from 'preact/hooks';
+import { Icon } from '../ui/Icon';
+import { Btn, Cover } from '../ui/primitives';
+import { hexA } from '../ui/color';
+import type { CoverPattern, Journal } from '../data/sample';
+
+const JCOLORS = ['#B0563A', '#4E8B85', '#6A6AA0', '#B08A2E', '#5A7BA6', '#6E8B5E', '#8E6A93', '#C06A4A'];
+const JCOVERS: CoverPattern[] = ['lines', 'dots', 'grid', 'plain', 'photo'];
+
+export function NewJournalSheet({ desk, onClose, onCreate }: { desk: boolean; onClose: () => void; onCreate: (j: Journal) => void }): VNode {
+  const [name, setName] = useState('');
+  const [color, setColor] = useState(JCOLORS[1]);
+  const [cover, setCover] = useState<CoverPattern>('lines');
+  const [tpl, setTpl] = useState('blank');
+  const draft: Journal = { id: 'new', name: name || 'Untitled journal', subtitle: 'New journal', color, cover, count: 0, last: 'Just now' };
+
+  const body = (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+        <Cover journal={draft} w={48} h={62} r={9} />
+        <div style={{ flex: 1 }}>
+          <input
+            autoFocus
+            value={name}
+            onInput={(e) => setName((e.target as HTMLInputElement).value)}
+            placeholder="Name your journal"
+            style={{ width: '100%', boxSizing: 'border-box', border: 'none', outline: 'none', background: 'transparent', fontFamily: 'var(--serif)', fontSize: 22, color: 'var(--ink)', fontWeight: 500 }}
+          />
+          <div style={{ height: 1, background: 'var(--line)', marginTop: 4 }} />
+        </div>
+      </div>
+
+      <Field label="Colour">
+        <div style={{ display: 'flex', gap: 9, flexWrap: 'wrap' }}>
+          {JCOLORS.map((c) => (
+            <button
+              key={c}
+              onClick={() => setColor(c)}
+              style={{ width: 30, height: 30, borderRadius: 999, cursor: 'pointer', background: c, border: color === c ? '2.5px solid var(--ink)' : '2.5px solid transparent', outline: `1px solid ${hexA(c, 0.4)}`, outlineOffset: -1 }}
+            />
+          ))}
+        </div>
+      </Field>
+
+      <Field label="Cover">
+        <div style={{ display: 'flex', gap: 8 }}>
+          {JCOVERS.map((cv) => (
+            <button
+              key={cv}
+              onClick={() => setCover(cv)}
+              style={{ flex: 1, padding: 7, borderRadius: 12, cursor: 'pointer', background: 'var(--paper)', border: `1.5px solid ${cover === cv ? 'var(--accent)' : 'var(--line)'}`, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}
+            >
+              <Cover journal={{ color, cover: cv }} w={28} h={36} r={6} />
+              <span style={{ fontFamily: 'var(--ui)', fontSize: 10.5, color: 'var(--ink-2)', textTransform: 'capitalize' }}>{cv}</span>
+            </button>
+          ))}
+        </div>
+      </Field>
+
+      <Field label="Start from">
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {([['blank', 'Blank'], ['daily', 'Daily prompt'], ['gratitude', 'Three things'], ['dream', 'Dream log']] as const).map(([k, l]) => (
+            <button
+              key={k}
+              onClick={() => setTpl(k)}
+              style={{ fontFamily: 'var(--ui)', fontSize: 13, fontWeight: 600, padding: '8px 13px', borderRadius: 999, cursor: 'pointer', background: tpl === k ? 'var(--accent-soft)' : 'var(--surface)', color: tpl === k ? 'var(--accent-ink)' : 'var(--ink-2)', border: `1px solid ${tpl === k ? 'var(--accent)' : 'var(--line)'}` }}
+            >
+              {l}
+            </button>
+          ))}
+        </div>
+      </Field>
+
+      <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
+        <Btn kind="ghost" size="md" onClick={onClose} style={{ flex: 1 }}>Cancel</Btn>
+        <Btn kind="primary" size="md" onClick={() => onCreate({ ...draft, id: 'j-' + Date.now(), name: name || 'Untitled journal', subtitle: 'New journal' })} style={{ flex: 2 }}>Create journal</Btn>
+      </div>
+    </div>
+  );
+
+  return (
+    <div
+      onClick={onClose}
+      style={{ position: 'absolute', inset: 0, zIndex: 60, background: 'rgba(30,22,16,.34)', backdropFilter: 'blur(2px)', display: 'flex', alignItems: desk ? 'center' : 'flex-end', justifyContent: 'center' }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{ width: desk ? 440 : '100%', boxSizing: 'border-box', background: 'var(--surface)', borderRadius: desk ? 20 : '24px 24px 0 0', border: '1px solid var(--line)', padding: desk ? 26 : '20px 22px 30px', boxShadow: '0 20px 60px rgba(30,20,12,.3)' }}
+      >
+        {!desk && <div style={{ width: 38, height: 4, borderRadius: 9, background: 'var(--line)', margin: '0 auto 16px' }} />}
+        <h3 style={{ fontFamily: 'var(--serif)', fontSize: 19, fontWeight: 500, color: 'var(--ink)', margin: '0 0 18px' }}>New journal</h3>
+        {body}
+      </div>
+    </div>
+  );
+}
+
+function Field({ label, children }: { label: string; children: ComponentChildren }): VNode {
+  return (
+    <div>
+      <div style={{ fontFamily: 'var(--ui)', fontSize: 11.5, fontWeight: 700, letterSpacing: 0.8, textTransform: 'uppercase', color: 'var(--ink-3)', marginBottom: 9 }}>{label}</div>
+      {children}
+    </div>
+  );
+}
+
+function AccountChip(): VNode {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
+      <div style={{ width: 40, height: 40, borderRadius: 999, background: 'linear-gradient(145deg, var(--accent), #8E4128)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontFamily: 'var(--serif)', fontSize: 18, fontWeight: 600, flexShrink: 0 }}>V</div>
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontFamily: 'var(--ui)', fontSize: 14, fontWeight: 600, color: 'var(--ink)' }}>Your vault</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <Icon name="lock" size={11} color="var(--accent)" />
+          <span style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--ink-3)' }}>7f3a · velvet harbor</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function JournalCard({ j, onOpen }: { j: Journal; onOpen: (j: Journal) => void }): VNode {
+  return (
+    <button
+      onClick={() => onOpen(j)}
+      style={{ display: 'flex', alignItems: 'center', gap: 14, width: '100%', textAlign: 'left', cursor: 'pointer', padding: 14, borderRadius: 16, background: 'var(--surface)', border: '1px solid var(--line)', transition: 'all .15s' }}
+      onMouseEnter={(e) => { e.currentTarget.style.borderColor = hexA(j.color, 0.5); e.currentTarget.style.transform = 'translateY(-1px)'; }}
+      onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--line)'; e.currentTarget.style.transform = 'none'; }}
+    >
+      <Cover journal={j} w={46} h={58} r={9} />
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontFamily: 'var(--serif)', fontSize: 18, fontWeight: 500, color: 'var(--ink)' }}>{j.name}</div>
+        <div style={{ fontFamily: 'var(--ui)', fontSize: 13, color: 'var(--ink-2)', marginTop: 1 }}>{j.subtitle}</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 7 }}>
+          <span style={{ fontFamily: 'var(--ui)', fontSize: 12, color: 'var(--ink-3)' }}>{j.count} entries</span>
+          <span style={{ width: 3, height: 3, borderRadius: 9, background: 'var(--ink-3)' }} />
+          <span style={{ fontFamily: 'var(--ui)', fontSize: 12, color: 'var(--ink-3)' }}>{j.last}</span>
+        </div>
+      </div>
+      <Icon name="right" size={18} color="var(--ink-3)" />
+    </button>
+  );
+}
+
+export function JournalsScreen({ desk, journals, onOpen, onNew }: { desk: boolean; journals: Journal[]; onOpen: (j: Journal) => void; onNew: () => void }): VNode {
+  if (desk) {
+    return (
+      <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: 'var(--paper)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '26px 34px 18px' }}>
+          <div>
+            <h1 style={{ fontFamily: 'var(--serif)', fontSize: 30, fontWeight: 500, color: 'var(--ink)', margin: 0 }}>Journals</h1>
+            <p style={{ fontFamily: 'var(--ui)', fontSize: 13.5, color: 'var(--ink-3)', margin: '4px 0 0' }}>{journals.length} notebooks · {journals.reduce((a, b) => a + b.count, 0)} entries · all encrypted</p>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <SearchBar desk />
+            <Btn kind="primary" icon="plus" onClick={onNew}>New journal</Btn>
+          </div>
+        </div>
+        <div style={{ flex: 1, overflow: 'auto', padding: '8px 34px 34px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16 }}>
+            {journals.map((j) => (
+              <button
+                key={j.id}
+                onClick={() => onOpen(j)}
+                style={{ textAlign: 'left', cursor: 'pointer', borderRadius: 18, overflow: 'hidden', background: 'var(--surface)', border: '1px solid var(--line)', transition: 'all .15s', padding: 0 }}
+                onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 12px 30px rgba(40,28,18,.1)'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = 'none'; }}
+              >
+                <div style={{ height: 96, background: hexA(j.color, 0.12), position: 'relative', borderBottom: '1px solid var(--line)' }}>
+                  <div style={{ position: 'absolute', inset: 0, backgroundImage: coverBg(j), backgroundSize: coverSize(j.cover) }} />
+                  <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 6, background: j.color }} />
+                  <span style={{ position: 'absolute', right: 12, top: 12, fontFamily: 'var(--mono)', fontSize: 11, color: hexA(j.color, 0.9), background: 'var(--surface)', padding: '2px 8px', borderRadius: 7, border: `1px solid ${hexA(j.color, 0.3)}` }}>{j.count}</span>
+                </div>
+                <div style={{ padding: '14px 16px 16px' }}>
+                  <div style={{ fontFamily: 'var(--serif)', fontSize: 19, fontWeight: 500, color: 'var(--ink)' }}>{j.name}</div>
+                  <div style={{ fontFamily: 'var(--ui)', fontSize: 13, color: 'var(--ink-2)', marginTop: 2 }}>{j.subtitle}</div>
+                  <div style={{ fontFamily: 'var(--ui)', fontSize: 12, color: 'var(--ink-3)', marginTop: 9 }}>Edited {j.last}</div>
+                </div>
+              </button>
+            ))}
+            <button
+              onClick={onNew}
+              style={{ cursor: 'pointer', borderRadius: 18, minHeight: 210, background: 'transparent', border: '1.5px dashed var(--line)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, color: 'var(--ink-3)', transition: 'all .15s' }}
+              onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--accent)'; e.currentTarget.style.color = 'var(--accent-ink)'; }}
+              onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--line)'; e.currentTarget.style.color = 'var(--ink-3)'; }}
+            >
+              <div style={{ width: 44, height: 44, borderRadius: 999, border: '1.5px solid currentColor', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Icon name="plus" size={22} /></div>
+              <span style={{ fontFamily: 'var(--ui)', fontSize: 14, fontWeight: 600 }}>New journal</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── mobile ──
+  return (
+    <div style={{ height: '100%', overflow: 'auto', background: 'var(--paper)', paddingBottom: 84 }}>
+      <div style={{ padding: '64px 20px 0' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <AccountChip />
+          <button style={{ width: 38, height: 38, borderRadius: 999, border: '1px solid var(--line)', background: 'var(--surface)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+            <Icon name="settings" size={19} color="var(--ink-2)" />
+          </button>
+        </div>
+
+        <h1 style={{ fontFamily: 'var(--serif)', fontSize: 32, fontWeight: 500, color: 'var(--ink)', margin: '24px 0 2px' }}>Journals</h1>
+        <p style={{ fontFamily: 'var(--ui)', fontSize: 13.5, color: 'var(--ink-3)', margin: 0 }}>{journals.length} notebooks · all encrypted on this device</p>
+
+        <div style={{ margin: '18px 0' }}><SearchBar /></div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 11 }}>
+          {journals.map((j) => <JournalCard key={j.id} j={j} onOpen={onOpen} />)}
+          <button
+            onClick={onNew}
+            style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', cursor: 'pointer', padding: 16, borderRadius: 16, background: 'transparent', border: '1.5px dashed var(--line)', color: 'var(--ink-3)' }}
+          >
+            <div style={{ width: 46, height: 46, borderRadius: 11, border: '1.5px dashed currentColor', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><Icon name="plus" size={22} /></div>
+            <div style={{ textAlign: 'left' }}>
+              <div style={{ fontFamily: 'var(--ui)', fontSize: 15, fontWeight: 600, color: 'var(--ink)' }}>New journal</div>
+              <div style={{ fontFamily: 'var(--ui)', fontSize: 12.5, color: 'var(--ink-3)' }}>Personal, travel, dreams…</div>
+            </div>
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SearchBar({ desk }: { desk?: boolean }): VNode {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 9, padding: desk ? '8px 14px' : '11px 14px', borderRadius: 12, background: 'var(--surface)', border: '1px solid var(--line)', width: desk ? 220 : '100%', boxSizing: 'border-box' }}>
+      <Icon name="search" size={17} color="var(--ink-3)" />
+      <span style={{ fontFamily: 'var(--ui)', fontSize: 13.5, color: 'var(--ink-3)' }}>Search all entries</span>
+    </div>
+  );
+}
+
+function coverBg(j: Journal): string {
+  const c = j.color;
+  const p: Record<CoverPattern, string> = {
+    lines: `repeating-linear-gradient(0deg, ${hexA(c, 0)} 0 9px, ${hexA(c, 0.14)} 9px 10px)`,
+    dots: `radial-gradient(${hexA(c, 0.26)} 1.5px, transparent 1.6px)`,
+    grid: `linear-gradient(${hexA(c, 0.14)} 1px, transparent 1px), linear-gradient(90deg, ${hexA(c, 0.14)} 1px, transparent 1px)`,
+    plain: 'none',
+    photo: `repeating-linear-gradient(135deg, ${hexA(c, 0.16)} 0 8px, ${hexA(c, 0.05)} 8px 16px)`,
+  };
+  return p[j.cover];
+}
+function coverSize(cover: CoverPattern): string {
+  return cover === 'dots' || cover === 'grid' ? '11px 11px' : 'auto';
+}

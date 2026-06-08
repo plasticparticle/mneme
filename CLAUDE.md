@@ -12,10 +12,24 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## 0. Operating Guide (read first)
 
 ### Current state
-**Pre-scaffold.** The repo currently contains *only* this `CLAUDE.md` — no code, no commits, no
-`package.json`/`go.mod`/`docker-compose.yml` yet. None of the commands below exist until the relevant
-build step (§10) is done. The directory is named `mneme`; the design doc calls the product "journal" —
-treat them as the same project.
+**Scaffolding the client.** The directory is named `mneme`; the design doc calls the product "journal" —
+treat them as the same project. The Go server / Postgres / MinIO / Tauri shells are **not** scaffolded yet
+(later §10 steps).
+
+### Frontend design source
+The product visual design is a **handoff bundle from Claude Design** (claude.ai/design), available at:
+`https://api.anthropic.com/v1/design/h/hrDFaHkF8O7MK0ag7u8I5A?open_file=Mneme.html`
+(gzip tarball — `WebFetch` it, then `tar xzf`). Primary file: **`Mneme.html`**. It is a React-UMD +
+Babel prototype of four screens — **Onboarding** (mnemonic login/restore/unlock), **Journals**
+(library + new-journal sheet), **Calendar** (month grid + day list + heatmap), **Editor** (zen writing
+surface) — plus a shared design system. The bundle's `frames/` (iOS bezel, browser window, tweaks panel)
+and the "Design review" top-bar/stage are **prototype harness only — do not reproduce them**; build a
+real responsive shell instead. The design system is implemented in `apps/client/src/`:
+- **Warm-paper palette** (cream/ink/sepia + terracotta accent), dark mode via `[data-theme="dark"]`.
+- **Type:** Hanken Grotesk (UI) · Newsreader serif (editor/headings) · Spline Sans Mono (mnemonic/metadata).
+- Design tokens live in `src/styles/tokens.css` (`:root` CSS variables); port new design values there.
+- The prototype models **multiple notebooks inside one mnemonic account** — this is a UI convenience;
+  it does **not** override the §3 "isolated tenants" crypto decision (journals are just a local grouping).
 
 ### What this is (one line)
 Open-source, local-first, **end-to-end-encrypted** journal (a Day One replacement). The server is a

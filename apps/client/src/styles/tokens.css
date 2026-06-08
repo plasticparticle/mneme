@@ -1,0 +1,85 @@
+/* Mneme design tokens — warm paper palette, ported from the Claude Design handoff.
+   Light is the default; [data-theme="dark"] swaps the surface/ink ramp.
+   Accent + editor vars are set inline by the theme layer (see hooks/useTheme.ts). */
+:root {
+  --paper: #f4eee2;
+  --surface: #fbf7ef;
+  --surface-2: #f6f0e5;
+  --surface-glass: rgba(251, 247, 239, 0.82);
+  --ink: #2a2521;
+  --ink-2: #6e655a;
+  --ink-3: #a99f8e;
+  --line: #e6ddcc;
+  --ph-a: #ede6d7;
+  --ph-b: #f6f1e6;
+
+  --ui: 'Hanken Grotesk', system-ui, -apple-system, sans-serif;
+  --serif: 'Newsreader', Georgia, serif;
+  --mono: 'Spline Sans Mono', ui-monospace, monospace;
+
+  --editor-font: var(--serif);
+  --editor-size: 18px;
+  --editor-gap: 20px;
+
+  --accent: #b0563a;
+  --accent-ink: #97462c;
+  --accent-soft: rgba(176, 86, 58, 0.12);
+  --accent-line: rgba(176, 86, 58, 0.28);
+}
+
+[data-theme='dark'] {
+  --paper: #1c1815;
+  --surface: #241f1a;
+  --surface-2: #201b17;
+  --surface-glass: rgba(28, 24, 21, 0.8);
+  --ink: #ece3d4;
+  --ink-2: #a99e8c;
+  --ink-3: #786f62;
+  --line: #352e26;
+  --ph-a: #2a241e;
+  --ph-b: #221d18;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+}
+
+#app {
+  height: 100%;
+}
+
+body {
+  font-family: var(--ui);
+  background: var(--paper);
+  color: var(--ink);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  transition: background 0.25s ease;
+}
+
+button {
+  font-family: inherit;
+}
+
+input {
+  font-family: inherit;
+}
+
+::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--line);
+  border-radius: 9px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}

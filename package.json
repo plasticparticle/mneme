@@ -1,0 +1,13 @@
+{
+  "name": "mneme",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Open-source, local-first, end-to-end-encrypted journal (Day One replacement)",
+  "packageManager": "pnpm@10.33.0",
+  "scripts": {
+    "dev": "pnpm --filter client dev",
+    "build": "pnpm --filter client build",
+    "preview": "pnpm --filter client preview",
+    "typecheck": "pnpm --filter client typecheck"
+  }
+}

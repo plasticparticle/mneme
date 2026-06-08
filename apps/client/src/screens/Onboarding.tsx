@@ -128,7 +128,7 @@ export function Onboarding({ desk, onEnter }: { desk: boolean; onEnter: () => vo
 
         <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
           <Btn kind="ghost" size="sm" icon={revealed ? 'eyeoff' : 'eye'} onClick={() => setRevealed((r) => !r)}>{revealed ? 'Hide' : 'Reveal'}</Btn>
-          <Btn kind="ghost" size="sm" icon="copy" onClick={() => { setCopied(true); setTimeout(() => setCopied(false), 1400); }}>{copied ? 'Copied' : 'Copy'}</Btn>
+          <Btn kind="ghost" size="sm" icon="copy" onClick={async () => { try { await navigator.clipboard.writeText(words.join(' ')); } catch { /* clipboard unavailable */ } setCopied(true); setTimeout(() => setCopied(false), 1400); }}>{copied ? 'Copied' : 'Copy'}</Btn>
         </div>
 
         <Callout>

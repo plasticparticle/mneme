@@ -7,18 +7,25 @@ import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'p
 
 import { RelayClient, defaultRelayUrl } from '../sync/relay';
 import { authenticate, identityFromMnemonic, type Session } from '../sync/identity';
+import type { Identity } from '../crypto/keys';
 import { pushEntries, pullEntries, type JournalEntry } from '../sync/engine';
 import { newEntryId } from '../sync/ids';
-import { ENTRIES, JOURNALS, type Journal } from '../data/sample';
+import { ENTRIES, JOURNALS, OPEN_ENTRY, type Journal } from '../data/sample';
+import { blocksToDoc, textToDoc, docToText } from '../editor/doc';
 
 export type SyncStatus = 'locked' | 'connecting' | 'online' | 'offline';
 
 interface AppData {
   status: SyncStatus;
+  // How many local entries still wait to be pushed to the relay (the outbox depth).
+  pendingCount: number;
+  // True while a push to the relay is in flight.
+  saving: boolean;
   entries: JournalEntry[];
   journals: Journal[];
   signIn(mnemonic: string): Promise<void>;
-  createEntry(input: { journalId: string; title: string; bodyText?: string; labels?: string[] }): JournalEntry;
+  createEntry(input: { journalId: string; title?: string; bodyText?: string; bodyJson?: string; labels?: string[] }): JournalEntry;
+  updateEntry(id: string, patch: { title?: string; bodyText?: string; bodyJson?: string; labels?: string[] }): void;
   newJournal(j: Journal): void;
 }
 
@@ -31,6 +38,9 @@ export function useAppData(): AppData {
 }
 
 const SYNC_INTERVAL_MS = 30_000;
+// While disconnected, retry authentication on this cadence so the client recovers
+// on its own once the relay comes back — no need to re-enter the mnemonic.
+const RECONNECT_INTERVAL_MS = 5_000;
 
 // Seed the timeline from the design's sample entries so the UI looks lived-in.
 // These stay local (not pushed); only user-created entries sync to the relay.
@@ -38,11 +48,16 @@ function seedEntries(): JournalEntry[] {
   return ENTRIES.map((e) => {
     const [h, m] = e.time.split(':').map(Number);
     const at = Date.UTC(2026, 5, e.day, h || 0, m || 0);
+    // e1 has a fully-written rich body in the design handoff; give it real
+    // TipTap content so the editor opens with lived-in formatting. The rest
+    // start from their one-line preview text.
+    const doc = e.id === OPEN_ENTRY.id ? blocksToDoc(OPEN_ENTRY.blocks) : textToDoc(e.preview);
     return {
       id: e.id,
       journalId: e.journal,
       title: e.title,
-      bodyText: e.preview,
+      bodyText: e.id === OPEN_ENTRY.id ? docToText(doc) : e.preview,
+      bodyJson: JSON.stringify(doc),
       labels: e.labels,
       createdAt: at,
       updatedAt: at,
@@ -62,26 +77,37 @@ function mergeByLWW(prev: JournalEntry[], incoming: JournalEntry[]): JournalEntr
 export function AppDataProvider({ children }: { children: ComponentChildren }): VNode {
   const relay = useMemo(() => new RelayClient(defaultRelayUrl()), []);
   const [status, setStatus] = useState<SyncStatus>('locked');
+  const [pendingCount, setPendingCount] = useState(0);
+  const [saving, setSaving] = useState(false);
   const [entries, setEntries] = useState<JournalEntry[]>([]);
   const [journals, setJournals] = useState<Journal[]>(JOURNALS);
 
   const session = useRef<Session | null>(null);
+  // Kept after sign-in so the background loop can re-authenticate without the mnemonic.
+  const identity = useRef<Identity | null>(null);
   const cursor = useRef(0);
   const pending = useRef<Map<string, JournalEntry>>(new Map());
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Mirror the (mutable) outbox depth into reactive state so the UI can react.
+  const syncPendingCount = useCallback(() => setPendingCount(pending.current.size), []);
 
   const flush = useCallback(async () => {
     const s = session.current;
     if (!s || pending.current.size === 0) return;
     const batch = [...pending.current.values()];
+    setSaving(true);
     try {
       const applied = await pushEntries(relay, s.token, s.identity.dataKey, batch);
       for (const id of applied) pending.current.delete(id);
+      syncPendingCount();
       setStatus('online');
     } catch {
       setStatus('offline');
+    } finally {
+      setSaving(false);
     }
-  }, [relay]);
+  }, [relay, syncPendingCount]);
 
   const pull = useCallback(async () => {
     const s = session.current;
@@ -96,13 +122,16 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
     }
   }, [relay]);
 
-  const signIn = useCallback(
-    async (mnemonic: string) => {
-      const identity = identityFromMnemonic(mnemonic); // local, synchronous
-      setEntries((prev) => (prev.length ? prev : seedEntries()));
-      setStatus('connecting');
+  // (Re)establish a relay session from the stored identity, then sync. `announce`
+  // shows the "connecting…" state for a user-initiated attempt; background retries
+  // stay quiet on "offline" until one succeeds, so the indicator doesn't flicker.
+  const connect = useCallback(
+    async (announce: boolean) => {
+      const id = identity.current;
+      if (!id) return;
+      if (announce) setStatus('connecting');
       try {
-        session.current = await authenticate(relay, identity);
+        session.current = await authenticate(relay, id);
         cursor.current = 0;
         await flush();
         await pull();
@@ -115,42 +144,77 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
     [relay, flush, pull],
   );
 
+  const signIn = useCallback(
+    async (mnemonic: string) => {
+      identity.current = identityFromMnemonic(mnemonic); // local, synchronous
+      setEntries((prev) => (prev.length ? prev : seedEntries()));
+      await connect(true);
+    },
+    [connect],
+  );
+
   const createEntry: AppData['createEntry'] = useCallback(
     (input) => {
       const now = Date.now();
       const entry: JournalEntry = {
         id: newEntryId(),
         journalId: input.journalId,
-        title: input.title,
+        title: input.title ?? '',
         bodyText: input.bodyText ?? '',
+        bodyJson: input.bodyJson,
         labels: input.labels ?? [],
         createdAt: now,
         updatedAt: now,
       };
       setEntries((prev) => mergeByLWW(prev, [entry]));
       pending.current.set(entry.id, entry);
+      syncPendingCount();
       void flush();
       return entry;
     },
-    [flush],
+    [flush, syncPendingCount],
+  );
+
+  const updateEntry: AppData['updateEntry'] = useCallback(
+    (id, patch) => {
+      const now = Date.now();
+      setEntries((prev) => {
+        const cur = prev.find((e) => e.id === id);
+        if (!cur) return prev;
+        const next: JournalEntry = { ...cur, ...patch, updatedAt: now };
+        pending.current.set(id, next);
+        syncPendingCount();
+        void flush();
+        return mergeByLWW(prev, [next]);
+      });
+    },
+    [flush, syncPendingCount],
   );
 
   const newJournal = useCallback((j: Journal) => {
     setJournals((prev) => [...prev, j]);
   }, []);
 
-  // Background sync loop while a session is live.
+  // Background loop. While online: periodic flush + pull. While offline: retry the
+  // relay handshake until it comes back, then resume syncing automatically.
   useEffect(() => {
-    if (status !== 'online' && status !== 'offline') return;
-    timer.current = setInterval(() => {
-      void flush();
-      void pull();
-    }, SYNC_INTERVAL_MS);
+    if (status === 'online') {
+      timer.current = setInterval(() => {
+        void flush();
+        void pull();
+      }, SYNC_INTERVAL_MS);
+    } else if (status === 'offline') {
+      timer.current = setInterval(() => {
+        void connect(false);
+      }, RECONNECT_INTERVAL_MS);
+    } else {
+      return;
+    }
     return () => {
       if (timer.current) clearInterval(timer.current);
     };
-  }, [status, flush, pull]);
+  }, [status, flush, pull, connect]);
 
-  const value: AppData = { status, entries, journals, signIn, createEntry, newJournal };
+  const value: AppData = { status, pendingCount, saving, entries, journals, signIn, createEntry, updateEntry, newJournal };
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

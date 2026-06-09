@@ -14,6 +14,12 @@
     "@noble/curves": "^1.8.1",
     "@noble/hashes": "^1.7.1",
     "@scure/bip39": "^1.5.4",
+    "@tiptap/core": "^3.26.0",
+    "@tiptap/extension-placeholder": "^3.26.0",
+    "@tiptap/extension-task-item": "^3.26.0",
+    "@tiptap/extension-task-list": "^3.26.0",
+    "@tiptap/pm": "^3.26.0",
+    "@tiptap/starter-kit": "^3.26.0",
     "preact": "^10.25.4"
   },
   "devDependencies": {

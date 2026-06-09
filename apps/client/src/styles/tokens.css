@@ -83,3 +83,12 @@ input {
 ::-webkit-scrollbar-track {
   background: transparent;
 }
+
+/* Sync/save status indicator: a soft pulse while a sync is in flight. */
+@keyframes mneme-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.35; transform: scale(0.78); }
+}
+.mneme-pulse {
+  animation: mneme-pulse 1.1s ease-in-out infinite;
+}

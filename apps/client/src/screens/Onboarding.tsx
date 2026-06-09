@@ -240,6 +240,7 @@ export function Onboarding({ desk, onEnter }: { desk: boolean; onEnter: (mnemoni
               <input
                 value={w}
                 placeholder="·····"
+                size={1}
                 onInput={(e) => setRestoreWords((a) => a.map((x, j) => (j === i ? (e.target as HTMLInputElement).value : x)))}
                 onPaste={(e) => {
                   const tokens = tokenize(e.clipboardData?.getData('text') ?? '');
@@ -250,7 +251,7 @@ export function Onboarding({ desk, onEnter }: { desk: boolean; onEnter: (mnemoni
                     fillFrom(i, tokens);
                   }
                 }}
-                style={{ flex: 1, minWidth: 0, border: 'none', outline: 'none', background: 'transparent', fontFamily: 'var(--mono)', fontSize: 13.5, color: 'var(--ink)' }}
+                style={{ flex: 1, width: '100%', minWidth: 0, border: 'none', outline: 'none', background: 'transparent', fontFamily: 'var(--mono)', fontSize: 13.5, color: 'var(--ink)' }}
               />
             </div>
           ))}

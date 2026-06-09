@@ -1,0 +1,142 @@
+/* The editable ProseMirror surface. ProseMirror renders real DOM (not our inline
+   styled blocks), so the editor's typography lives here — tuned to match the
+   design's reading view (Block in screens/Editor before it became editable). */
+
+.mneme-prose {
+  font-family: var(--editor-font);
+  font-size: var(--editor-size);
+  line-height: 1.72;
+  color: var(--ink);
+  outline: none;
+  text-wrap: pretty;
+}
+
+.mneme-prose > * + * {
+  margin-top: var(--editor-gap);
+}
+
+.mneme-prose p {
+  margin: 0;
+}
+
+.mneme-prose h1,
+.mneme-prose h2,
+.mneme-prose h3 {
+  font-family: var(--editor-font);
+  font-weight: 600;
+  color: var(--ink);
+  line-height: 1.25;
+  margin: 0;
+}
+.mneme-prose h1 { font-size: calc(var(--editor-size) * 1.55); }
+.mneme-prose h2 { font-size: calc(var(--editor-size) * 1.28); }
+.mneme-prose h3 { font-size: calc(var(--editor-size) * 1.12); }
+
+.mneme-prose strong { font-weight: 700; }
+.mneme-prose em { font-style: italic; }
+
+.mneme-prose blockquote {
+  margin: 0;
+  padding: 4px 0 4px 20px;
+  border-left: 3px solid var(--accent);
+  font-style: italic;
+  color: var(--ink-2);
+}
+
+.mneme-prose ul,
+.mneme-prose ol {
+  margin: 0;
+  padding-left: 1.4em;
+}
+.mneme-prose li { margin: 4px 0; }
+.mneme-prose li > p { margin: 0; }
+
+.mneme-prose code {
+  font-family: var(--mono);
+  font-size: 0.88em;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 0.08em 0.34em;
+}
+.mneme-prose pre {
+  font-family: var(--mono);
+  font-size: 0.9em;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 14px 16px;
+  overflow-x: auto;
+}
+.mneme-prose pre code {
+  background: none;
+  border: none;
+  padding: 0;
+}
+
+.mneme-prose hr {
+  border: none;
+  border-top: 1px solid var(--line);
+  margin: calc(var(--editor-gap) * 1.2) 0;
+}
+
+/* Task lists (checklists) */
+.mneme-prose ul[data-type='taskList'] {
+  list-style: none;
+  padding-left: 0;
+}
+.mneme-prose ul[data-type='taskList'] li {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  margin: 0 0 10px;
+}
+.mneme-prose ul[data-type='taskList'] li > label {
+  flex-shrink: 0;
+  margin-top: calc(var(--editor-size) * 0.18);
+  user-select: none;
+}
+.mneme-prose ul[data-type='taskList'] li > div {
+  flex: 1;
+  min-width: 0;
+}
+.mneme-prose ul[data-type='taskList'] input[type='checkbox'] {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 21px;
+  height: 21px;
+  border-radius: 7px;
+  border: 1.6px solid var(--ink-3);
+  background: transparent;
+  cursor: pointer;
+  display: grid;
+  place-content: center;
+  transition: background 0.12s, border-color 0.12s;
+}
+.mneme-prose ul[data-type='taskList'] input[type='checkbox']:checked {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.mneme-prose ul[data-type='taskList'] input[type='checkbox']:checked::after {
+  content: '';
+  width: 11px;
+  height: 6px;
+  border: 2.4px solid #fff;
+  border-top: none;
+  border-right: none;
+  transform: translateY(-1px) rotate(-45deg);
+}
+.mneme-prose ul[data-type='taskList'] li[data-checked='true'] > div {
+  color: var(--ink-3);
+  text-decoration: line-through;
+}
+
+/* Placeholder for empty document / nodes */
+.mneme-prose p.is-editor-empty:first-child::before,
+.mneme-prose .is-empty::before {
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+  color: var(--ink-3);
+}

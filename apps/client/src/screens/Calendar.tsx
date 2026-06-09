@@ -1,7 +1,7 @@
 import type { VNode, ComponentChildren } from 'preact';
 import { useState } from 'preact/hooks';
 import { Icon, type IconName } from '../ui/Icon';
-import { Btn, LabelChip } from '../ui/primitives';
+import { Btn, LabelChip, ConnChip } from '../ui/primitives';
 import { hexA } from '../ui/color';
 import { findJournal } from '../data/sample';
 import { useAppData } from '../state/data';
@@ -228,6 +228,9 @@ export function CalendarScreen({ desk, onOpenEntry }: { desk: boolean; onOpenEnt
   return (
     <div style={{ height: '100%', overflow: 'auto', background: 'var(--paper)', paddingBottom: 84 }}>
       <div style={{ padding: '60px 18px 0' }}>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
+          <ConnChip />
+        </div>
         <MonthNav />
         <div style={{ display: 'flex', gap: 10, margin: '16px 0 14px' }}>
           <Stat n="12" label="day streak" boxed />

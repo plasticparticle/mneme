@@ -2,6 +2,7 @@ import type { JSX, VNode, ComponentChildren } from 'preact';
 import { Icon, type IconName } from './Icon';
 import { hexA } from './color';
 import { LABELS, type CoverPattern } from '../data/sample';
+import { useAppData, type SyncStatus } from '../state/data';
 
 // ── Striped placeholder (for photos) ────────────────────────
 interface PlaceholderProps {
@@ -98,17 +99,105 @@ export function LabelChip({ id, size = 'md' }: { id: string; size?: 'sm' | 'md' 
 }
 
 // ── Sync / encryption badge ─────────────────────────────────
-export function SyncBadge({ compact }: { compact?: boolean }): VNode {
+// Translate the live sync state into a single human label. `dirty` is the editor's
+// local "typed but not yet committed" flag, folded in so the badge reacts the moment
+// you start typing — before the debounced save even fires.
+interface SyncView {
+  label: string;
+  dot: string;
+  busy: boolean;
+  locked: boolean;
+  title: string;
+}
+function deriveSync(status: SyncStatus, pendingCount: number, saving: boolean, dirty: boolean): SyncView {
+  if (status === 'connecting') return { label: 'Connecting…', dot: 'var(--ink-3)', busy: true, locked: false, title: 'Connecting to the relay' };
+  const unsynced = dirty || saving || pendingCount > 0;
+  if (status === 'offline') {
+    return unsynced
+      ? { label: 'Offline · saved here', dot: '#c98a3c', busy: false, locked: false, title: 'Saved on this device — will sync when you reconnect' }
+      : { label: 'Offline', dot: 'var(--ink-3)', busy: false, locked: false, title: 'No connection to the relay' };
+  }
+  if (status === 'locked') return { label: 'Locked', dot: 'var(--ink-3)', busy: false, locked: false, title: 'Not signed in' };
+  // online
+  if (unsynced) return { label: 'Saving…', dot: 'var(--accent)', busy: true, locked: false, title: 'Encrypting and syncing your changes' };
+  return { label: 'Synced', dot: 'var(--accent)', busy: false, locked: true, title: 'End-to-end encrypted · all changes synced' };
+}
+
+export function SyncBadge({ compact, dirty = false }: { compact?: boolean; dirty?: boolean }): VNode {
+  const { status, pendingCount, saving } = useAppData();
+  const v = deriveSync(status, pendingCount, saving, dirty);
   return (
     <span
       style={{
         display: 'inline-flex', alignItems: 'center', gap: 6,
+        fontFamily: 'var(--ui)', fontSize: 12, fontWeight: 600, color: 'var(--ink-2)',
+      }}
+      title={v.title}
+    >
+      {v.locked ? (
+        <Icon name="lock" size={14} color="var(--accent)" />
+      ) : (
+        <span class={v.busy ? 'mneme-pulse' : undefined} style={{ width: 8, height: 8, borderRadius: 9, background: v.dot, flexShrink: 0 }} />
+      )}
+      {!compact && <span>{v.label}</span>}
+    </span>
+  );
+}
+
+// ── Connection indicator ────────────────────────────────────
+// A traffic-light for the relay link, meant to live inline inside a screen header
+// (not floating). green = connected · red = offline (auto-retrying) · amber = connecting.
+export function connColor(s: SyncStatus): string {
+  switch (s) {
+    case 'online':
+      return '#3fa45b';
+    case 'offline':
+      return '#cc4b37';
+    case 'connecting':
+      return '#c98a3c';
+    default:
+      return 'var(--ink-3)';
+  }
+}
+export function connLabel(s: SyncStatus): string {
+  switch (s) {
+    case 'online':
+      return 'Connected';
+    case 'offline':
+      return 'Offline';
+    case 'connecting':
+      return 'Connecting…';
+    default:
+      return 'Locked';
+  }
+}
+
+export function ConnectionDot({ status, size = 9 }: { status: SyncStatus; size?: number }): VNode {
+  return (
+    <span
+      class={status === 'connecting' ? 'mneme-pulse' : undefined}
+      title={connLabel(status)}
+      style={{ width: size, height: size, borderRadius: 999, background: connColor(status), flexShrink: 0, display: 'inline-block' }}
+    />
+  );
+}
+
+// Inline header chip: a soft rounded pill (dot + label), or `compact` for just the dot.
+export function ConnChip({ compact }: { compact?: boolean }): VNode {
+  const { status } = useAppData();
+  return (
+    <span
+      title={connLabel(status)}
+      style={{
+        display: 'inline-flex', alignItems: 'center', gap: 6, flexShrink: 0,
+        padding: compact ? 0 : '4px 10px', borderRadius: 999,
+        background: compact ? 'transparent' : 'var(--surface)',
+        border: compact ? 'none' : '1px solid var(--line)',
         fontFamily: 'var(--ui)', fontSize: 12, fontWeight: 600, color: 'var(--ink-3)',
       }}
-      title="End-to-end encrypted · synced"
     >
-      <Icon name="lock" size={14} color="var(--accent)" />
-      {!compact && <span>Encrypted</span>}
+      <ConnectionDot status={status} size={8} />
+      {!compact && <span>{connLabel(status)}</span>}
     </span>
   );
 }

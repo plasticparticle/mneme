@@ -1,126 +1,177 @@
 import type { VNode } from 'preact';
-import { Fragment } from 'preact';
-import { useState } from 'preact/hooks';
-import { Icon, type IconName } from '../ui/Icon';
-import { Placeholder, LabelChip, SyncBadge, Cover } from '../ui/primitives';
-import { OPEN_ENTRY, findJournal, type Block as BlockType, type OpenEntry } from '../data/sample';
+import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
+import type { Editor } from '@tiptap/core';
+import { Icon } from '../ui/Icon';
+import { LabelChip, SyncBadge, Cover, ConnChip } from '../ui/primitives';
+import { findJournal } from '../data/sample';
 import { useAppData } from '../state/data';
+import type { JournalEntry } from '../sync/engine';
+import { useRichEditor } from '../editor/useRichEditor';
+import { EditorToolbar } from '../editor/Toolbar';
+import { parseBody } from '../editor/doc';
+import '../editor/editor.css';
 
 const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const SAVE_DEBOUNCE_MS = 600;
 
-function Block({ b }: { b: BlockType }): VNode | null {
-  const baseP = { fontFamily: 'var(--editor-font)', fontSize: 'var(--editor-size)', lineHeight: 1.72, color: 'var(--ink)', margin: '0 0 var(--editor-gap)', textWrap: 'pretty' as const };
-  if (b.type === 'p') return <p style={baseP}>{b.text}</p>;
-  if (b.type === 'h') return <h3 style={{ fontFamily: 'var(--editor-font)', fontSize: 'calc(var(--editor-size) * 1.28)', fontWeight: 600, color: 'var(--ink)', margin: '8px 0 12px' }}>{b.text}</h3>;
-  if (b.type === 'quote') {
-    return (
-      <blockquote style={{ margin: '4px 0 var(--editor-gap)', padding: '4px 0 4px 20px', borderLeft: '3px solid var(--accent)' }}>
-        <span style={{ fontFamily: 'var(--editor-font)', fontStyle: 'italic', fontSize: 'calc(var(--editor-size) * 1.08)', lineHeight: 1.6, color: 'var(--ink-2)' }}>{b.text}</span>
-      </blockquote>
-    );
-  }
-  if (b.type === 'photo') {
-    return (
-      <figure style={{ margin: '6px 0 var(--editor-gap)' }}>
-        <Placeholder label="photo · alfama.jpg" h={210} r={14} />
-        <figcaption style={{ fontFamily: 'var(--ui)', fontSize: 12.5, color: 'var(--ink-3)', textAlign: 'center', marginTop: 8 }}>{b.caption}</figcaption>
-      </figure>
-    );
-  }
-  if (b.type === 'check') {
-    return (
-      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 11, margin: '0 0 10px' }}>
-        <span style={{ width: 21, height: 21, borderRadius: 7, flexShrink: 0, marginTop: 'calc(var(--editor-size) * 0.18)', display: 'flex', alignItems: 'center', justifyContent: 'center', background: b.done ? 'var(--accent)' : 'transparent', border: `1.6px solid ${b.done ? 'var(--accent)' : 'var(--ink-3)'}` }}>
-          {b.done && <Icon name="check" size={14} color="#fff" stroke={2.4} />}
-        </span>
-        <span style={{ fontFamily: 'var(--editor-font)', fontSize: 'var(--editor-size)', lineHeight: 1.5, color: b.done ? 'var(--ink-3)' : 'var(--ink)', textDecoration: b.done ? 'line-through' : 'none' }}>{b.text}</span>
-      </div>
-    );
-  }
-  if (b.type === 'audio') {
-    return (
-      <div style={{ display: 'flex', alignItems: 'center', gap: 13, margin: '6px 0 var(--editor-gap)', padding: '12px 15px', borderRadius: 14, background: 'var(--surface)', border: '1px solid var(--line)' }}>
-        <button style={{ width: 38, height: 38, borderRadius: 999, background: 'var(--accent)', border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}>
-          <svg width="14" height="16" viewBox="0 0 14 16"><path d="M2 1.5l10 6.5-10 6.5z" fill="#fff" /></svg>
-        </button>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 2, height: 26 }}>
-            {Array.from({ length: 34 }).map((_, i) => {
-              const h = 5 + Math.abs(Math.sin(i * 1.3)) * 18 * (1 - Math.abs(i - 17) / 34);
-              return <span key={i} style={{ flex: 1, height: Math.max(4, h), borderRadius: 2, background: i < 12 ? 'var(--accent)' : 'var(--line)' }} />;
-            })}
-          </div>
-          <div style={{ fontFamily: 'var(--ui)', fontSize: 12, color: 'var(--ink-2)', marginTop: 4 }}>{b.label}</div>
-        </div>
-        <span style={{ fontFamily: 'var(--mono)', fontSize: 12, color: 'var(--ink-3)' }}>{b.dur}</span>
-      </div>
-    );
-  }
-  return null;
+function dateLabel(ts: number): string {
+  return new Date(ts).toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+}
+function timeLabel(ts: number): string {
+  return new Date(ts).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+}
+function countWords(text: string): number {
+  const t = text.trim();
+  return t ? t.split(/\s+/).length : 0;
 }
 
-const TOOLS: [IconName, string][] = [
-  ['bold', 'Bold'], ['italic', 'Italic'], ['heading', 'Heading'], ['quote', 'Quote'],
-  ['list', 'List'], ['checklist', 'Checklist'], ['image', 'Photo'], ['mic', 'Audio'],
-];
+// ── The editable entry surface: title + TipTap body, autosaving to the relay ──
+function EntryEditor({
+  entry,
+  desk,
+  onEditorReady,
+  onWords,
+}: {
+  entry: JournalEntry;
+  desk: boolean;
+  onEditorReady: (e: Editor | null) => void;
+  onWords: (n: number) => void;
+}): VNode {
+  const { updateEntry } = useAppData();
+  // Computed once per mount; this component is keyed by entry.id so a different
+  // entry remounts it with fresh initial content.
+  const initial = useMemo(() => parseBody(entry.bodyJson, entry.bodyText), [entry.id]);
 
-function MetaLine({ e }: { e: OpenEntry }): VNode {
-  const item = (icon: IconName, text: string): VNode | null =>
-    text ? (
-      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, color: 'var(--ink-3)' }}>
-        <Icon name={icon} size={14} color="var(--ink-3)" />
-        <span style={{ fontFamily: 'var(--ui)', fontSize: 13 }}>{text}</span>
-      </span>
-    ) : null;
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap', margin: '10px 0 16px' }}>
-      {item('clock', `${e.dateLabel} · ${e.time}`)}
-      {item('pin', e.place)}
-      {e.weather && <span style={{ fontFamily: 'var(--ui)', fontSize: 13, color: 'var(--ink-3)' }}>{e.weather}</span>}
-    </div>
+  const title = useRef(entry.title);
+  const body = useRef<{ json: string; text: string }>({ json: entry.bodyJson ?? '', text: entry.bodyText });
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Local "typed but not yet committed" flag — drives the save indicator the instant
+  // you edit, before the debounce hands off to the global outbox.
+  const [dirty, setDirty] = useState(false);
+
+  const save = (): void => {
+    setDirty(false);
+    updateEntry(entry.id, { title: title.current, bodyJson: body.current.json, bodyText: body.current.text });
+  };
+  const scheduleSave = (): void => {
+    setDirty(true);
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(save, SAVE_DEBOUNCE_MS);
+  };
+
+  const { editor, mountRef } = useRichEditor({
+    initial,
+    placeholder: 'Begin where you are…',
+    onChange: (c) => {
+      body.current = c;
+      onWords(countWords(c.text));
+      scheduleSave();
+    },
+  });
+
+  useEffect(() => {
+    onEditorReady(editor);
+    onWords(countWords(body.current.text));
+  }, [editor]);
+
+  // Flush any pending save on unmount (e.g. switching entries or leaving).
+  useEffect(
+    () => () => {
+      if (saveTimer.current) {
+        clearTimeout(saveTimer.current);
+        save();
+      }
+    },
+    [],
   );
-}
 
-export function EditorScreen({ desk, onBack }: { desk: boolean; onBack: () => void }): VNode {
-  const e = OPEN_ENTRY;
-  const journal = findJournal(e.journal);
-  const { entries } = useAppData();
-  const [activeTool, setActiveTool] = useState<IconName | null>(null);
+  const journal = findJournal(entry.journalId);
+  // Grow the title textarea to fit its wrapped content (single-line inputs can't wrap).
+  const fitTitle = (el: HTMLTextAreaElement): void => {
+    el.style.height = 'auto';
+    el.style.height = `${el.scrollHeight}px`;
+  };
+  const onTitleInput = (ev: Event): void => {
+    const el = ev.target as HTMLTextAreaElement;
+    title.current = el.value;
+    fitTitle(el);
+    scheduleSave();
+  };
 
-  const Body = ({ pad }: { pad: string | number }): VNode => (
-    <div style={{ padding: pad }}>
-      <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
-        {e.labels.map((l) => <LabelChip key={l} id={l} />)}
+  return (
+    <div>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
+        {entry.labels.map((l) => <LabelChip key={l} id={l} />)}
         <button style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: 'var(--ui)', fontSize: 12, fontWeight: 600, color: 'var(--ink-3)', background: 'transparent', border: '1px dashed var(--line)', borderRadius: 999, padding: '3px 9px', cursor: 'pointer' }}>
           <Icon name="plus" size={13} /> label
         </button>
       </div>
-      <h1 style={{ fontFamily: 'var(--editor-font)', fontSize: desk ? 38 : 30, fontWeight: 600, color: 'var(--ink)', margin: 0, lineHeight: 1.15, letterSpacing: 0.2 }}>{e.title}</h1>
-      <MetaLine e={e} />
-      <div>{e.blocks.map((b, i) => <Block key={i} b={b} />)}</div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 22, color: 'var(--ink-3)' }}>
-        <span style={{ width: 28, height: 1, background: 'var(--line)' }} />
-        <Icon name="feather" size={15} color="var(--ink-3)" />
-        <span style={{ fontFamily: 'var(--ui)', fontSize: 12 }}>{e.words} words · saved just now</span>
+
+      <textarea
+        ref={(el) => { if (el) fitTitle(el); }}
+        defaultValue={entry.title}
+        onInput={onTitleInput}
+        placeholder="Untitled"
+        rows={1}
+        style={{
+          width: '100%', border: 'none', outline: 'none', background: 'transparent',
+          fontFamily: 'var(--editor-font)', fontSize: desk ? 38 : 30, fontWeight: 600,
+          color: 'var(--ink)', lineHeight: 1.15, letterSpacing: 0.2, padding: 0, margin: 0,
+          resize: 'none', overflow: 'hidden', display: 'block',
+          whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+        }}
+      />
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap', margin: '10px 0 16px', color: 'var(--ink-3)' }}>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+          <Icon name="clock" size={14} color="var(--ink-3)" />
+          <span style={{ fontFamily: 'var(--ui)', fontSize: 13 }}>{dateLabel(entry.createdAt)} · {timeLabel(entry.createdAt)}</span>
+        </span>
+        {journal && (
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ width: 8, height: 8, borderRadius: 9, background: journal.color }} />
+            <span style={{ fontFamily: 'var(--ui)', fontSize: 13 }}>{journal.name}</span>
+          </span>
+        )}
+        <SyncBadge dirty={dirty} />
       </div>
+
+      <div ref={mountRef} />
     </div>
   );
+}
 
-  const Toolbar = ({ floating }: { floating?: boolean }): VNode => (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 2, padding: 5, borderRadius: 14, background: 'var(--surface)', border: '1px solid var(--line)', boxShadow: floating ? '0 8px 24px rgba(40,28,18,.14)' : 'none' }}>
-      {TOOLS.map(([ic, label], i) => (
-        <Fragment key={ic}>
-          {(i === 2 || i === 4 || i === 6) && <span style={{ width: 1, height: 22, background: 'var(--line)', margin: '0 4px' }} />}
-          <button title={label} onClick={() => setActiveTool((t) => (t === ic ? null : ic))} style={{ width: 38, height: 38, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', border: 'none', background: activeTool === ic ? 'var(--accent-soft)' : 'transparent', color: activeTool === ic ? 'var(--accent-ink)' : 'var(--ink-2)' }}>
-            <Icon name={ic} size={19} />
-          </button>
-        </Fragment>
-      ))}
+export function EditorScreen({
+  desk,
+  entryId,
+  onBack,
+  onSelectEntry,
+  onNew,
+}: {
+  desk: boolean;
+  entryId: string | null;
+  onBack: () => void;
+  onSelectEntry: (id: string) => void;
+  onNew: () => void;
+}): VNode {
+  const { entries } = useAppData();
+  const entry = entries.find((e) => e.id === entryId) ?? null;
+  const [editor, setEditor] = useState<Editor | null>(null);
+  const [words, setWords] = useState(0);
+  const journal = entry ? findJournal(entry.journalId) : undefined;
+
+  const empty = (
+    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 14, color: 'var(--ink-3)' }}>
+      <Icon name="feather" size={30} color="var(--ink-3)" />
+      <span style={{ fontFamily: 'var(--ui)', fontSize: 14 }}>Nothing open yet.</span>
+      <button onClick={onNew} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '9px 14px', borderRadius: 10, border: '1px solid var(--line)', background: 'var(--surface)', cursor: 'pointer', color: 'var(--accent-ink)', fontFamily: 'var(--ui)', fontSize: 13.5, fontWeight: 600 }}>
+        <Icon name="plus" size={16} color="var(--accent-ink)" /> New entry
+      </button>
     </div>
   );
 
   if (desk) {
-    const list = [...entries].sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 7);
+    const list = [...entries].sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 12);
     return (
       <div style={{ height: '100%', display: 'flex', background: 'var(--paper)' }}>
         {/* entry list */}
@@ -129,22 +180,22 @@ export function EditorScreen({ desk, onBack }: { desk: boolean; onBack: () => vo
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               {journal && <Cover journal={journal} w={26} h={34} r={6} />}
               <div>
-                <div style={{ fontFamily: 'var(--serif)', fontSize: 17, fontWeight: 500, color: 'var(--ink)' }}>{journal?.name}</div>
-                <div style={{ fontFamily: 'var(--ui)', fontSize: 11.5, color: 'var(--ink-3)' }}>{journal?.count} entries</div>
+                <div style={{ fontFamily: 'var(--serif)', fontSize: 17, fontWeight: 500, color: 'var(--ink)' }}>{journal?.name ?? 'Write'}</div>
+                <div style={{ fontFamily: 'var(--ui)', fontSize: 11.5, color: 'var(--ink-3)' }}>{entries.length} entries</div>
               </div>
             </div>
-            <button style={{ width: 34, height: 34, borderRadius: 10, border: '1px solid var(--line)', background: 'var(--surface)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}><Icon name="plus" size={18} color="var(--accent-ink)" /></button>
+            <button title="New entry" onClick={onNew} style={{ width: 34, height: 34, borderRadius: 10, border: '1px solid var(--line)', background: 'var(--surface)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}><Icon name="plus" size={18} color="var(--accent-ink)" /></button>
           </div>
           <div style={{ flex: 1, overflow: 'auto', padding: '0 12px 14px', display: 'flex', flexDirection: 'column', gap: 4 }}>
             {list.map((x) => {
               const j = findJournal(x.journalId);
-              const active = x.id === e.id;
+              const active = x.id === entryId;
               const d = new Date(x.createdAt);
               return (
-                <button key={x.id} style={{ textAlign: 'left', cursor: 'pointer', padding: '12px 13px', borderRadius: 12, border: 'none', background: active ? 'var(--surface)' : 'transparent', borderLeft: `2.5px solid ${active ? j?.color ?? 'transparent' : 'transparent'}` }}>
+                <button key={x.id} onClick={() => onSelectEntry(x.id)} style={{ textAlign: 'left', cursor: 'pointer', padding: '12px 13px', borderRadius: 12, border: 'none', background: active ? 'var(--surface)' : 'transparent', borderLeft: `2.5px solid ${active ? j?.color ?? 'transparent' : 'transparent'}` }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
-                    <span style={{ fontFamily: 'var(--serif)', fontSize: 15.5, fontWeight: 500, color: 'var(--ink)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{x.title}</span>
-                    <span style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--ink-3)', flexShrink: 0 }}>{MON[d.getUTCMonth()]} {d.getUTCDate()}</span>
+                    <span style={{ fontFamily: 'var(--serif)', fontSize: 15.5, fontWeight: 500, color: 'var(--ink)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{x.title || 'Untitled'}</span>
+                    <span style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--ink-3)', flexShrink: 0 }}>{MON[d.getMonth()]} {d.getDate()}</span>
                   </div>
                   <p style={{ fontFamily: 'var(--ui)', fontSize: 12.5, color: 'var(--ink-2)', margin: '3px 0 0', lineHeight: 1.45, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>{x.bodyText}</p>
                 </button>
@@ -156,15 +207,21 @@ export function EditorScreen({ desk, onBack }: { desk: boolean; onBack: () => vo
         {/* editor */}
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 24px', borderBottom: '1px solid var(--line)' }}>
-            <Toolbar />
+            <EditorToolbar editor={editor} />
             <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-              <span style={{ fontFamily: 'var(--ui)', fontSize: 12.5, color: 'var(--ink-3)' }}>{e.words} words</span>
+              <span style={{ fontFamily: 'var(--ui)', fontSize: 12.5, color: 'var(--ink-3)' }}>{words} words</span>
               <SyncBadge />
               <button style={{ width: 34, height: 34, borderRadius: 10, border: '1px solid var(--line)', background: 'var(--surface)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}><Icon name="more" size={18} color="var(--ink-2)" /></button>
             </div>
           </div>
           <div style={{ flex: 1, overflow: 'auto' }}>
-            <div style={{ maxWidth: 660, margin: '0 auto', padding: '40px 32px 80px' }}><Body pad={0} /></div>
+            {entry ? (
+              <div style={{ maxWidth: 660, margin: '0 auto', padding: '40px 32px 80px' }}>
+                <EntryEditor key={entry.id} entry={entry} desk onEditorReady={setEditor} onWords={setWords} />
+              </div>
+            ) : (
+              empty
+            )}
           </div>
         </div>
       </div>
@@ -181,29 +238,32 @@ export function EditorScreen({ desk, onBack }: { desk: boolean; onBack: () => vo
         <div style={{ textAlign: 'center' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'center' }}>
             <span style={{ width: 8, height: 8, borderRadius: 9, background: journal?.color }} />
-            <span style={{ fontFamily: 'var(--ui)', fontSize: 14, fontWeight: 600, color: 'var(--ink)' }}>{journal?.name}</span>
+            <span style={{ fontFamily: 'var(--ui)', fontSize: 14, fontWeight: 600, color: 'var(--ink)' }}>{journal?.name ?? 'Write'}</span>
           </div>
         </div>
-        <div style={{ display: 'flex', gap: 4 }}>
-          <button style={{ width: 36, height: 36, borderRadius: 999, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'transparent', border: 'none', cursor: 'pointer' }}><Icon name="lock" size={18} color="var(--accent)" /></button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <ConnChip compact />
+          <button title="New entry" onClick={onNew} style={{ width: 36, height: 36, borderRadius: 999, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'transparent', border: 'none', cursor: 'pointer' }}><Icon name="plus" size={20} color="var(--accent-ink)" /></button>
           <button style={{ width: 36, height: 36, borderRadius: 999, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'transparent', border: 'none', cursor: 'pointer' }}><Icon name="more" size={20} color="var(--ink-2)" /></button>
         </div>
       </div>
 
       <div style={{ flex: 1, overflow: 'auto' }}>
-        <Body pad="6px 22px 120px" />
+        {entry ? (
+          <div style={{ padding: '6px 22px 120px' }}>
+            <EntryEditor key={entry.id} entry={entry} desk={false} onEditorReady={setEditor} onWords={setWords} />
+          </div>
+        ) : (
+          empty
+        )}
       </div>
 
       {/* floating format toolbar */}
-      <div style={{ position: 'absolute', left: 14, right: 14, bottom: 30, display: 'flex', justifyContent: 'center' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 2, padding: 5, borderRadius: 16, background: 'var(--surface)', border: '1px solid var(--line)', boxShadow: '0 10px 30px rgba(40,28,18,.18)', overflowX: 'auto', maxWidth: '100%' }}>
-          {TOOLS.map(([ic, label]) => (
-            <button key={ic} title={label} onClick={() => setActiveTool((t) => (t === ic ? null : ic))} style={{ width: 40, height: 40, borderRadius: 11, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', border: 'none', flexShrink: 0, background: activeTool === ic ? 'var(--accent-soft)' : 'transparent', color: activeTool === ic ? 'var(--accent-ink)' : 'var(--ink-2)' }}>
-              <Icon name={ic} size={20} />
-            </button>
-          ))}
+      {entry && (
+        <div style={{ position: 'absolute', left: 14, right: 14, bottom: 30, display: 'flex', justifyContent: 'center' }}>
+          <EditorToolbar editor={editor} floating />
         </div>
-      </div>
+      )}
     </div>
   );
 }

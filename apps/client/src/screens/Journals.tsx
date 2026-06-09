@@ -1,7 +1,7 @@
 import type { VNode, ComponentChildren } from 'preact';
 import { useState } from 'preact/hooks';
 import { Icon } from '../ui/Icon';
-import { Btn, Cover } from '../ui/primitives';
+import { Btn, Cover, ConnChip } from '../ui/primitives';
 import { hexA } from '../ui/color';
 import type { CoverPattern, Journal } from '../data/sample';
 
@@ -200,9 +200,12 @@ export function JournalsScreen({ desk, journals, onOpen, onNew }: { desk: boolea
       <div style={{ padding: '64px 20px 0' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <AccountChip />
-          <button style={{ width: 38, height: 38, borderRadius: 999, border: '1px solid var(--line)', background: 'var(--surface)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
-            <Icon name="settings" size={19} color="var(--ink-2)" />
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <ConnChip />
+            <button style={{ width: 38, height: 38, borderRadius: 999, border: '1px solid var(--line)', background: 'var(--surface)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+              <Icon name="settings" size={19} color="var(--ink-2)" />
+            </button>
+          </div>
         </div>
 
         <h1 style={{ fontFamily: 'var(--serif)', fontSize: 32, fontWeight: 500, color: 'var(--ink)', margin: '24px 0 2px' }}>Journals</h1>

@@ -11,6 +11,7 @@ export interface JournalEntry {
   journalId: string;
   title: string;
   bodyText: string;
+  bodyJson?: string; // TipTap/ProseMirror document JSON (the rich source of truth)
   labels: string[];
   createdAt: number; // ms
   updatedAt: number; // ms — also the lww_clock
@@ -22,6 +23,7 @@ interface EntryBody {
   journalId: string;
   title: string;
   bodyText: string;
+  bodyJson?: string;
   labels: string[];
   createdAt: number;
   updatedAt: number;
@@ -32,6 +34,7 @@ export function encryptEntry(dataKey: Uint8Array, e: JournalEntry): Uint8Array {
     journalId: e.journalId,
     title: e.title,
     bodyText: e.bodyText,
+    bodyJson: e.bodyJson,
     labels: e.labels,
     createdAt: e.createdAt,
     updatedAt: e.updatedAt,
@@ -81,6 +84,7 @@ export async function pullEntries(
       journalId: body.journalId,
       title: body.title,
       bodyText: body.bodyText,
+      bodyJson: body.bodyJson,
       labels: body.labels ?? [],
       createdAt: body.createdAt,
       updatedAt: body.updatedAt,

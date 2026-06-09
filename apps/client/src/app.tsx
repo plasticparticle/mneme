@@ -2,6 +2,7 @@ import type { VNode } from 'preact';
 import { useState } from 'preact/hooks';
 import { Icon, type IconName } from './ui/Icon';
 import { Wordmark } from './ui/Wordmark';
+import { ConnectionDot, connLabel } from './ui/primitives';
 import { useIsDesktop } from './hooks/useMediaQuery';
 import { useTheme } from './hooks/useTheme';
 import { useAppData, type SyncStatus } from './state/data';
@@ -13,29 +14,12 @@ import { EditorScreen } from './screens/Editor';
 
 type Flow = 'journals' | 'calendar' | 'editor';
 
-function statusText(s: SyncStatus): string {
-  switch (s) {
-    case 'connecting':
-      return 'connecting…';
-    case 'online':
-      return 'synced · encrypted';
-    case 'offline':
-      return 'offline · encrypted';
-    default:
-      return 'encrypted';
-  }
-}
-
-function statusColor(s: SyncStatus): string {
-  return s === 'online' ? 'var(--accent)' : s === 'offline' ? 'var(--ink-3)' : 'var(--ink-2)';
-}
-
 // ── DESKTOP sidebar ─────────────────────────────────────────
 function Sidebar({ flow, setFlow, journals, onOpenJournal, dark, toggleDark, status }: {
   flow: Flow;
   setFlow: (f: Flow) => void;
   journals: Journal[];
-  onOpenJournal: () => void;
+  onOpenJournal: (j: Journal) => void;
   dark: boolean;
   toggleDark: () => void;
   status: SyncStatus;
@@ -68,7 +52,7 @@ function Sidebar({ flow, setFlow, journals, onOpenJournal, dark, toggleDark, sta
         {journals.map((j) => (
           <button
             key={j.id}
-            onClick={onOpenJournal}
+            onClick={() => onOpenJournal(j)}
             style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left', cursor: 'pointer', padding: '8px 10px', borderRadius: 9, border: 'none', background: 'transparent', color: 'var(--ink)', fontFamily: 'var(--ui)', fontSize: 13.5 }}
             onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface)')}
             onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
@@ -84,9 +68,9 @@ function Sidebar({ flow, setFlow, journals, onOpenJournal, dark, toggleDark, sta
         <div style={{ width: 32, height: 32, borderRadius: 999, background: 'linear-gradient(145deg, var(--accent), #7b3a1e)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontFamily: 'var(--serif)', fontSize: 15, fontWeight: 600 }}>V</div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontFamily: 'var(--ui)', fontSize: 13, fontWeight: 600, color: 'var(--ink)' }}>Your vault</div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-            <span style={{ width: 6, height: 6, borderRadius: 9, background: statusColor(status), flexShrink: 0 }} />
-            <span style={{ fontFamily: 'var(--mono)', fontSize: 10.5, color: 'var(--ink-3)' }}>{statusText(status)}</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+            <ConnectionDot status={status} size={7} />
+            <span style={{ fontFamily: 'var(--mono)', fontSize: 10.5, color: 'var(--ink-3)' }}>{connLabel(status).toLowerCase()}</span>
           </div>
         </div>
         <button
@@ -135,9 +119,11 @@ function MobileNav({ flow, setFlow, onCompose, onSettings }: {
 export function App(): VNode {
   const desk = useIsDesktop();
   const { dark, toggleDark } = useTheme();
-  const { status, journals, newJournal, signIn, createEntry } = useAppData();
+  const { status, entries, journals, newJournal, signIn, createEntry } = useAppData();
   const [flow, setFlowRaw] = useState<Flow>('journals');
   const [modal, setModal] = useState(false);
+  // Which entry the editor is currently editing (null → editor shows its empty state).
+  const [openEntryId, setOpenEntryId] = useState<string | null>(null);
 
   // Locked until a mnemonic unlocks an in-memory identity (nothing is persisted).
   if (status === 'locked') {
@@ -150,22 +136,30 @@ export function App(): VNode {
 
   const setFlow = (f: Flow) => setFlowRaw(f);
 
-  // Compose a real entry (encrypted + queued for the relay) and show it on the calendar.
-  const compose = () => {
-    const journal = journals[0];
-    const now = new Date();
-    createEntry({
-      journalId: journal?.id ?? 'j-personal',
-      title: 'New entry',
-      bodyText: `Started at ${now.toLocaleTimeString()}.`,
-    });
-    setFlow('calendar');
+  // Open an existing entry in the editor.
+  const openEntry = (id: string) => {
+    setOpenEntryId(id);
+    setFlow('editor');
+  };
+
+  // Create a fresh empty entry (encrypted + queued for the relay) and open it.
+  const newEntry = (journalId?: string) => {
+    const entry = createEntry({ journalId: journalId ?? journals[0]?.id ?? 'j-personal' });
+    setOpenEntryId(entry.id);
+    setFlow('editor');
+  };
+
+  // Opening a notebook jumps to its most recent entry, or starts a new one in it.
+  const openJournal = (j: Journal) => {
+    const latest = entries.filter((e) => e.journalId === j.id).sort((a, b) => b.updatedAt - a.updatedAt)[0];
+    if (latest) openEntry(latest.id);
+    else newEntry(j.id);
   };
 
   const screen = (() => {
-    if (flow === 'calendar') return <CalendarScreen desk={desk} onOpenEntry={() => setFlow('editor')} />;
-    if (flow === 'editor') return <EditorScreen desk={desk} onBack={() => setFlow('journals')} />;
-    return <JournalsScreen desk={desk} journals={journals} onOpen={() => setFlow('editor')} onNew={() => setModal(true)} />;
+    if (flow === 'calendar') return <CalendarScreen desk={desk} onOpenEntry={(id) => (id ? openEntry(id) : newEntry())} />;
+    if (flow === 'editor') return <EditorScreen desk={desk} entryId={openEntryId} onBack={() => setFlow('journals')} onSelectEntry={openEntry} onNew={() => newEntry()} />;
+    return <JournalsScreen desk={desk} journals={journals} onOpen={openJournal} onNew={() => setModal(true)} />;
   })();
 
   const onCreateJournal = (j: Journal) => {
@@ -173,10 +167,16 @@ export function App(): VNode {
     setModal(false);
   };
 
+  // Selecting "Write" with nothing open starts a fresh entry rather than a blank screen.
+  const navTo = (f: Flow) => {
+    if (f === 'editor' && !openEntryId) newEntry();
+    else setFlow(f);
+  };
+
   if (desk) {
     return (
       <div style={{ height: '100%', display: 'flex', background: 'var(--paper)', position: 'relative' }}>
-        <Sidebar flow={flow} setFlow={setFlow} journals={journals} onOpenJournal={() => setFlow('editor')} dark={dark} toggleDark={toggleDark} status={status} />
+        <Sidebar flow={flow} setFlow={navTo} journals={journals} onOpenJournal={openJournal} dark={dark} toggleDark={toggleDark} status={status} />
         <div style={{ flex: 1, minWidth: 0 }}>{screen}</div>
         {modal && <NewJournalSheet desk onClose={() => setModal(false)} onCreate={onCreateJournal} />}
       </div>
@@ -188,7 +188,7 @@ export function App(): VNode {
   return (
     <div style={{ height: '100%', position: 'relative', background: 'var(--paper)' }}>
       {screen}
-      {showNav && <MobileNav flow={flow} setFlow={setFlow} onCompose={compose} onSettings={toggleDark} />}
+      {showNav && <MobileNav flow={flow} setFlow={navTo} onCompose={() => newEntry()} onSettings={toggleDark} />}
       {modal && <NewJournalSheet desk={false} onClose={() => setModal(false)} onCreate={onCreateJournal} />}
     </div>
   );

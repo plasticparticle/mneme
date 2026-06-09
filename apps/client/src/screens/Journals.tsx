@@ -133,9 +133,9 @@ function JournalCard({ j, onOpen }: { j: Journal; onOpen: (j: Journal) => void }
         <div style={{ fontFamily: 'var(--serif)', fontSize: 18, fontWeight: 500, color: 'var(--ink)' }}>{j.name}</div>
         <div style={{ fontFamily: 'var(--ui)', fontSize: 13, color: 'var(--ink-2)', marginTop: 1 }}>{j.subtitle}</div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 7 }}>
-          <span style={{ fontFamily: 'var(--ui)', fontSize: 12, color: 'var(--ink-3)' }}>{j.count} entries</span>
-          <span style={{ width: 3, height: 3, borderRadius: 9, background: 'var(--ink-3)' }} />
-          <span style={{ fontFamily: 'var(--ui)', fontSize: 12, color: 'var(--ink-3)' }}>{j.last}</span>
+          <span style={{ fontFamily: 'var(--ui)', fontSize: 12, color: 'var(--ink-3)' }}>{j.count} {j.count === 1 ? 'entry' : 'entries'}</span>
+          {j.last && <span style={{ width: 3, height: 3, borderRadius: 9, background: 'var(--ink-3)' }} />}
+          {j.last && <span style={{ fontFamily: 'var(--ui)', fontSize: 12, color: 'var(--ink-3)' }}>{j.last}</span>}
         </div>
       </div>
       <Icon name="right" size={18} color="var(--ink-3)" />
@@ -175,7 +175,7 @@ export function JournalsScreen({ desk, journals, onOpen, onNew }: { desk: boolea
                 <div style={{ padding: '14px 16px 16px' }}>
                   <div style={{ fontFamily: 'var(--serif)', fontSize: 19, fontWeight: 500, color: 'var(--ink)' }}>{j.name}</div>
                   <div style={{ fontFamily: 'var(--ui)', fontSize: 13, color: 'var(--ink-2)', marginTop: 2 }}>{j.subtitle}</div>
-                  <div style={{ fontFamily: 'var(--ui)', fontSize: 12, color: 'var(--ink-3)', marginTop: 9 }}>Edited {j.last}</div>
+                  <div style={{ fontFamily: 'var(--ui)', fontSize: 12, color: 'var(--ink-3)', marginTop: 9 }}>{j.last ? `Edited ${j.last}` : 'No entries yet'}</div>
                 </div>
               </button>
             ))}

@@ -75,6 +75,24 @@ function mergeByLWW(prev: JournalEntry[], incoming: JournalEntry[]): JournalEntr
   return [...byId.values()].sort((a, b) => b.updatedAt - a.updatedAt);
 }
 
+// Local-midnight of a timestamp, so "days ago" counts calendar days, not 24h spans.
+function startOfLocalDay(ts: number): number {
+  const d = new Date(ts);
+  d.setHours(0, 0, 0, 0);
+  return d.getTime();
+}
+
+// A short relative label for a notebook's most-recent edit ("Today", "3 days ago",
+// "12 Jun"). `last` was a hardcoded sample string; this derives it from real data.
+export function relativeDay(ts: number, now: number): string {
+  const days = Math.round((startOfLocalDay(now) - startOfLocalDay(ts)) / 86_400_000);
+  if (days <= 0) return 'Today';
+  if (days === 1) return 'Yesterday';
+  if (days < 7) return `${days} days ago`;
+  if (days < 14) return 'Last week';
+  return new Date(ts).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+}
+
 export function AppDataProvider({ children }: { children: ComponentChildren }): VNode {
   const relay = useMemo(() => new RelayClient(defaultRelayUrl()), []);
   // The durable local source of truth (wa-sqlite, §5a). `entries` below is a
@@ -250,14 +268,22 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
     };
   }, [status, flush, pull, connect]);
 
-  // Live notebook counts, derived from the actual entries rather than hardcoded.
+  // Live notebook counts + last-edited labels, derived from the actual entries
+  // rather than hardcoded. `last` is '' for an empty notebook so the UI can
+  // distinguish "never written in" from a real timestamp.
   const journalsWithCounts = useMemo(() => {
     const counts = new Map<string, number>();
+    const latest = new Map<string, number>();
     for (const e of entries) {
       if (e.deleted) continue;
       counts.set(e.journalId, (counts.get(e.journalId) ?? 0) + 1);
+      latest.set(e.journalId, Math.max(latest.get(e.journalId) ?? 0, e.updatedAt));
     }
-    return journals.map((j) => ({ ...j, count: counts.get(j.id) ?? 0 }));
+    const now = Date.now();
+    return journals.map((j) => {
+      const last = latest.get(j.id);
+      return { ...j, count: counts.get(j.id) ?? 0, last: last ? relativeDay(last, now) : '' };
+    });
   }, [journals, entries]);
 
   const value: AppData = { status, pendingCount, saving, entries, journals: journalsWithCounts, signIn, createEntry, updateEntry, newJournal };

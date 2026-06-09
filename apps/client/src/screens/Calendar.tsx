@@ -227,7 +227,7 @@ export function CalendarScreen({ desk, onOpenEntry }: { desk: boolean; onOpenEnt
   // ── mobile ──
   return (
     <div style={{ height: '100%', overflow: 'auto', background: 'var(--paper)', paddingBottom: 84 }}>
-      <div style={{ padding: '60px 18px 0' }}>
+      <div style={{ padding: 'calc(env(safe-area-inset-top, 0px) + 22px) 18px 0' }}>
         <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
           <ConnChip />
         </div>

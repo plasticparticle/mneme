@@ -12,6 +12,7 @@ import { pushEntries, pullEntries, type JournalEntry } from '../sync/engine';
 import { newEntryId } from '../sync/ids';
 import { ENTRIES, JOURNALS, OPEN_ENTRY, type Journal } from '../data/sample';
 import { blocksToDoc, textToDoc, docToText } from '../editor/doc';
+import { LocalDb } from '../db';
 
 export type SyncStatus = 'locked' | 'connecting' | 'online' | 'offline';
 
@@ -74,8 +75,29 @@ function mergeByLWW(prev: JournalEntry[], incoming: JournalEntry[]): JournalEntr
   return [...byId.values()].sort((a, b) => b.updatedAt - a.updatedAt);
 }
 
+// Local-midnight of a timestamp, so "days ago" counts calendar days, not 24h spans.
+function startOfLocalDay(ts: number): number {
+  const d = new Date(ts);
+  d.setHours(0, 0, 0, 0);
+  return d.getTime();
+}
+
+// A short relative label for a notebook's most-recent edit ("Today", "3 days ago",
+// "12 Jun"). `last` was a hardcoded sample string; this derives it from real data.
+export function relativeDay(ts: number, now: number): string {
+  const days = Math.round((startOfLocalDay(now) - startOfLocalDay(ts)) / 86_400_000);
+  if (days <= 0) return 'Today';
+  if (days === 1) return 'Yesterday';
+  if (days < 7) return `${days} days ago`;
+  if (days < 14) return 'Last week';
+  return new Date(ts).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+}
+
 export function AppDataProvider({ children }: { children: ComponentChildren }): VNode {
   const relay = useMemo(() => new RelayClient(defaultRelayUrl()), []);
+  // The durable local source of truth (wa-sqlite, §5a). `entries` below is a
+  // reactive mirror of it; writes go to both so the UI updates synchronously.
+  const db = useMemo(() => new LocalDb(), []);
   const [status, setStatus] = useState<SyncStatus>('locked');
   const [pendingCount, setPendingCount] = useState(0);
   const [saving, setSaving] = useState(false);
@@ -85,6 +107,9 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
   const session = useRef<Session | null>(null);
   // Kept after sign-in so the background loop can re-authenticate without the mnemonic.
   const identity = useRef<Identity | null>(null);
+  // False when OPFS is unavailable (older browser / SSR): we degrade to an
+  // in-memory session so the app still works, just without local persistence.
+  const dbReady = useRef(false);
   const cursor = useRef(0);
   const pending = useRef<Map<string, JournalEntry>>(new Map());
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -100,6 +125,8 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
     try {
       const applied = await pushEntries(relay, s.token, s.identity.dataKey, batch);
       for (const id of applied) pending.current.delete(id);
+      // Clear the dirty flag locally for exactly the versions the relay accepted.
+      if (dbReady.current) void db.markSynced(batch.filter((e) => applied.has(e.id)));
       syncPendingCount();
       setStatus('online');
     } catch {
@@ -107,7 +134,7 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
     } finally {
       setSaving(false);
     }
-  }, [relay, syncPendingCount]);
+  }, [relay, db, syncPendingCount]);
 
   const pull = useCallback(async () => {
     const s = session.current;
@@ -115,12 +142,16 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
     try {
       const res = await pullEntries(relay, s.token, s.identity.dataKey, cursor.current);
       cursor.current = res.cursor;
-      if (res.entries.length) setEntries((prev) => mergeByLWW(prev, res.entries));
+      if (res.entries.length) {
+        setEntries((prev) => mergeByLWW(prev, res.entries));
+        // Persist the merge (the DB enforces the same LWW guard before overwriting).
+        if (dbReady.current) void db.mergeRemote(res.entries);
+      }
       setStatus('online');
     } catch {
       setStatus('offline');
     }
-  }, [relay]);
+  }, [relay, db]);
 
   // (Re)establish a relay session from the stored identity, then sync. `announce`
   // shows the "connecting…" state for a user-initiated attempt; background retries
@@ -146,11 +177,31 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
 
   const signIn = useCallback(
     async (mnemonic: string) => {
-      identity.current = identityFromMnemonic(mnemonic); // local, synchronous
-      setEntries((prev) => (prev.length ? prev : seedEntries()));
+      const id = identityFromMnemonic(mnemonic); // local, synchronous
+      identity.current = id;
+      try {
+        // Open the per-owner local DB and hydrate the timeline from it.
+        await db.open(id.ownerId);
+        dbReady.current = true;
+        let local = await db.allEntries();
+        if (local.length === 0) {
+          // First run on this device: lay down the lived-in sample timeline.
+          // Seed rows are written non-dirty, so they stay local and never push.
+          local = seedEntries();
+          await db.mergeRemote(local);
+        }
+        setEntries([...local].sort((a, b) => b.updatedAt - a.updatedAt));
+        // Rebuild the outbox from edits left unsynced by a previous offline session.
+        for (const e of await db.dirtyEntries()) pending.current.set(e.id, e);
+        syncPendingCount();
+      } catch {
+        // OPFS unavailable: run in-memory only (no persistence this session).
+        dbReady.current = false;
+        setEntries((prev) => (prev.length ? prev : seedEntries()));
+      }
       await connect(true);
     },
-    [connect],
+    [db, connect, syncPendingCount],
   );
 
   const createEntry: AppData['createEntry'] = useCallback(
@@ -167,12 +218,13 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
         updatedAt: now,
       };
       setEntries((prev) => mergeByLWW(prev, [entry]));
+      if (dbReady.current) void db.putLocal(entry);
       pending.current.set(entry.id, entry);
       syncPendingCount();
       void flush();
       return entry;
     },
-    [flush, syncPendingCount],
+    [db, flush, syncPendingCount],
   );
 
   const updateEntry: AppData['updateEntry'] = useCallback(
@@ -182,13 +234,14 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
         const cur = prev.find((e) => e.id === id);
         if (!cur) return prev;
         const next: JournalEntry = { ...cur, ...patch, updatedAt: now };
+        if (dbReady.current) void db.putLocal(next);
         pending.current.set(id, next);
         syncPendingCount();
         void flush();
         return mergeByLWW(prev, [next]);
       });
     },
-    [flush, syncPendingCount],
+    [db, flush, syncPendingCount],
   );
 
   const newJournal = useCallback((j: Journal) => {
@@ -215,6 +268,24 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
     };
   }, [status, flush, pull, connect]);
 
-  const value: AppData = { status, pendingCount, saving, entries, journals, signIn, createEntry, updateEntry, newJournal };
+  // Live notebook counts + last-edited labels, derived from the actual entries
+  // rather than hardcoded. `last` is '' for an empty notebook so the UI can
+  // distinguish "never written in" from a real timestamp.
+  const journalsWithCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    const latest = new Map<string, number>();
+    for (const e of entries) {
+      if (e.deleted) continue;
+      counts.set(e.journalId, (counts.get(e.journalId) ?? 0) + 1);
+      latest.set(e.journalId, Math.max(latest.get(e.journalId) ?? 0, e.updatedAt));
+    }
+    const now = Date.now();
+    return journals.map((j) => {
+      const last = latest.get(j.id);
+      return { ...j, count: counts.get(j.id) ?? 0, last: last ? relativeDay(last, now) : '' };
+    });
+  }, [journals, entries]);
+
+  const value: AppData = { status, pendingCount, saving, entries, journals: journalsWithCounts, signIn, createEntry, updateEntry, newJournal };
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

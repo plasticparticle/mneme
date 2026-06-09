@@ -72,12 +72,14 @@ export const LABELS: Record<string, Label> = {
   dream:      { name: 'dream',      color: '#6A6AA0' }, // indigo
 };
 
+// `count` here is a placeholder: the live value is derived from real entries in
+// state/data.tsx (journalsWithCounts) and overrides whatever is set here.
 export const JOURNALS: Journal[] = [
-  { id: 'j-personal',  name: 'Personal',    subtitle: 'Daily reflections',   count: 248, color: '#B0563A', cover: 'lines', last: 'Today' },
-  { id: 'j-travel',    name: 'Travel',      subtitle: 'Roads & rooms',       count: 64,  color: '#4E8B85', cover: 'photo', last: '2 days ago' },
-  { id: 'j-dreams',    name: 'Dreams',      subtitle: 'Nightnotes',          count: 31,  color: '#6A6AA0', cover: 'dots',  last: 'Yesterday' },
-  { id: 'j-gratitude', name: 'Gratitude',   subtitle: 'Three small things',  count: 120, color: '#B08A2E', cover: 'plain', last: '4 days ago' },
-  { id: 'j-work',      name: 'Field Notes', subtitle: 'Work & craft',        count: 89,  color: '#5A7BA6', cover: 'grid',  last: 'Today' },
+  { id: 'j-personal',  name: 'Personal',    subtitle: 'Daily reflections',   count: 0, color: '#B0563A', cover: 'lines', last: 'Today' },
+  { id: 'j-travel',    name: 'Travel',      subtitle: 'Roads & rooms',       count: 0, color: '#4E8B85', cover: 'photo', last: '2 days ago' },
+  { id: 'j-dreams',    name: 'Dreams',      subtitle: 'Nightnotes',          count: 0, color: '#6A6AA0', cover: 'dots',  last: 'Yesterday' },
+  { id: 'j-gratitude', name: 'Gratitude',   subtitle: 'Three small things',  count: 0, color: '#B08A2E', cover: 'plain', last: '4 days ago' },
+  { id: 'j-work',      name: 'Field Notes', subtitle: 'Work & craft',        count: 0, color: '#5A7BA6', cover: 'grid',  last: 'Today' },
 ];
 
 // A believable June 2026 month for the calendar + lists.

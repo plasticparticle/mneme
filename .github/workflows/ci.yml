@@ -1,0 +1,58 @@
+# CI for the relay (Go) and the client (Vite + Preact). Exists chiefly so a
+# go.mod/go.sum semantic merge conflict (see PR #4) can never land green again:
+# `go build` on a fresh checkout is exactly the check that catches it.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  server:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: journal
+          POSTGRES_PASSWORD: journal_dev
+          POSTGRES_DB: journal
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U journal"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: server/go.mod
+          cache-dependency-path: server/go.sum
+      - name: gofmt
+        run: test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
+      - run: go vet ./...
+      - run: go build ./...
+      - run: go test ./...
+      - name: e2e (live Postgres)
+        run: go test -tags e2e ./e2e/...
+        env:
+          TEST_DATABASE_URL: postgres://journal:journal_dev@localhost:5432/journal?sslmode=disable
+
+  client:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4 # reads the version from package.json "packageManager"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: typecheck + build
+        run: pnpm --filter client build

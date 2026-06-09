@@ -14,15 +14,20 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ### Current state
 The directory is named `mneme`; the design doc calls the product "journal" — treat them as the same
 project. Scaffolded so far:
-- **`apps/client/`** — Vite + Preact + TS app, all four screens built (UX only; no crypto/DB/sync wired).
+- **`apps/client/`** — Vite + Preact + TS app, all four screens built. **Wired to the relay**: real
+  BIP39 onboarding → key derivation (`src/crypto/`) → device challenge-response auth + LWW
+  encrypted-entry push/pull (`src/sync/`, `src/state/data.tsx`). Identity is in-memory only (re-enter
+  the mnemonic on cold start; nothing sensitive persisted). Entry bodies are XChaCha20-Poly1305
+  encrypted client-side; the timeline seeds from sample data and merges synced entries.
 - **`server/`** — the Go relay (`journald`): `/healthz` + `/readyz`, embedded forward-only migrations,
-  device challenge-response auth (Ed25519), and the LWW oplog `sync/push`+`sync/pull`. Owner-scoped,
+  device challenge-response auth (Ed25519), the LWW oplog `sync/push`+`sync/pull`, and CORS. Owner-scoped,
   opaque blobs only. Reminders CRUD + scheduler (logs, no push transport yet). Media (`internal/blobs`)
   and push delivery are stubs.
 - **Infra** — `docker-compose.yml` (Postgres + MinIO + server), `server/Dockerfile`, `.devcontainer/`.
 
-Not yet: client-side crypto/local DB/sync wiring (§10 steps 3–4), media (step 5), push (step 6),
-Tauri shells (step 8).
+Not yet: local wa-sqlite + FTS5 + a real TipTap editor (§10 step 2's data layer — the client currently
+holds entries in memory, not the durable local DB), seed at-rest encryption (Argon2id, §6), media
+(step 5), push transport (step 6), Tauri shells (step 8).
 
 ### Frontend design source
 The product visual design is a **handoff bundle from Claude Design** (claude.ai/design), available at:
@@ -157,7 +162,8 @@ per Design keinen Admin-Recovery-Pfad. Der einzige Recovery-Anker ist das 12-Wor
 | PWA | Browser-Zugang + Dev-Vehikel — **nicht** der ernsthafte Mobile-Client | s.o. |
 | Backend | **Go** (Relay) | I/O-bound, hoch-nebenläufig (Goroutines), statisches Binary, Homelab-Deploy. Keine Server-Krypto → Rust-Vorteile zahlen sich nicht aus |
 | Rust | **Nur** in den Tauri-Shells | Dort zwingend, sonst nirgends |
-| Krypto-Ort | **libsodium-wasm im Frontend**, einmal, für alle Clients | PWA hat keine Rust-Shell → Krypto kann nicht primär in Rust/Go leben |
+| Krypto-Ort | **Krypto im Frontend**, einmal, für alle Clients | PWA hat keine Rust-Shell → Krypto kann nicht primär in Rust/Go leben |
+| Krypto-Library | **@noble/@scure** (`@scure/bip39`, `@noble/curves`, `@noble/ciphers`, `@noble/hashes`) — **überschreibt** das frühere „libsodium-wasm" (User-Entscheidung 2026-06-09) | Audited, synchron (kein wasm-Init), tree-shakeable. Primitive aus §6 unverändert (BIP39→HKDF-SHA256→XChaCha20-Poly1305, X25519/Ed25519) |
 | Server-DB | **PostgreSQL** (nur Bookkeeping: owners, device-pubkeys, blob-index, reminder-times, push-subs) | Speichert nur Opakes + Metadaten |
 | Media-Store | **S3-kompatibel, self-host** (MinIO/Garage), client-seitig **chunked** verschlüsselt | Chunking ermöglicht Range-Requests auf Chiffrat |
 | AEAD | **XChaCha20-Poly1305**, **random 24-Byte Nonce** | 192-Bit-Nonce → Random-Reuse vernachlässigbar (Grund gegen AES-GCM) |
@@ -297,7 +303,9 @@ Server erzwingt die Mandanten-Grenze; ein Owner sieht nie Blobs eines anderen.
 
 ## 6. Krypto-Spezifikation
 
-### Key-Ableitung (alles client-seitig, libsodium-wasm)
+### Key-Ableitung (alles client-seitig; Implementierung: @noble/@scure, siehe §3)
+> Implementiert in `apps/client/src/crypto/` (`mnemonic`, `keys`, `aead`). `owner_id` = base64url(sha256(ownerPub)),
+> identisch zur Relay-Ableitung. Device-Key wird aus dem Seed abgeleitet (info="device") → nichts wird persistiert.
 ```
 mnemonic (BIP39, 128-bit entropy, 12 Wörter)
   → seed (BIP39, PBKDF2)

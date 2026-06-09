@@ -3,7 +3,10 @@ import { Fragment } from 'preact';
 import { useState } from 'preact/hooks';
 import { Icon, type IconName } from '../ui/Icon';
 import { Placeholder, LabelChip, SyncBadge, Cover } from '../ui/primitives';
-import { OPEN_ENTRY, ENTRIES, findJournal, type Block as BlockType, type OpenEntry } from '../data/sample';
+import { OPEN_ENTRY, findJournal, type Block as BlockType, type OpenEntry } from '../data/sample';
+import { useAppData } from '../state/data';
+
+const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 function Block({ b }: { b: BlockType }): VNode | null {
   const baseP = { fontFamily: 'var(--editor-font)', fontSize: 'var(--editor-size)', lineHeight: 1.72, color: 'var(--ink)', margin: '0 0 var(--editor-gap)', textWrap: 'pretty' as const };
@@ -81,6 +84,7 @@ function MetaLine({ e }: { e: OpenEntry }): VNode {
 export function EditorScreen({ desk, onBack }: { desk: boolean; onBack: () => void }): VNode {
   const e = OPEN_ENTRY;
   const journal = findJournal(e.journal);
+  const { entries } = useAppData();
   const [activeTool, setActiveTool] = useState<IconName | null>(null);
 
   const Body = ({ pad }: { pad: string | number }): VNode => (
@@ -116,7 +120,7 @@ export function EditorScreen({ desk, onBack }: { desk: boolean; onBack: () => vo
   );
 
   if (desk) {
-    const list = ENTRIES.filter((x) => x.journal === e.journal).concat(ENTRIES.filter((x) => x.journal !== e.journal)).slice(0, 7);
+    const list = [...entries].sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 7);
     return (
       <div style={{ height: '100%', display: 'flex', background: 'var(--paper)' }}>
         {/* entry list */}
@@ -133,15 +137,16 @@ export function EditorScreen({ desk, onBack }: { desk: boolean; onBack: () => vo
           </div>
           <div style={{ flex: 1, overflow: 'auto', padding: '0 12px 14px', display: 'flex', flexDirection: 'column', gap: 4 }}>
             {list.map((x) => {
-              const j = findJournal(x.journal);
+              const j = findJournal(x.journalId);
               const active = x.id === e.id;
+              const d = new Date(x.createdAt);
               return (
                 <button key={x.id} style={{ textAlign: 'left', cursor: 'pointer', padding: '12px 13px', borderRadius: 12, border: 'none', background: active ? 'var(--surface)' : 'transparent', borderLeft: `2.5px solid ${active ? j?.color ?? 'transparent' : 'transparent'}` }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
                     <span style={{ fontFamily: 'var(--serif)', fontSize: 15.5, fontWeight: 500, color: 'var(--ink)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{x.title}</span>
-                    <span style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--ink-3)', flexShrink: 0 }}>Jun {x.day}</span>
+                    <span style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--ink-3)', flexShrink: 0 }}>{MON[d.getUTCMonth()]} {d.getUTCDate()}</span>
                   </div>
-                  <p style={{ fontFamily: 'var(--ui)', fontSize: 12.5, color: 'var(--ink-2)', margin: '3px 0 0', lineHeight: 1.45, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>{x.preview}</p>
+                  <p style={{ fontFamily: 'var(--ui)', fontSize: 12.5, color: 'var(--ink-2)', margin: '3px 0 0', lineHeight: 1.45, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>{x.bodyText}</p>
                 </button>
               );
             })}

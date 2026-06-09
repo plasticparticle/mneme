@@ -10,6 +10,7 @@ type Config struct {
 	DatabaseURL string
 	ListenAddr  string
 	SessionTTL  time.Duration
+	CORSOrigins string // comma-separated allowed origins, or "*" to reflect any
 	S3          S3Config
 }
 
@@ -27,6 +28,7 @@ func Load() Config {
 		DatabaseURL: env("DATABASE_URL", "postgres://journal:journal_dev@localhost:5432/journal?sslmode=disable"),
 		ListenAddr:  env("LISTEN_ADDR", ":8080"),
 		SessionTTL:  envDuration("SESSION_TTL", 24*time.Hour),
+		CORSOrigins: env("CORS_ORIGINS", "*"),
 		S3: S3Config{
 			Endpoint:  env("S3_ENDPOINT", ""),
 			AccessKey: env("S3_ACCESS_KEY", ""),

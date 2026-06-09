@@ -3,7 +3,7 @@ import { useState } from 'preact/hooks';
 import { Icon } from '../ui/Icon';
 import { Btn } from '../ui/primitives';
 import { Wordmark } from '../ui/Wordmark';
-import { MNEMONIC } from '../data/sample';
+import { generateMnemonic, mnemonicWords, validateMnemonic, wordsToMnemonic } from '../crypto/mnemonic';
 
 type View = 'welcome' | 'create' | 'confirm' | 'restore' | 'unlock';
 
@@ -12,11 +12,13 @@ const hStyle = (desk: boolean): JSX.CSSProperties => ({
 });
 const pStyle: JSX.CSSProperties = { fontFamily: 'var(--ui)', fontSize: 14, lineHeight: 1.55, color: 'var(--ink-2)', margin: 0 };
 
-export function Onboarding({ desk, onEnter }: { desk: boolean; onEnter: () => void }): VNode {
+export function Onboarding({ desk, onEnter }: { desk: boolean; onEnter: (mnemonic: string) => void }): VNode {
   const [view, setView] = useState<View>('welcome');
   const [revealed, setRevealed] = useState(false);
   const [copied, setCopied] = useState(false);
-  const words = MNEMONIC;
+  // A real, freshly generated recovery phrase for this onboarding session.
+  const [mnemonic] = useState(() => generateMnemonic());
+  const words = mnemonicWords(mnemonic);
 
   // confirm step
   const quizIdx = [2, 6, 10];
@@ -31,6 +33,8 @@ export function Onboarding({ desk, onEnter }: { desk: boolean; onEnter: () => vo
   // restore step
   const [restoreWords, setRestoreWords] = useState<string[]>(Array(12).fill(''));
   const restoreFilled = restoreWords.filter((w) => w.trim()).length;
+  const restoreMnemonic = wordsToMnemonic(restoreWords);
+  const restoreValid = restoreFilled === 12 && validateMnemonic(restoreMnemonic);
 
   // unlock step
   const [pin, setPin] = useState('');
@@ -187,7 +191,7 @@ export function Onboarding({ desk, onEnter }: { desk: boolean; onEnter: () => vo
           size="lg"
           full
           icon={allCorrect ? 'check' : undefined}
-          onClick={() => allCorrect && onEnter()}
+          onClick={() => allCorrect && onEnter(mnemonic)}
           style={{ marginTop: 18, opacity: allCorrect ? 1 : 0.55, pointerEvents: allCorrect ? 'auto' : 'none' }}
         >
           {allCorrect ? 'Open my journal' : 'Select all three words'}
@@ -220,7 +224,7 @@ export function Onboarding({ desk, onEnter }: { desk: boolean; onEnter: () => vo
         </div>
 
         <button
-          onClick={() => setRestoreWords([...MNEMONIC])}
+          onClick={() => setRestoreWords([...words])}
           style={{ alignSelf: 'flex-start', marginTop: 12, background: 'transparent', border: 'none', cursor: 'pointer', fontFamily: 'var(--ui)', fontSize: 12.5, color: 'var(--accent-ink)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}
         >
           <Icon name="copy" size={14} /> Paste from clipboard
@@ -233,13 +237,13 @@ export function Onboarding({ desk, onEnter }: { desk: boolean; onEnter: () => vo
 
         <div style={{ flex: 1 }} />
         <Btn
-          kind={restoreFilled === 12 ? 'primary' : 'ghost'}
+          kind={restoreValid ? 'primary' : 'ghost'}
           size="lg"
           full
-          onClick={() => restoreFilled === 12 && onEnter()}
-          style={{ marginTop: 16, opacity: restoreFilled === 12 ? 1 : 0.55, pointerEvents: restoreFilled === 12 ? 'auto' : 'none' }}
+          onClick={() => restoreValid && onEnter(restoreMnemonic)}
+          style={{ marginTop: 16, opacity: restoreValid ? 1 : 0.55, pointerEvents: restoreValid ? 'auto' : 'none' }}
         >
-          {restoreFilled === 12 ? 'Restore journal' : `${restoreFilled} / 12 words`}
+          {restoreFilled < 12 ? `${restoreFilled} / 12 words` : restoreValid ? 'Restore journal' : 'Phrase not valid'}
         </Btn>
       </div>,
       { top: true },
@@ -269,13 +273,13 @@ export function Onboarding({ desk, onEnter }: { desk: boolean; onEnter: () => vo
         {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => (
           <KeypadKey key={n} onClick={() => setPin((p) => (p.length < dots ? p + n : p))}>{n}</KeypadKey>
         ))}
-        <KeypadKey faint onClick={() => onEnter()}><Icon name="eye" size={22} color="var(--ink-2)" /></KeypadKey>
+        <KeypadKey faint onClick={() => setView('restore')}><Icon name="eye" size={22} color="var(--ink-2)" /></KeypadKey>
         <KeypadKey onClick={() => setPin((p) => (p.length < dots ? p + '0' : p))}>0</KeypadKey>
         <KeypadKey faint onClick={() => setPin((p) => p.slice(0, -1))}><Icon name="left" size={22} color="var(--ink-2)" /></KeypadKey>
       </div>
 
       <button
-        onClick={() => onEnter()}
+        onClick={() => setView('restore')}
         style={{ marginTop: 26, background: 'transparent', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, color: 'var(--accent-ink)', fontFamily: 'var(--ui)', fontSize: 14, fontWeight: 600 }}
       >
         <Icon name="shield" size={18} color="var(--accent-ink)" /> Unlock with Face ID

@@ -40,7 +40,7 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("PUT /v1/reminders", s.auth(http.HandlerFunc(s.handlePutReminder)))
 	mux.Handle("DELETE /v1/reminders/{id}", s.auth(http.HandlerFunc(s.handleDeleteReminder)))
 
-	return logging(mux)
+	return s.cors(logging(mux))
 }
 
 // ── auth context ────────────────────────────────────────────────────────────

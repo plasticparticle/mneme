@@ -47,8 +47,9 @@ backstage, stretching. What you can play with today:
 | Entry editor (zen writing surface) | ✅ UI built |
 | Responsive desktop / mobile + dark mode | ✅ Works |
 | Backend relay (auth + encrypted-blob sync) | ✅ Built — see [`server/`](./server) |
-| Client-side encryption, local DB, client↔server sync | 🔜 Coming, in that order |
-| Media uploads, reminders push, native shells | 🔜 Later |
+| Client-side encryption + client↔relay sync | ✅ Wired — BIP39 → keys → encrypted push/pull |
+| Durable local DB (wa-sqlite + FTS5), TipTap editor | 🔜 Next (entries are in-memory for now) |
+| Seed at-rest (Argon2id), media uploads, push, native shells | 🔜 Later |
 
 So: the data you see is lovingly hand-crafted sample content. Nothing is encrypted yet because
 nothing is *real* yet. Don't pour your soul into it expecting it to persist. It won't. It's a
@@ -97,8 +98,19 @@ docker compose up -d        # Postgres + MinIO + the relay, on :8080
 curl localhost:8080/healthz # {"status":"ok"}
 ```
 
-Details, the API surface, and how to run its tests live in [`server/README.md`](./server/README.md).
-The client isn't wired to it yet — that's a later step — but the relay stands on its own and is tested.
+The client **is** wired to it: onboarding generates a real recovery phrase, derives keys, registers a
+device (challenge-response), and syncs XChaCha20-Poly1305-encrypted entries via the relay. To run the
+whole thing end-to-end, start the relay (above) and then `pnpm dev` — the app points at
+`http://localhost:8080` by default (override with `VITE_RELAY_URL`). The vault chip turns "synced ·
+encrypted" once the handshake succeeds; if the relay is down, the app stays local and shows "offline".
+
+Want to watch the crypto + sync round-trip without a browser? With the relay running:
+
+```bash
+pnpm --filter client exec tsx scripts/integration.ts   # register → auth → encrypt → push → pull → decrypt
+```
+
+Details, the API surface, and how to run the relay's own tests live in [`server/README.md`](./server/README.md).
 
 ---
 
@@ -165,11 +177,11 @@ mneme/
 ## Roadmap (the abridged §10)
 
 1. ✅ Scaffold the client + design system
-2. ✅ The Go relay — device auth + last-write-wins encrypted-blob sync *(you are here)*
-3. 🔜 Local SQLite (wa-sqlite + OPFS + full-text search) and a real TipTap editor
-4. 🔜 Crypto layer — BIP39 → keys → XChaCha20-Poly1305, all in the browser
-5. 🔜 Wire the client to the relay — offline outbox, push/pull
-6. 🔜 Media, reminders push, templates, export/import
+2. ✅ The Go relay — device auth + last-write-wins encrypted-blob sync
+3. ✅ Crypto layer — BIP39 → keys → XChaCha20-Poly1305, in the browser (@noble/@scure)
+4. ✅ Wire the client to the relay — register, authenticate, encrypted push/pull *(you are here)*
+5. 🔜 Durable local store (wa-sqlite + OPFS + FTS5) + a real TipTap editor + offline outbox
+6. 🔜 Seed at-rest (Argon2id), media, reminders push, templates, export/import
 7. 🔜 Native desktop + mobile shells (Tauri 2), built locally
 
 ---

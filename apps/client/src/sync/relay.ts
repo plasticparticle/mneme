@@ -35,6 +35,11 @@ export interface PullResp {
   cursor: number;
   more: boolean;
 }
+export interface MediaMeta {
+  media_id: string;
+  bytes: number; // total ciphertext bytes
+  chunks: number;
+}
 
 export class RelayError extends Error {
   constructor(
@@ -69,6 +74,39 @@ export class RelayClient {
     return this.post('/v1/sync/pull', { since, limit }, token);
   }
 
+  // ── media: server-relayed encrypted chunks (opaque to the relay) ──
+
+  /** Upload one encrypted media chunk (raw octet-stream body). */
+  async uploadMediaChunk(token: string, mediaId: string, index: number, chunk: Uint8Array): Promise<void> {
+    const res = await fetch(`${this.baseUrl}/v1/media/${mediaId}/chunks/${index}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/octet-stream', Authorization: `Bearer ${token}` },
+      body: chunk as unknown as BodyInit,
+    });
+    await this.check(res);
+  }
+
+  /** Finalize an upload so other devices can discover its chunk count. */
+  completeMedia(token: string, mediaId: string, chunks: number, bytes: number): Promise<{ media_id: string }> {
+    return this.post(`/v1/media/${mediaId}/complete`, { chunks, bytes }, token);
+  }
+
+  async mediaMeta(token: string, mediaId: string): Promise<MediaMeta> {
+    const res = await fetch(`${this.baseUrl}/v1/media/${mediaId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    await this.check(res);
+    return (await res.json()) as MediaMeta;
+  }
+
+  async downloadMediaChunk(token: string, mediaId: string, index: number): Promise<Uint8Array> {
+    const res = await fetch(`${this.baseUrl}/v1/media/${mediaId}/chunks/${index}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    await this.check(res);
+    return new Uint8Array(await res.arrayBuffer());
+  }
+
   private async post<T>(path: string, body: unknown, token?: string): Promise<T> {
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     if (token) headers.Authorization = `Bearer ${token}`;
@@ -77,17 +115,21 @@ export class RelayClient {
       headers,
       body: JSON.stringify(body),
     });
-    if (!res.ok) {
-      let msg = res.statusText;
-      try {
-        const j = (await res.json()) as { error?: string };
-        if (j.error) msg = j.error;
-      } catch {
-        /* non-JSON error body */
-      }
-      throw new RelayError(res.status, msg);
-    }
+    await this.check(res);
     return (await res.json()) as T;
+  }
+
+  /** Throw a RelayError (with the server's error message, if any) on a non-2xx response. */
+  private async check(res: Response): Promise<void> {
+    if (res.ok) return;
+    let msg = res.statusText;
+    try {
+      const j = (await res.json()) as { error?: string };
+      if (j.error) msg = j.error;
+    } catch {
+      /* non-JSON error body */
+    }
+    throw new RelayError(res.status, msg);
   }
 }
 

@@ -9,6 +9,8 @@ import type { JournalEntry } from '../sync/engine';
 import { useRichEditor } from '../editor/useRichEditor';
 import { EditorToolbar } from '../editor/Toolbar';
 import { parseBody } from '../editor/doc';
+import { VideoCapture } from '../ui/VideoCapture';
+import { AttachmentList } from '../ui/Attachments';
 import '../editor/editor.css';
 
 const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -37,7 +39,8 @@ function EntryEditor({
   onEditorReady: (e: Editor | null) => void;
   onWords: (n: number) => void;
 }): VNode {
-  const { updateEntry } = useAppData();
+  const { updateEntry, addVideo } = useAppData();
+  const [capturing, setCapturing] = useState(false);
   // Computed once per mount; this component is keyed by entry.id so a different
   // entry remounts it with fresh initial content.
   const initial = useMemo(() => parseBody(entry.bodyJson, entry.bodyText), [entry.id]);
@@ -105,6 +108,9 @@ function EntryEditor({
         <button style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: 'var(--ui)', fontSize: 12, fontWeight: 600, color: 'var(--ink-3)', background: 'transparent', border: '1px dashed var(--line)', borderRadius: 999, padding: '3px 9px', cursor: 'pointer' }}>
           <Icon name="plus" size={13} /> label
         </button>
+        <button onClick={() => setCapturing(true)} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: 'var(--ui)', fontSize: 12, fontWeight: 600, color: 'var(--ink-3)', background: 'transparent', border: '1px dashed var(--line)', borderRadius: 999, padding: '3px 9px', cursor: 'pointer' }}>
+          <Icon name="video" size={13} /> video
+        </button>
       </div>
 
       <textarea
@@ -137,6 +143,16 @@ function EntryEditor({
       </div>
 
       <div ref={mountRef} />
+
+      <AttachmentList entryId={entry.id} attachments={entry.attachments ?? []} />
+
+      {capturing && (
+        <VideoCapture
+          desk={desk}
+          onClose={() => setCapturing(false)}
+          onCapture={(blob, durationMs) => void addVideo(entry.id, blob, durationMs)}
+        />
+      )}
     </div>
   );
 }

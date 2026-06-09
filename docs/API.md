@@ -24,6 +24,10 @@ the auth model.
 | GET | `/v1/reminders` | ✅ | list reminders |
 | PUT | `/v1/reminders` | ✅ | create / reschedule a reminder |
 | DELETE | `/v1/reminders/{id}` | ✅ | delete a reminder |
+| PUT | `/v1/media/{id}/chunks/{n}` | ✅ | upload one encrypted media chunk (raw body) |
+| POST | `/v1/media/{id}/complete` | ✅ | finalize an upload (record chunk count) |
+| GET | `/v1/media/{id}` | ✅ | media metadata (ciphertext bytes, chunk count) |
+| GET | `/v1/media/{id}/chunks/{n}` | ✅ | download one encrypted media chunk |
 
 Errors are `{ "error": "message" }` with an appropriate status (400/401/404/500). CORS preflight
 (`OPTIONS`) is answered for configured origins (`CORS_ORIGINS`).
@@ -103,6 +107,35 @@ Last-write-wins per entry on `lww_clock`. The server treats `ciphertext` as opaq
 
 // DELETE /v1/reminders/{id}  →  204 No Content
 ```
+
+---
+
+## Media
+
+Server-relayed, chunked, client-encrypted (§6/§10 step 5; see `internal/blobs`). The client splits
+a recording into ~1 MiB plaintext chunks, seals each one independently under the media key
+(`[version][nonce:24][ct+tag]`, AAD binds media id + chunk position), and uploads them one by one.
+The relay streams chunks to S3/MinIO under `media/{owner_id}/{media_id}/{n}` and stores only
+`(media_id, bytes, chunks)` in Postgres. Which entry a media object belongs to — and its mime type,
+duration, and plaintext size — travels inside the *encrypted entry body* (`attachments` list), so
+the relay learns nothing beyond the random id and ciphertext sizes.
+
+```jsonc
+// PUT /v1/media/{id}/chunks/{n}    body: raw octet-stream (one encrypted chunk, ≤2 MiB)
+{ "media_id": "…", "chunk": 0 }
+
+// POST /v1/media/{id}/complete
+{ "chunks": 2, "bytes": 1049892 }       // ciphertext totals; → { "media_id": "…" }
+
+// GET /v1/media/{id}  →  200
+{ "media_id": "…", "bytes": 1049892, "chunks": 2 }
+
+// GET /v1/media/{id}/chunks/{n}  →  200 octet-stream (the encrypted chunk)
+```
+
+`{id}` must match `[A-Za-z0-9_-]{16,64}` (clients use random 128-bit hex — never date-encoded).
+Without `S3_ENDPOINT` configured the media endpoints answer `503`; clients keep recordings queued
+locally and retry. Re-uploading the same media id is idempotent.
 
 ---
 

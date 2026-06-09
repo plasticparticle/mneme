@@ -16,7 +16,7 @@ func testConfig() config.Config {
 }
 
 func TestHealthz(t *testing.T) {
-	srv := New(nil, testConfig())
+	srv := New(nil, nil, testConfig())
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
 
@@ -35,7 +35,7 @@ func TestHealthz(t *testing.T) {
 }
 
 func TestProtectedRouteRequiresToken(t *testing.T) {
-	srv := New(nil, testConfig())
+	srv := New(nil, nil, testConfig())
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/v1/sync/pull", nil)
 

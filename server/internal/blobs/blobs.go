@@ -1,43 +1,72 @@
 // Package blobs is the seam for media object storage (S3-compatible: MinIO/Garage).
-// Media is uploaded client-encrypted and chunked; the relay only coordinates keys
-// and (later) presigned URLs. Wiring is §10 step 5 — this is intentionally a stub
-// so the architecture boundary exists before the implementation does.
+// Media arrives client-encrypted and chunked; the relay never inspects it — every
+// value here is an opaque ciphertext chunk keyed by an owner-scoped path.
 //
-// OPEN (§12): server-relayed upload vs. presigned S3 PUT. The interface below fits
-// either — a relayed impl streams bytes, a presigned impl returns a URL.
+// §12's "relayed vs. presigned" question is resolved as server-relayed for now:
+// chunks stream through the relay's existing authenticated origin, so the object
+// store never needs to be reachable (or CORS-configured) for clients. At the §7
+// scale this is trivial I/O; a presigned impl can still slot in behind Store later.
 package blobs
 
 import (
 	"context"
 	"errors"
+	"sync"
 
 	"github.com/plasticparticle/mneme/server/internal/config"
 )
 
-// ErrNotImplemented is returned until a concrete media backend is wired up.
-var ErrNotImplemented = errors.New("media storage not implemented yet (§10 step 5)")
+// ErrNotConfigured is returned when no object store is configured (S3_ENDPOINT unset).
+var ErrNotConfigured = errors.New("media storage not configured")
 
-// Coordinator coordinates client-encrypted, chunked media in object storage.
-type Coordinator interface {
-	// PresignPut returns an upload target for a media chunk key.
-	PresignPut(ctx context.Context, ownerID, key string) (url string, err error)
-	// PresignGet returns a download target for a media chunk key.
-	PresignGet(ctx context.Context, ownerID, key string) (url string, err error)
+// ErrNotFound is returned for keys that were never stored.
+var ErrNotFound = errors.New("blob not found")
+
+// Store holds opaque, client-encrypted media chunks.
+type Store interface {
+	Put(ctx context.Context, key string, data []byte) error
+	Get(ctx context.Context, key string) ([]byte, error)
 }
 
-// Disabled is a no-op Coordinator used when no object store is configured.
+// New selects a Store from config: S3/MinIO when an endpoint is set, Disabled otherwise.
+func New(cfg config.S3Config) (Store, error) {
+	if cfg.Endpoint == "" {
+		return Disabled{}, nil
+	}
+	return newS3(cfg)
+}
+
+// Disabled is a no-op Store used when no object store is configured.
 type Disabled struct{}
 
-func (Disabled) PresignPut(context.Context, string, string) (string, error) {
-	return "", ErrNotImplemented
-}
-func (Disabled) PresignGet(context.Context, string, string) (string, error) {
-	return "", ErrNotImplemented
+func (Disabled) Put(context.Context, string, []byte) error { return ErrNotConfigured }
+func (Disabled) Get(context.Context, string) ([]byte, error) {
+	return nil, ErrNotConfigured
 }
 
-// New selects a Coordinator from config. Today it always returns Disabled; once a
-// MinIO/Garage client lands, branch on cfg.Endpoint here.
-func New(cfg config.S3Config) Coordinator {
-	_ = cfg
-	return Disabled{}
+// Memory is an in-process Store for tests.
+type Memory struct {
+	mu sync.Mutex
+	m  map[string][]byte
+}
+
+func NewMemory() *Memory { return &Memory{m: map[string][]byte{}} }
+
+func (s *Memory) Put(_ context.Context, key string, data []byte) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	cp := make([]byte, len(data))
+	copy(cp, data)
+	s.m[key] = cp
+	return nil
+}
+
+func (s *Memory) Get(_ context.Context, key string) ([]byte, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	data, ok := s.m[key]
+	if !ok {
+		return nil, ErrNotFound
+	}
+	return data, nil
 }

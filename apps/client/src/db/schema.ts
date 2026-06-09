@@ -24,7 +24,27 @@ export const MIGRATIONS: string[] = [
   CREATE INDEX entries_updated ON entries(updated_at);
   CREATE INDEX entries_dirty   ON entries(dirty) WHERE dirty = 1;
   `,
-  // ── v2 (FUTURE) — FTS5 full-text index (§3 mandates FTS5 for search) ──
+  // ── v2 — media attachments (§5a, §10 step 5) ──
+  // entries.attachments mirrors the encrypted-body attachment list (JSON array of
+  // MediaAttachment); the bytes themselves live in `media.data` as plaintext —
+  // this DB exists only on the unlocked device (§5a). `synced` is the media
+  // outbox flag: 0 → still waiting to be uploaded to the relay.
+  `
+  ALTER TABLE entries ADD COLUMN attachments TEXT NOT NULL DEFAULT '[]';
+  CREATE TABLE media (
+    id          TEXT PRIMARY KEY,           -- random 128-bit hex, never date-encoded (§3)
+    entry_id    TEXT NOT NULL,
+    mime        TEXT NOT NULL,
+    bytes       INTEGER NOT NULL,           -- plaintext size
+    duration_ms INTEGER,
+    created_at  INTEGER NOT NULL,           -- ms since epoch
+    data        BLOB,                       -- NULL until downloaded from the relay
+    synced      INTEGER NOT NULL DEFAULT 0  -- 0 → in the media upload outbox
+  );
+  CREATE INDEX media_entry    ON media(entry_id);
+  CREATE INDEX media_unsynced ON media(synced) WHERE synced = 0;
+  `,
+  // ── v3 (FUTURE) — FTS5 full-text index (§3 mandates FTS5 for search) ──
   // The published wa-sqlite 1.0.0 wasm builds are compiled WITHOUT the FTS5
   // module, so creating this table fails today ("no such module: fts5"). When we
   // ship an FTS5-enabled wasm, append the migration below as a forward-only step

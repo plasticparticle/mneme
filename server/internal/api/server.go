@@ -9,17 +9,22 @@ import (
 	"strings"
 	"time"
 
+	"github.com/plasticparticle/mneme/server/internal/blobs"
 	"github.com/plasticparticle/mneme/server/internal/config"
 	"github.com/plasticparticle/mneme/server/internal/store"
 )
 
 type Server struct {
 	store *store.Store
+	blobs blobs.Store
 	cfg   config.Config
 }
 
-func New(st *store.Store, cfg config.Config) *Server {
-	return &Server{store: st, cfg: cfg}
+func New(st *store.Store, bl blobs.Store, cfg config.Config) *Server {
+	if bl == nil {
+		bl = blobs.Disabled{}
+	}
+	return &Server{store: st, blobs: bl, cfg: cfg}
 }
 
 // Routes builds the HTTP handler. Uses Go 1.22 method+pattern routing — no router dep.
@@ -39,6 +44,10 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("GET /v1/reminders", s.auth(http.HandlerFunc(s.handleListReminders)))
 	mux.Handle("PUT /v1/reminders", s.auth(http.HandlerFunc(s.handlePutReminder)))
 	mux.Handle("DELETE /v1/reminders/{id}", s.auth(http.HandlerFunc(s.handleDeleteReminder)))
+	mux.Handle("PUT /v1/media/{id}/chunks/{n}", s.auth(http.HandlerFunc(s.handlePutMediaChunk)))
+	mux.Handle("POST /v1/media/{id}/complete", s.auth(http.HandlerFunc(s.handleCompleteMedia)))
+	mux.Handle("GET /v1/media/{id}", s.auth(http.HandlerFunc(s.handleGetMedia)))
+	mux.Handle("GET /v1/media/{id}/chunks/{n}", s.auth(http.HandlerFunc(s.handleGetMediaChunk)))
 
 	return s.cors(logging(mux))
 }

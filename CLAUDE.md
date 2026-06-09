@@ -21,13 +21,21 @@ project. Scaffolded so far:
   encrypted client-side; the timeline seeds from sample data and merges synced entries.
 - **`server/`** — the Go relay (`journald`): `/healthz` + `/readyz`, embedded forward-only migrations,
   device challenge-response auth (Ed25519), the LWW oplog `sync/push`+`sync/pull`, and CORS. Owner-scoped,
-  opaque blobs only. Reminders CRUD + scheduler (logs, no push transport yet). Media (`internal/blobs`)
-  and push delivery are stubs.
+  opaque blobs only. Reminders CRUD + scheduler (logs, no push transport yet). Media is **implemented
+  server-relayed** (§12 resolved): `internal/blobs` streams client-encrypted ~1 MiB chunks to S3/MinIO
+  (minio-go, bucket auto-provisioned) under `/v1/media/*`; `503` when `S3_ENDPOINT` is unset. Push
+  delivery is still a stub.
 - **Infra** — `docker-compose.yml` (Postgres + MinIO + server), `server/Dockerfile`, `.devcontainer/`.
 
-Not yet: local wa-sqlite + FTS5 + a real TipTap editor (§10 step 2's data layer — the client currently
-holds entries in memory, not the durable local DB), seed at-rest encryption (Argon2id, §6), media
-(step 5), push transport (step 6), Tauri shells (step 8).
+Media (§10 step 5) is in for **video**: record via `getUserMedia`+MediaRecorder in the editor
+(`ui/VideoCapture.tsx`), chunked XChaCha20 encryption under the media key with per-chunk AAD
+(`crypto/media.ts`), local plaintext bytes + upload outbox in the wa-sqlite `media` table (schema v2),
+background upload + lazy cross-device download (`sync/media.ts`, `state/data.tsx`); attachment
+metadata rides inside the encrypted entry body (`MediaAttachment` in `sync/engine.ts`).
+
+Not yet: FTS5 (blocked on a custom wa-sqlite wasm build), seed at-rest encryption (Argon2id, §6),
+image/audio attachments + inline TipTap media (the rest of step 5), push transport (step 6),
+Tauri shells (step 8).
 
 ### Frontend design source
 The product visual design is a **handoff bundle from Claude Design** (claude.ai/design), available at:

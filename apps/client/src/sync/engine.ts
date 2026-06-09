@@ -6,6 +6,18 @@ import { utf8, fromUtf8 } from '../crypto/bytes';
 import { toBase64, fromBase64 } from '../crypto/base64';
 import type { PushEntry, RelayClient } from './relay';
 
+// One media object attached to an entry. This metadata travels INSIDE the
+// encrypted entry body — the relay sees only the random media id and the
+// ciphertext chunk sizes, never mime/duration/size-of-plaintext (§3).
+export interface MediaAttachment {
+  id: string; // random 128-bit hex (newMediaId) — never date-encoded (§3)
+  kind: 'video';
+  mime: string;
+  bytes: number; // plaintext size
+  durationMs?: number;
+  createdAt: number;
+}
+
 export interface JournalEntry {
   id: string;
   journalId: string;
@@ -13,6 +25,7 @@ export interface JournalEntry {
   bodyText: string;
   bodyJson?: string; // TipTap/ProseMirror document JSON (the rich source of truth)
   labels: string[];
+  attachments?: MediaAttachment[];
   createdAt: number; // ms
   updatedAt: number; // ms — also the lww_clock
   deleted?: boolean;
@@ -25,6 +38,7 @@ interface EntryBody {
   bodyText: string;
   bodyJson?: string;
   labels: string[];
+  attachments?: MediaAttachment[];
   createdAt: number;
   updatedAt: number;
 }
@@ -36,6 +50,7 @@ export function encryptEntry(dataKey: Uint8Array, e: JournalEntry): Uint8Array {
     bodyText: e.bodyText,
     bodyJson: e.bodyJson,
     labels: e.labels,
+    attachments: e.attachments,
     createdAt: e.createdAt,
     updatedAt: e.updatedAt,
   };
@@ -86,6 +101,7 @@ export async function pullEntries(
       bodyText: body.bodyText,
       bodyJson: body.bodyJson,
       labels: body.labels ?? [],
+      attachments: body.attachments,
       createdAt: body.createdAt,
       updatedAt: body.updatedAt,
       deleted: item.deleted,

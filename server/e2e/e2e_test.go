@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/plasticparticle/mneme/server/internal/api"
+	"github.com/plasticparticle/mneme/server/internal/blobs"
 	"github.com/plasticparticle/mneme/server/internal/config"
 	"github.com/plasticparticle/mneme/server/internal/store"
 )
@@ -42,7 +43,9 @@ func TestFullFlow(t *testing.T) {
 		t.Fatalf("migrate: %v", err)
 	}
 
-	ts := httptest.NewServer(api.New(st, config.Config{SessionTTL: time.Hour}).Routes())
+	// Media chunks land in an in-memory blob store: the e2e suite needs only
+	// Postgres, while the HTTP surface is exercised exactly as with MinIO.
+	ts := httptest.NewServer(api.New(st, blobs.NewMemory(), config.Config{SessionTTL: time.Hour}).Routes())
 	defer ts.Close()
 	c := &client{t: t, base: ts.URL}
 
@@ -165,9 +168,33 @@ func TestFullFlow(t *testing.T) {
 	}
 	c.do(http.MethodDelete, "/v1/reminders/r-1", nil, http.StatusNoContent, nil)
 
+	// 7. Media: upload chunks → complete → meta → download (opaque ciphertext relay).
+	mediaID := "0123456789abcdef0123456789abcdef"
+	chunk0 := append([]byte{0x01}, []byte("encrypted-chunk-0")...)
+	chunk1 := append([]byte{0x01}, []byte("encrypted-chunk-1")...)
+	c.raw(http.MethodPut, "/v1/media/"+mediaID+"/chunks/0", chunk0, http.StatusOK)
+	c.raw(http.MethodPut, "/v1/media/"+mediaID+"/chunks/1", chunk1, http.StatusOK)
+	c.post("/v1/media/"+mediaID+"/complete",
+		map[string]any{"chunks": 2, "bytes": len(chunk0) + len(chunk1)}, http.StatusOK, nil)
+
+	var meta struct {
+		Bytes  int64 `json:"bytes"`
+		Chunks int   `json:"chunks"`
+	}
+	c.do(http.MethodGet, "/v1/media/"+mediaID, nil, http.StatusOK, &meta)
+	if meta.Chunks != 2 || meta.Bytes != int64(len(chunk0)+len(chunk1)) {
+		t.Fatalf("media meta mismatch: %+v", meta)
+	}
+	if got := c.rawGet("/v1/media/"+mediaID+"/chunks/1", http.StatusOK); !bytes.Equal(got, chunk1) {
+		t.Fatal("media chunk round-trip mismatch")
+	}
+	c.rawGet("/v1/media/"+mediaID+"/chunks/2", http.StatusNotFound)
+	c.do(http.MethodGet, "/v1/media/ffffffffffffffffffffffffffffffff", nil, http.StatusNotFound, nil)
+
 	// Tenant isolation smoke test: no token → 401.
 	noAuth := &client{t: t, base: ts.URL}
 	noAuth.post("/v1/sync/pull", map[string]any{"since": 0}, http.StatusUnauthorized, nil)
+	noAuth.rawGet("/v1/media/"+mediaID+"/chunks/0", http.StatusUnauthorized)
 }
 
 // ── tiny HTTP client ────────────────────────────────────────────────────────
@@ -210,6 +237,55 @@ func (c *client) do(method, path string, body any, wantStatus int, out any) {
 			c.t.Fatalf("decode %s: %v", path, err)
 		}
 	}
+}
+
+// raw sends a non-JSON body (media chunks are raw octet-streams).
+func (c *client) raw(method, path string, body []byte, wantStatus int) {
+	c.t.Helper()
+	req, err := http.NewRequest(method, c.base+path, bytes.NewReader(body))
+	if err != nil {
+		c.t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/octet-stream")
+	if c.token != "" {
+		req.Header.Set("Authorization", "Bearer "+c.token)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		c.t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != wantStatus {
+		c.t.Fatalf("%s %s -> %d, want %d", method, path, resp.StatusCode, wantStatus)
+	}
+}
+
+// rawGet fetches a binary response body.
+func (c *client) rawGet(path string, wantStatus int) []byte {
+	c.t.Helper()
+	req, err := http.NewRequest(http.MethodGet, c.base+path, nil)
+	if err != nil {
+		c.t.Fatal(err)
+	}
+	if c.token != "" {
+		req.Header.Set("Authorization", "Bearer "+c.token)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		c.t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != wantStatus {
+		c.t.Fatalf("GET %s -> %d, want %d", path, resp.StatusCode, wantStatus)
+	}
+	if wantStatus != http.StatusOK {
+		return nil
+	}
+	var buf bytes.Buffer
+	if _, err := buf.ReadFrom(resp.Body); err != nil {
+		c.t.Fatal(err)
+	}
+	return buf.Bytes()
 }
 
 func b64(b []byte) string { return base64.StdEncoding.EncodeToString(b) }

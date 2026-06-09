@@ -184,6 +184,41 @@ func (s *Store) PullEntries(ctx context.Context, ownerID string, since int64, li
 	return out, rows.Err()
 }
 
+// ── Media ───────────────────────────────────────────────────────────────────
+
+// MediaBlob indexes one chunked, client-encrypted media object in object storage.
+// s3_key is the chunk-key prefix; the content itself never touches Postgres.
+type MediaBlob struct {
+	MediaID string
+	S3Key   string
+	Bytes   int64
+	Chunks  int
+}
+
+// FinalizeMedia records a fully-uploaded media object. Idempotent re-uploads of
+// the same media id simply refresh the index row.
+func (s *Store) FinalizeMedia(ctx context.Context, ownerID string, m MediaBlob) error {
+	_, err := s.pool.Exec(ctx, `
+		INSERT INTO media_blobs (owner_id, media_id, s3_key, bytes, chunks)
+		VALUES ($1, $2, $3, $4, $5)
+		ON CONFLICT (owner_id, media_id) DO UPDATE
+			SET s3_key = EXCLUDED.s3_key, bytes = EXCLUDED.bytes, chunks = EXCLUDED.chunks`,
+		ownerID, m.MediaID, m.S3Key, m.Bytes, m.Chunks)
+	return err
+}
+
+// GetMedia returns the index row for a finalized media object.
+func (s *Store) GetMedia(ctx context.Context, ownerID, mediaID string) (MediaBlob, error) {
+	m := MediaBlob{MediaID: mediaID}
+	err := s.pool.QueryRow(ctx,
+		`SELECT s3_key, bytes, chunks FROM media_blobs WHERE owner_id = $1 AND media_id = $2`,
+		ownerID, mediaID).Scan(&m.S3Key, &m.Bytes, &m.Chunks)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return MediaBlob{}, ErrNotFound
+	}
+	return m, err
+}
+
 // ── Reminders ───────────────────────────────────────────────────────────────
 
 type Reminder struct {

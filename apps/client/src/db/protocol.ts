@@ -3,10 +3,10 @@
 // worker-only — so every read/write crosses this boundary as a request/response
 // pair correlated by a monotonic `id`.
 
-export type SqlParam = string | number | null;
+// Uint8Array binds/reads as a SQLite BLOB — media bytes live in the `media`
+// table (schema v2). postMessage structured-clones it across the boundary.
+export type SqlParam = string | number | Uint8Array | null;
 
-// SQLite hands blobs back as Uint8Array; we never store blobs (entries are text),
-// but the type stays honest about what a column can hold.
 export type SqlValue = string | number | Uint8Array | null;
 
 export type DbRequest =

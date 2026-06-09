@@ -5,14 +5,15 @@ import type { ComponentChildren, VNode } from 'preact';
 import { createContext } from 'preact';
 import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 
-import { RelayClient, defaultRelayUrl } from '../sync/relay';
+import { RelayClient, RelayError, defaultRelayUrl } from '../sync/relay';
 import { authenticate, identityFromMnemonic, type Session } from '../sync/identity';
 import type { Identity } from '../crypto/keys';
-import { pushEntries, pullEntries, type JournalEntry } from '../sync/engine';
-import { newEntryId } from '../sync/ids';
+import { pushEntries, pullEntries, type JournalEntry, type MediaAttachment } from '../sync/engine';
+import { uploadMedia, downloadMedia } from '../sync/media';
+import { newEntryId, newMediaId } from '../sync/ids';
 import { ENTRIES, JOURNALS, OPEN_ENTRY, type Journal } from '../data/sample';
 import { blocksToDoc, textToDoc, docToText } from '../editor/doc';
-import { LocalDb } from '../db';
+import { LocalDb, type MediaRecord } from '../db';
 
 export type SyncStatus = 'locked' | 'connecting' | 'online' | 'offline';
 
@@ -28,6 +29,10 @@ interface AppData {
   createEntry(input: { journalId: string; title?: string; bodyText?: string; bodyJson?: string; labels?: string[] }): JournalEntry;
   updateEntry(id: string, patch: { title?: string; bodyText?: string; bodyJson?: string; labels?: string[] }): void;
   newJournal(j: Journal): void;
+  /** Attach a freshly-recorded video to an entry; uploads in the background. */
+  addVideo(entryId: string, blob: Blob, durationMs?: number): Promise<MediaAttachment | null>;
+  /** Resolve an attachment to playable bytes: local DB first, then relay download. */
+  mediaBlob(entryId: string, att: MediaAttachment): Promise<Blob | null>;
 }
 
 const Ctx = createContext<AppData | null>(null);
@@ -75,6 +80,14 @@ function mergeByLWW(prev: JournalEntry[], incoming: JournalEntry[]): JournalEntr
   return [...byId.values()].sort((a, b) => b.updatedAt - a.updatedAt);
 }
 
+// Blob wants a plain ArrayBuffer; bytes from the DB/crypto layers are typed over
+// ArrayBufferLike, so copy into a fresh buffer (also detaches any subarray view).
+function bytesToBlob(data: Uint8Array, type: string): Blob {
+  const copy = new Uint8Array(data.length);
+  copy.set(data);
+  return new Blob([copy.buffer], { type });
+}
+
 // Local-midnight of a timestamp, so "days ago" counts calendar days, not 24h spans.
 function startOfLocalDay(ts: number): number {
   const d = new Date(ts);
@@ -112,14 +125,50 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
   const dbReady = useRef(false);
   const cursor = useRef(0);
   const pending = useRef<Map<string, JournalEntry>>(new Map());
+  // Media upload outbox: recordings (with bytes) not yet fully on the relay.
+  const pendingMedia = useRef<Map<string, MediaRecord>>(new Map());
+  const mediaFlushing = useRef(false);
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Mirror the (mutable) outbox depth into reactive state so the UI can react.
-  const syncPendingCount = useCallback(() => setPendingCount(pending.current.size), []);
+  const syncPendingCount = useCallback(
+    () => setPendingCount(pending.current.size + pendingMedia.current.size),
+    [],
+  );
+
+  // Upload queued recordings one media object at a time (chunked inside uploadMedia).
+  // Runs after the entry flush so the attachment metadata usually lands first.
+  const flushMedia = useCallback(async () => {
+    const s = session.current;
+    if (!s || mediaFlushing.current || pendingMedia.current.size === 0) return;
+    mediaFlushing.current = true;
+    try {
+      for (const rec of [...pendingMedia.current.values()]) {
+        if (!rec.data) {
+          pendingMedia.current.delete(rec.id); // nothing to upload (shouldn't happen)
+          continue;
+        }
+        await uploadMedia(relay, s.token, s.identity.mediaKey, rec.id, rec.data);
+        pendingMedia.current.delete(rec.id);
+        if (dbReady.current) void db.markMediaSynced(rec.id);
+        syncPendingCount();
+      }
+    } catch (e) {
+      // 503 = relay has no object store configured; recordings stay queued
+      // locally without flapping the connection indicator to "offline".
+      if (!(e instanceof RelayError && e.status === 503)) setStatus('offline');
+    } finally {
+      mediaFlushing.current = false;
+    }
+  }, [relay, db, syncPendingCount]);
 
   const flush = useCallback(async () => {
     const s = session.current;
-    if (!s || pending.current.size === 0) return;
+    if (!s) return;
+    if (pending.current.size === 0) {
+      void flushMedia(); // no dirty entries, but recordings may still be queued
+      return;
+    }
     const batch = [...pending.current.values()];
     setSaving(true);
     try {
@@ -134,7 +183,8 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
     } finally {
       setSaving(false);
     }
-  }, [relay, db, syncPendingCount]);
+    void flushMedia();
+  }, [relay, db, syncPendingCount, flushMedia]);
 
   const pull = useCallback(async () => {
     const s = session.current;
@@ -191,8 +241,9 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
           await db.mergeRemote(local);
         }
         setEntries([...local].sort((a, b) => b.updatedAt - a.updatedAt));
-        // Rebuild the outbox from edits left unsynced by a previous offline session.
+        // Rebuild the outboxes from work left unsynced by a previous offline session.
         for (const e of await db.dirtyEntries()) pending.current.set(e.id, e);
+        for (const m of await db.unsyncedMedia()) pendingMedia.current.set(m.id, m);
         syncPendingCount();
       } catch {
         // OPFS unavailable: run in-memory only (no persistence this session).
@@ -248,6 +299,85 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
     setJournals((prev) => [...prev, j]);
   }, []);
 
+  // Attach a recording: bytes go to the local DB + media outbox; the attachment
+  // metadata rides inside the (encrypted) entry body so other devices learn the
+  // media id. The relay only ever sees that random id and ciphertext chunks.
+  const addVideo: AppData['addVideo'] = useCallback(
+    async (entryId, blob, durationMs) => {
+      const data = new Uint8Array(await blob.arrayBuffer());
+      if (data.length === 0) return null;
+      const now = Date.now();
+      const att: MediaAttachment = {
+        id: newMediaId(),
+        kind: 'video',
+        mime: blob.type || 'video/webm',
+        bytes: data.length,
+        durationMs,
+        createdAt: now,
+      };
+      const rec: MediaRecord = {
+        id: att.id,
+        entryId,
+        mime: att.mime,
+        bytes: att.bytes,
+        durationMs,
+        createdAt: now,
+        data,
+        synced: false,
+      };
+      if (dbReady.current) void db.putMedia(rec);
+      pendingMedia.current.set(rec.id, rec);
+      let attached = false;
+      setEntries((prev) => {
+        const cur = prev.find((e) => e.id === entryId);
+        if (!cur) return prev;
+        attached = true;
+        const next: JournalEntry = { ...cur, attachments: [...(cur.attachments ?? []), att], updatedAt: now };
+        if (dbReady.current) void db.putLocal(next);
+        pending.current.set(entryId, next);
+        return mergeByLWW(prev, [next]);
+      });
+      syncPendingCount();
+      void flush();
+      return attached ? att : null;
+    },
+    [db, flush, syncPendingCount],
+  );
+
+  // Resolve attachment bytes for playback: outbox → local DB → relay download
+  // (decrypted with the media key, then cached locally for next time).
+  const mediaBlob: AppData['mediaBlob'] = useCallback(
+    async (entryId, att) => {
+      const queued = pendingMedia.current.get(att.id);
+      if (queued?.data) return bytesToBlob(queued.data, att.mime);
+      if (dbReady.current) {
+        const row = await db.getMedia(att.id).catch(() => null);
+        if (row?.data) return bytesToBlob(row.data, row.mime || att.mime);
+      }
+      const s = session.current;
+      if (!s) return null;
+      try {
+        const data = await downloadMedia(relay, s.token, s.identity.mediaKey, att.id);
+        if (dbReady.current) {
+          void db.putMedia({
+            id: att.id,
+            entryId,
+            mime: att.mime,
+            bytes: att.bytes,
+            durationMs: att.durationMs,
+            createdAt: att.createdAt,
+            data,
+            synced: true,
+          });
+        }
+        return bytesToBlob(data, att.mime);
+      } catch {
+        return null; // offline, not yet uploaded by the other device, or relay has no object store
+      }
+    },
+    [db, relay],
+  );
+
   // Background loop. While online: periodic flush + pull. While offline: retry the
   // relay handshake until it comes back, then resume syncing automatically.
   useEffect(() => {
@@ -286,6 +416,6 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
     });
   }, [journals, entries]);
 
-  const value: AppData = { status, pendingCount, saving, entries, journals: journalsWithCounts, signIn, createEntry, updateEntry, newJournal };
+  const value: AppData = { status, pendingCount, saving, entries, journals: journalsWithCounts, signIn, createEntry, updateEntry, newJournal, addVideo, mediaBlob };
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

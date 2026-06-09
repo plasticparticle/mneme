@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/plasticparticle/mneme/server/internal/api"
+	"github.com/plasticparticle/mneme/server/internal/blobs"
 	"github.com/plasticparticle/mneme/server/internal/config"
 	"github.com/plasticparticle/mneme/server/internal/reminders"
 	"github.com/plasticparticle/mneme/server/internal/store"
@@ -44,13 +45,21 @@ func run() error {
 	}
 	log.Printf("migrations applied")
 
+	bl, err := blobs.New(cfg.S3)
+	if err != nil {
+		return err
+	}
+	if _, disabled := bl.(blobs.Disabled); disabled {
+		log.Printf("media storage disabled (S3_ENDPOINT not set)")
+	}
+
 	// Background workers.
 	go reminders.NewScheduler(st, reminders.LogDispatcher{}, time.Minute).Run(ctx)
 	go purgeLoop(ctx, st)
 
 	srv := &http.Server{
 		Addr:              cfg.ListenAddr,
-		Handler:           api.New(st, cfg).Routes(),
+		Handler:           api.New(st, bl, cfg).Routes(),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 

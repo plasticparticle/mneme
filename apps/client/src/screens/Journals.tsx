@@ -197,7 +197,7 @@ export function JournalsScreen({ desk, journals, onOpen, onNew }: { desk: boolea
   // ── mobile ──
   return (
     <div style={{ height: '100%', overflow: 'auto', background: 'var(--paper)', paddingBottom: 84 }}>
-      <div style={{ padding: '64px 20px 0' }}>
+      <div style={{ padding: 'calc(env(safe-area-inset-top, 0px) + 24px) 20px 0' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <AccountChip />
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>

@@ -35,9 +35,10 @@ encrypts everything before it leaves the building.
 
 ## Current state: it's early, and we're being honest about it
 
-Right now Mneme is a **gorgeous front-end with stage fright**. The full UI for all four screens
-is built and runs — but the crypto, the local database, the sync, and the server are still
-backstage, stretching. What you can play with today:
+The full UI for all four screens is built, the Go relay is built, and the client is **actually wired
+to it**: real BIP39 onboarding, client-side encryption, and encrypted push/pull sync all work
+end-to-end. What's still backstage is the *durable* local database (entries live in memory for now)
+and the rich-text editor. What you can play with today:
 
 | Thing | Status |
 |---|---|
@@ -51,13 +52,26 @@ backstage, stretching. What you can play with today:
 | Durable local DB (wa-sqlite + FTS5), TipTap editor | 🔜 Next (entries are in-memory for now) |
 | Seed at-rest (Argon2id), media uploads, push, native shells | 🔜 Later |
 
-So: the data you see is lovingly hand-crafted sample content. Nothing is encrypted yet because
-nothing is *real* yet. Don't pour your soul into it expecting it to persist. It won't. It's a
-very convincing stage set.
+So: the timeline is seeded with hand-crafted sample content so it looks lived-in, and any entry you
+create is **really** encrypted and synced to the relay. But the durable local store isn't built yet —
+entries live in memory, and the identity is in-memory only — so a reload starts fresh and asks for the
+mnemonic again. Don't pour your soul into it expecting permanence just yet.
 
-The grand plan lives in [`CLAUDE.md`](./CLAUDE.md), which is the architectural source of truth.
-Fair warning: that document is written in German, because the author makes excellent decisions
-and slightly chaotic stylistic ones.
+The grand plan lives in [`CLAUDE.md`](./CLAUDE.md), the architectural source of truth (German, because
+the author makes excellent decisions and slightly chaotic stylistic ones). Plain-English deep-dives
+live in [`docs/`](./docs) — start with [`docs/README.md`](./docs/README.md).
+
+---
+
+## Documentation
+
+| Doc | What's in it |
+|---|---|
+| [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md) | Components, key derivation, the sync sequence, data model — with diagrams |
+| [`docs/SECURITY.md`](./docs/SECURITY.md) | The E2EE model, crypto choices, and a frank list of attack vectors & known weaknesses |
+| [`docs/API.md`](./docs/API.md) | The relay's HTTP API reference |
+| [`docs/CONTRIBUTING.md`](./docs/CONTRIBUTING.md) | Setup, quality gates, conventions, where things live |
+| [`CLAUDE.md`](./CLAUDE.md) | The decision document & source of truth (German; §0 is an English guide) |
 
 ---
 
@@ -78,13 +92,13 @@ pnpm dev
 
 Now open **http://localhost:5173** and behold a journal that politely refuses to read itself.
 
-First run drops you into onboarding. Click through the recovery-phrase ceremony (you don't have
-to actually engrave the words into a titanium plate *yet* — this is a demo). Once you're "in,"
-your browser remembers via `localStorage`, so you go straight to the journals next time.
+Every load drops you into onboarding, because the identity lives **only in memory** — nothing
+sensitive is persisted (the Argon2id at-rest layer isn't built yet). "Start a new journal" generates a
+real 12-word recovery phrase; "I have a recovery phrase" restores from one you type. A reload locks
+the app and asks again, which is the honest behaviour until at-rest key storage lands.
 
-> **Want to re-watch the onboarding flow?** Clear the site's local storage, or run this in the
-> dev console: `localStorage.removeItem('mneme.entered')` and refresh. Instant fresh start, no
-> regrets.
+> Onboarding generates a **real** mnemonic and derives **real** keys, but you don't have to engrave it
+> into a titanium plate *yet* — there's nothing durable behind it to lose.
 
 ---
 
@@ -116,8 +130,7 @@ Details, the API surface, and how to run the relay's own tests live in [`server/
 
 ## Testing and verifying
 
-We don't have a sprawling test suite yet (there isn't much logic to test — it's mostly pixels
-behaving themselves). What we *do* have are two honest gates:
+The client gates are typecheck + build:
 
 ```bash
 pnpm typecheck    # TypeScript, strict mode, no excuses
@@ -125,8 +138,10 @@ pnpm build        # typecheck + a real production build
 pnpm preview      # serve the production build locally, to admire your work
 ```
 
-If `pnpm build` is green, you're in good shape. If it's red, TypeScript is trying to tell you
-something and it is, annoyingly, usually right.
+The relay has actual tests — unit tests (no DB), a `-tags e2e` integration test against Postgres, and
+the client `scripts/integration.ts` round-trip that proves crypto + sync work end-to-end. The full
+matrix lives in [`docs/CONTRIBUTING.md`](./docs/CONTRIBUTING.md). If `pnpm build` is green and
+`go test ./...` is green, you're in good shape.
 
 ---
 
@@ -137,13 +152,18 @@ something and it is, annoyingly, usually right.
 ```
 mneme/
 ├── CLAUDE.md              # architecture & decisions (the source of truth; auf Deutsch)
+├── docs/                  # plain-English deep-dives (architecture, security, API, contributing)
 ├── apps/
 │   └── client/            # the Vite + Preact + TypeScript app (this is where the fun is)
 │       ├── index.html
 │       ├── vite.config.ts
+│       ├── scripts/       # integration.ts — live client↔relay crypto check
 │       └── src/
+│           ├── crypto/    # mnemonic · keys (HKDF) · aead (XChaCha20) · base64
+│           ├── sync/      # relay client · identity (register+auth) · engine (push/pull)
+│           ├── state/     # data.tsx — identity, sync loop, live entries
 │           ├── styles/    # design tokens (warm-paper palette + dark theme)
-│           ├── data/      # typed sample content (stands in for the real DB, for now)
+│           ├── data/      # typed sample content (seeds the timeline)
 │           ├── ui/        # icons, buttons, chips, covers — the shared bits
 │           ├── hooks/     # useMediaQuery (desktop/mobile), useTheme (dark mode)
 │           ├── screens/   # Onboarding · Journals · Calendar · Editor
@@ -167,7 +187,8 @@ mneme/
 
 - **Code, comments, commits, and API are in English.** Only `CLAUDE.md` gets to be German.
 - **TypeScript is `strict`.** Yes, all the way strict. It's load-bearing.
-- IDs are **ULIDs**, never date-encoded — a privacy thing, explained at length in `CLAUDE.md`.
+- Entry IDs are **random** (128-bit hex), never timestamp/date-encoded — a privacy thing (the relay
+  sees ids in cleartext, so a time-encoded id would leak your writing order). See `docs/SECURITY.md`.
 - When in doubt about *what* to build or *in what order*, `CLAUDE.md` §10 has the roadmap and
   §3 has the decisions that are Not To Be Re-litigated. (They were re-litigated once. It was a
   whole thing. Don't.)

@@ -54,8 +54,9 @@ and §7 (why the server is trivial).
    Admin cannot read and cannot recover. (§1, §3 Non-Goals)
 2. **The 12-word BIP39 mnemonic *is* the account.** No login, no email, no password. `owner_id` is
    derived from the seed. Forgotten mnemonic = data permanently lost, by design. (§3, §6)
-3. **All crypto lives in the frontend** (libsodium-wasm), once, for every client — because the PWA has
-   no Rust shell. Client and server share **only** the wire-format (`packages/proto`), never crypto. (§3, §4)
+3. **All crypto lives in the frontend** (@noble/@scure — see §3; was libsodium-wasm), once, for every
+   client — because the PWA has no Rust shell. Client and server share **only** the wire-format, never
+   crypto. (§3, §4)
 4. **Every ciphertext is version-prefixed from day one:** `[version:1B][nonce:24B][ct+tag]`,
    XChaCha20-Poly1305 with a random 24-byte nonce. Never AES-GCM. (§3, §6, §11)
 5. **Isolated tenants only** — no shared entries, no multi-recipient key wrapping; per-entry
@@ -63,8 +64,9 @@ and §7 (why the server is trivial).
 
 ### Architecture in three layers
 - **`apps/client/`** — Vite + Preact + TS. The single web codebase for both the PWA *and* the content
-  inside every Tauri shell. Holds crypto, the local wa-sqlite (OPFS + FTS5) DB which is the
-  **source of truth**, the TipTap editor, and the offline sync outbox. (§4, §5a)
+  inside every Tauri shell. Holds crypto (`src/crypto/`) and the sync client (`src/sync/`) — both built.
+  The local wa-sqlite (OPFS + FTS5) DB that is meant to be the **source of truth**, the TipTap editor,
+  and the offline outbox are the **target** (not built yet — entries are in memory). (§4, §5a)
 - **`apps/desktop/src-tauri/`** — Tauri 2 shell (Rust) for desktop *and* mobile. Rust only here:
   shell + native plugins (notifications, OS keychain, biometrics). Builds **locally only** — not in
   Codespaces (no display; iOS needs macOS/Xcode). (§3, §9)
@@ -72,24 +74,35 @@ and §7 (why the server is trivial).
   (MinIO) blob coordination, reminder scheduler + push. Postgres stores only opaque blobs + metadata,
   every handler strictly scoped to `owner_id`. (§4, §5b)
 
-### Commands (available only after the matching build step)
+### Commands
 ```bash
-# Infra + Go server (after §10 step 1)
-docker compose up -d                 # postgres + minio + server
+# Infra + Go server
+docker compose up -d                 # postgres + minio + server (:8080)
 docker compose --profile fullstack up   # also runs the client dev server in compose
 
-# Client dev (after §10 step 2) — pnpm workspace
+# Client dev — pnpm workspace
 pnpm install
-pnpm --filter client dev --host      # PWA on :5173 (server on :8080)
+pnpm --filter client dev --host      # PWA on :5173 (relay on :8080; override VITE_RELAY_URL)
+pnpm --filter client typecheck       # strict tsc
+pnpm --filter client build           # typecheck + production build
 
 # Go server (in ./server)
 go build -o journald ./cmd/journald
-go test ./...                        # single package: go test ./internal/sync/...
+gofmt -l . && go vet ./... && go test ./...
+TEST_DATABASE_URL=postgres://journal:journal_dev@localhost:5432/journal?sslmode=disable \
+  go test -tags e2e ./e2e/...        # full handshake against a live Postgres
 
-# Tauri shells (after §10 step 8) — LOCAL ONLY, never Codespaces
-# (commands TBD when apps/desktop is scaffolded)
+# Live client↔relay crypto round-trip (relay must be running)
+pnpm --filter client exec tsx apps/client/scripts/integration.ts
+
+# Tauri shells (after §10 step 8) — LOCAL ONLY, never Codespaces (not scaffolded yet)
 ```
 Codespaces (`.devcontainer/`) covers the **server + PWA** end-to-end; Tauri is out of scope there.
+
+### Deeper docs
+Plain-English deep-dives live in [`docs/`](docs/): `ARCHITECTURE.md` (diagrams), `SECURITY.md`
+(E2EE model + attack vectors), `API.md` (relay endpoints), `CONTRIBUTING.md`. This §0 stays the
+quick operating guide; `docs/` expands on it; §1–§12 below remain the binding decisions.
 
 ### Lint / format (per §11)
 TS: strict mode (eslint + prettier). Go: `gofmt` / `golangci-lint`. Rust: `clippy`.
@@ -100,7 +113,9 @@ sync → media → reminders/push → feature completion → Tauri shells. **Do 
 before the plaintext client UX is validated.**
 
 ### Hard guardrails (will silently break security/privacy if violated)
-- IDs are **ULID, never date-encoded** — date-encoded IDs leak the writing chronology. (§3, §11)
+- Entry IDs are **random, never date/timestamp-encoded** — the relay sees `entry_id` in cleartext, so a
+  ULID/timestamp id would leak the writing chronology. Implemented as random 128-bit hex in
+  `src/sync/ids.ts`. (This is the leak-guard of §3 winning over the "ULID" wording in §5a/§11.)
 - **Never** put the entry date in cleartext IDs; never log/DOM the key; auto-lock on inactivity. (§3, §6)
 - Every new ciphertext persistence path **must** include the version byte. (§3, §11)
 - Reminders fire generic ("Erinnerung") — `fire_at` is a *consciously accepted* cleartext leak; the

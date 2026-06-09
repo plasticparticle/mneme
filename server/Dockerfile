@@ -1,5 +1,7 @@
 # Multi-stage build → tiny distroless static binary.
-FROM golang:1.23 AS build
+# go.mod requires go >= 1.25 (raised by the pgx v5.9.2 bump); the distroless
+# runtime stage is version-independent.
+FROM golang:1.25 AS build
 WORKDIR /src
 COPY server/go.* ./
 RUN go mod download

@@ -36,6 +36,30 @@ export function Onboarding({ desk, onEnter }: { desk: boolean; onEnter: (mnemoni
   const restoreMnemonic = wordsToMnemonic(restoreWords);
   const restoreValid = restoreFilled === 12 && validateMnemonic(restoreMnemonic);
 
+  // Split arbitrary pasted text into mnemonic tokens (whitespace/comma separated, lowercased).
+  const tokenize = (text: string): string[] => text.trim().toLowerCase().split(/[\s,]+/).filter(Boolean);
+
+  // Drop `tokens` into the fields starting at `startIdx`. A multi-word paste fills onward
+  // from that position (so pasting a full phrase into field 01 populates all twelve); a
+  // single token only touches the field it was dropped into.
+  const fillFrom = (startIdx: number, tokens: string[]): void => {
+    if (tokens.length === 0) return;
+    setRestoreWords((prev) => {
+      const next = [...prev];
+      for (let k = 0; k < tokens.length && startIdx + k < next.length; k++) next[startIdx + k] = tokens[k];
+      return next;
+    });
+  };
+
+  const pasteFromClipboard = async (): Promise<void> => {
+    try {
+      const text = await navigator.clipboard.readText();
+      fillFrom(0, tokenize(text));
+    } catch {
+      /* clipboard unavailable */
+    }
+  };
+
   // unlock step
   const [pin, setPin] = useState('');
 
@@ -206,10 +230,10 @@ export function Onboarding({ desk, onEnter }: { desk: boolean; onEnter: (mnemoni
     return wrap(
       <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
         <BackRow onClick={() => setView('welcome')} step="Restore" />
-        <h2 style={hStyle(desk)}>Enter your phrase</h2>
-        <p style={pStyle}>Type the twelve words from any device where this journal already lives. Order matters.</p>
+        <h2 style={{ ...hStyle(desk), flexShrink: 0 }}>Enter your phrase</h2>
+        <p style={{ ...pStyle, flexShrink: 0 }}>Type the twelve words from any device where this journal already lives. Order matters.</p>
 
-        <div style={{ display: 'grid', gridTemplateColumns: desk ? 'repeat(3,1fr)' : 'repeat(2,1fr)', gap: 8, marginTop: 18 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 180px))', gap: 8, marginTop: 18, flex: 1, minHeight: 0, overflowY: 'auto', alignContent: 'start', justifyContent: 'center' }}>
           {restoreWords.map((w, i) => (
             <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '0 11px', borderRadius: 10, height: 42, background: 'var(--surface)', border: `1px solid ${w ? 'var(--accent)' : 'var(--line)'}` }}>
               <span style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--ink-3)' }}>{String(i + 1).padStart(2, '0')}</span>
@@ -217,34 +241,44 @@ export function Onboarding({ desk, onEnter }: { desk: boolean; onEnter: (mnemoni
                 value={w}
                 placeholder="·····"
                 onInput={(e) => setRestoreWords((a) => a.map((x, j) => (j === i ? (e.target as HTMLInputElement).value : x)))}
+                onPaste={(e) => {
+                  const tokens = tokenize(e.clipboardData?.getData('text') ?? '');
+                  // A multi-word paste spreads across the fields; let a single word fall
+                  // through to the default input handling.
+                  if (tokens.length > 1) {
+                    e.preventDefault();
+                    fillFrom(i, tokens);
+                  }
+                }}
                 style={{ flex: 1, minWidth: 0, border: 'none', outline: 'none', background: 'transparent', fontFamily: 'var(--mono)', fontSize: 13.5, color: 'var(--ink)' }}
               />
             </div>
           ))}
         </div>
 
-        <button
-          onClick={() => setRestoreWords([...words])}
-          style={{ alignSelf: 'flex-start', marginTop: 12, background: 'transparent', border: 'none', cursor: 'pointer', fontFamily: 'var(--ui)', fontSize: 12.5, color: 'var(--accent-ink)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}
-        >
-          <Icon name="copy" size={14} /> Paste from clipboard
-        </button>
+        <div style={{ flexShrink: 0 }}>
+          <button
+            onClick={pasteFromClipboard}
+            style={{ alignSelf: 'flex-start', marginTop: 12, background: 'transparent', border: 'none', cursor: 'pointer', fontFamily: 'var(--ui)', fontSize: 12.5, color: 'var(--accent-ink)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}
+          >
+            <Icon name="copy" size={14} /> Paste from clipboard
+          </button>
 
-        <Callout>
-          <Icon name="lock" size={16} color="var(--accent)" />
-          <span>Your phrase is never sent anywhere. It only unlocks the encrypted data already on the server.</span>
-        </Callout>
+          <Callout>
+            <Icon name="lock" size={16} color="var(--accent)" />
+            <span>Your phrase is never sent anywhere. It only unlocks the encrypted data already on the server.</span>
+          </Callout>
 
-        <div style={{ flex: 1 }} />
-        <Btn
-          kind={restoreValid ? 'primary' : 'ghost'}
-          size="lg"
-          full
-          onClick={() => restoreValid && onEnter(restoreMnemonic)}
-          style={{ marginTop: 16, opacity: restoreValid ? 1 : 0.55, pointerEvents: restoreValid ? 'auto' : 'none' }}
-        >
-          {restoreFilled < 12 ? `${restoreFilled} / 12 words` : restoreValid ? 'Restore journal' : 'Phrase not valid'}
-        </Btn>
+          <Btn
+            kind={restoreValid ? 'primary' : 'ghost'}
+            size="lg"
+            full
+            onClick={() => restoreValid && onEnter(restoreMnemonic)}
+            style={{ marginTop: 16, opacity: restoreValid ? 1 : 0.55, pointerEvents: restoreValid ? 'auto' : 'none' }}
+          >
+            {restoreFilled < 12 ? `${restoreFilled} / 12 words` : restoreValid ? 'Restore journal' : 'Phrase not valid'}
+          </Btn>
+        </div>
       </div>,
       { top: true },
     );

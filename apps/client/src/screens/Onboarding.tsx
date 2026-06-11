@@ -16,14 +16,14 @@ const managerOnly: JSX.CSSProperties = {
   fontSize: 16, // prevent iOS zoom-on-focus if it ever receives focus
 };
 
-// A username/password pair for password managers only. The password value is the
-// space-separated 12-word phrase; `onPhraseInput` (restore) receives manager
-// autofill, `readOnly` (create) makes it save-only.
-function ManagerCredential({ phrase, mode, onPhraseInput }: {
-  phrase: string;
-  mode: 'new' | 'current';
-  onPhraseInput?: (text: string) => void;
-}): VNode {
+// A username/password pair for password managers only — the *save* side: lets a
+// manager capture the phrase when the surrounding form is submitted. The password
+// value is the space-separated 12-word phrase. The *fill* side cannot be hidden:
+// managers only offer to fill a field the user can actually click, so the restore
+// view renders its own visible current-password field instead of this component.
+// Also used by the replace-phrase flow (ui/RotatePhrase.tsx) so managers offer to
+// update the entry.
+export function ManagerCredential({ phrase }: { phrase: string }): VNode {
   return (
     <div aria-hidden="true">
       <input
@@ -38,11 +38,10 @@ function ManagerCredential({ phrase, mode, onPhraseInput }: {
       <input
         type="password"
         name="password"
-        autocomplete={mode === 'new' ? 'new-password' : 'current-password'}
+        autocomplete="new-password"
         value={phrase}
-        readOnly={!onPhraseInput}
+        readOnly
         tabIndex={-1}
-        onInput={onPhraseInput ? (e) => onPhraseInput((e.target as HTMLInputElement).value) : undefined}
         style={managerOnly}
       />
     </div>
@@ -74,6 +73,10 @@ export function Onboarding({ desk, onEnter }: { desk: boolean; onEnter: (mnemoni
 
   // restore step
   const [restoreWords, setRestoreWords] = useState<string[]>(Array(12).fill(''));
+  // Raw text of the visible manager-fill field. Kept as its own state rather than
+  // derived from the grid: a join(' ')/tokenize round-trip would swallow the
+  // trailing space while someone types a phrase directly into that field.
+  const [phraseField, setPhraseField] = useState('');
   const restoreFilled = restoreWords.filter((w) => w.trim()).length;
   const restoreMnemonic = wordsToMnemonic(restoreWords);
   const restoreValid = restoreFilled === 12 && validateMnemonic(restoreMnemonic);
@@ -81,16 +84,21 @@ export function Onboarding({ desk, onEnter }: { desk: boolean; onEnter: (mnemoni
   // Split arbitrary pasted text into mnemonic tokens (whitespace/comma separated, lowercased).
   const tokenize = (text: string): string[] => text.trim().toLowerCase().split(/[\s,]+/).filter(Boolean);
 
+  // Grid edits go through here so the manager-fill field mirrors the grid as one
+  // space-separated phrase (managers capture it from there on submit).
+  const updateWords = (next: string[]): void => {
+    setRestoreWords(next);
+    setPhraseField(next.map((w) => w.trim()).filter(Boolean).join(' '));
+  };
+
   // Drop `tokens` into the fields starting at `startIdx`. A multi-word paste fills onward
   // from that position (so pasting a full phrase into field 01 populates all twelve); a
   // single token only touches the field it was dropped into.
   const fillFrom = (startIdx: number, tokens: string[]): void => {
     if (tokens.length === 0) return;
-    setRestoreWords((prev) => {
-      const next = [...prev];
-      for (let k = 0; k < tokens.length && startIdx + k < next.length; k++) next[startIdx + k] = tokens[k];
-      return next;
-    });
+    const next = [...restoreWords];
+    for (let k = 0; k < tokens.length && startIdx + k < next.length; k++) next[startIdx + k] = tokens[k];
+    updateWords(next);
   };
 
   const pasteFromClipboard = async (): Promise<void> => {
@@ -102,10 +110,9 @@ export function Onboarding({ desk, onEnter }: { desk: boolean; onEnter: (mnemoni
     }
   };
 
-  // The hidden manager-facing field mirrors the grid as one space-separated phrase…
-  const restorePhrase = restoreWords.map((w) => w.trim()).filter(Boolean).join(' ');
-  // …and an edit there (i.e. password-manager autofill) replaces the whole grid.
+  // An edit in the manager-fill field (autofill or typing) replaces the whole grid.
   const syncFromPhrase = (text: string): void => {
+    setPhraseField(text);
     const tokens = tokenize(text);
     setRestoreWords(Array.from({ length: 12 }, (_, k) => tokens[k] ?? ''));
   };
@@ -174,7 +181,7 @@ export function Onboarding({ desk, onEnter }: { desk: boolean; onEnter: (mnemoni
         onSubmit={(e) => { e.preventDefault(); setRevealed(true); setView('confirm'); }}
         style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, position: 'relative' }}
       >
-        <ManagerCredential phrase={mnemonic} mode="new" />
+        <ManagerCredential phrase={mnemonic} />
         <BackRow onClick={() => setView('welcome')} step="Step 1 of 2" />
         <h2 style={hStyle(desk)}>Your recovery phrase</h2>
         <p style={pStyle}>
@@ -287,12 +294,27 @@ export function Onboarding({ desk, onEnter }: { desk: boolean; onEnter: (mnemoni
         onSubmit={(e) => { e.preventDefault(); if (restoreValid) onEnter(restoreMnemonic); }}
         style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, position: 'relative' }}
       >
-        <ManagerCredential phrase={restorePhrase} mode="current" onPhraseInput={syncFromPhrase} />
+        {/* Account context for password managers; the visible phrase field below is their fill target. */}
+        <input type="text" name="username" autocomplete="username" value="mneme journal" readOnly tabIndex={-1} aria-hidden="true" style={managerOnly} />
         <BackRow onClick={() => setView('welcome')} step="Restore" />
         <h2 style={{ ...hStyle(desk), flexShrink: 0 }}>Enter your phrase</h2>
         <p style={{ ...pStyle, flexShrink: 0 }}>Type the twelve words from any device where this journal already lives. Order matters.</p>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 180px))', gap: 8, marginTop: 18, flex: 1, minHeight: 0, overflowY: 'auto', alignContent: 'start', justifyContent: 'center' }}>
+        {/* Visible so password managers offer the saved phrase on click; filling it spreads the words into the grid. */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 16, padding: '0 12px', height: 42, borderRadius: 10, background: 'var(--surface)', border: '1px solid var(--line)', flexShrink: 0 }}>
+          <Icon name="lock" size={15} color="var(--ink-3)" />
+          <input
+            type="password"
+            name="password"
+            autocomplete="current-password"
+            value={phraseField}
+            placeholder="Fill the whole phrase from your password manager"
+            onInput={(e) => syncFromPhrase((e.target as HTMLInputElement).value)}
+            style={{ flex: 1, minWidth: 0, border: 'none', outline: 'none', background: 'transparent', fontFamily: 'var(--mono)', fontSize: 13.5, color: 'var(--ink)' }}
+          />
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 180px))', gap: 8, marginTop: 12, flex: 1, minHeight: 0, overflowY: 'auto', alignContent: 'start', justifyContent: 'center' }}>
           {restoreWords.map((w, i) => (
             <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '0 11px', borderRadius: 10, height: 42, background: 'var(--surface)', border: `1px solid ${w ? 'var(--accent)' : 'var(--line)'}` }}>
               <span style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--ink-3)' }}>{String(i + 1).padStart(2, '0')}</span>
@@ -303,7 +325,7 @@ export function Onboarding({ desk, onEnter }: { desk: boolean; onEnter: (mnemoni
                 autocomplete="off"
                 data-1p-ignore
                 data-lpignore="true"
-                onInput={(e) => setRestoreWords((a) => a.map((x, j) => (j === i ? (e.target as HTMLInputElement).value : x)))}
+                onInput={(e) => updateWords(restoreWords.map((x, j) => (j === i ? (e.target as HTMLInputElement).value : x)))}
                 onPaste={(e) => {
                   const tokens = tokenize(e.clipboardData?.getData('text') ?? '');
                   // A multi-word paste spreads across the fields; let a single word fall

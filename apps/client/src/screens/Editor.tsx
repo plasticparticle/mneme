@@ -9,6 +9,8 @@ import type { JournalEntry } from '../sync/engine';
 import { useRichEditor } from '../editor/useRichEditor';
 import { EditorToolbar } from '../editor/Toolbar';
 import { parseBody } from '../editor/doc';
+import { buildSlashCommands, createSlashHandle } from '../editor/slash';
+import { SlashMenu } from '../editor/SlashMenu';
 import { VideoCapture } from '../ui/VideoCapture';
 import { AttachmentList } from '../ui/Attachments';
 import '../editor/editor.css';
@@ -62,9 +64,14 @@ function EntryEditor({
     saveTimer.current = setTimeout(save, SAVE_DEBOUNCE_MS);
   };
 
+  // Stable for the lifetime of this mount (the editor mounts once; keyed by entry.id).
+  const slashHandle = useMemo(createSlashHandle, []);
+  const slashCommands = useMemo(() => buildSlashCommands({ onVideo: () => setCapturing(true) }), []);
+
   const { editor, mountRef } = useRichEditor({
     initial,
     placeholder: 'Begin where you are…',
+    slash: { handle: slashHandle, commands: slashCommands },
     onChange: (c) => {
       body.current = c;
       onWords(countWords(c.text));
@@ -143,6 +150,7 @@ function EntryEditor({
       </div>
 
       <div ref={mountRef} />
+      <SlashMenu handle={slashHandle} />
 
       <AttachmentList entryId={entry.id} attachments={entry.attachments ?? []} />
 

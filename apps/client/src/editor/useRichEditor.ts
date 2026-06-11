@@ -6,6 +6,7 @@ import type { RefObject } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { Editor, type JSONContent } from '@tiptap/core';
 import { buildExtensions, docToText } from './doc';
+import { slashExtension, type SlashCommand, type SlashHandle } from './slash';
 
 export interface RichEditorChange {
   json: string; // serialized ProseMirror doc
@@ -17,6 +18,8 @@ export function useRichEditor(opts: {
   placeholder: string;
   editable?: boolean;
   onChange?: (change: RichEditorChange) => void;
+  /** Enables the "/" command palette; the caller renders <SlashMenu handle={...}>. */
+  slash?: { handle: SlashHandle; commands: SlashCommand[] };
 }): { editor: Editor | null; mountRef: RefObject<HTMLDivElement> } {
   const mountRef = useRef<HTMLDivElement>(null);
   const [editor, setEditor] = useState<Editor | null>(null);
@@ -29,7 +32,10 @@ export function useRichEditor(opts: {
     if (!el) return;
     const instance = new Editor({
       element: el,
-      extensions: buildExtensions(opts.placeholder),
+      extensions: [
+        ...buildExtensions(opts.placeholder),
+        ...(opts.slash ? [slashExtension(opts.slash.handle, opts.slash.commands)] : []),
+      ],
       content: opts.initial,
       editable: opts.editable ?? true,
       editorProps: {

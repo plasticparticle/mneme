@@ -13,17 +13,12 @@ import { buildSlashCommands, createSlashHandle } from '../editor/slash';
 import { SlashMenu } from '../editor/SlashMenu';
 import { VideoCapture } from '../ui/VideoCapture';
 import { AttachmentList } from '../ui/Attachments';
+import { EntryDateTime } from '../ui/EntryDateTime';
 import '../editor/editor.css';
 
 const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const SAVE_DEBOUNCE_MS = 600;
 
-function dateLabel(ts: number): string {
-  return new Date(ts).toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
-}
-function timeLabel(ts: number): string {
-  return new Date(ts).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
-}
 function countWords(text: string): number {
   const t = text.trim();
   return t ? t.split(/\s+/).length : 0;
@@ -133,10 +128,7 @@ function EntryEditor({
       />
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap', margin: '10px 0 16px', color: 'var(--ink-3)' }}>
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-          <Icon name="clock" size={14} color="var(--ink-3)" />
-          <span style={{ fontFamily: 'var(--ui)', fontSize: 13 }}>{dateLabel(entry.createdAt)} · {timeLabel(entry.createdAt)}</span>
-        </span>
+        <EntryDateTime value={entry.createdAt} desk={desk} onChange={(ts) => updateEntry(entry.id, { createdAt: ts })} />
         {journal && (
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
             <span style={{ width: 8, height: 8, borderRadius: 9, background: journal.color }} />

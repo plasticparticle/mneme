@@ -27,7 +27,7 @@ interface AppData {
   journals: Journal[];
   signIn(mnemonic: string): Promise<void>;
   createEntry(input: { journalId: string; title?: string; bodyText?: string; bodyJson?: string; labels?: string[] }): JournalEntry;
-  updateEntry(id: string, patch: { title?: string; bodyText?: string; bodyJson?: string; labels?: string[] }): void;
+  updateEntry(id: string, patch: { title?: string; bodyText?: string; bodyJson?: string; labels?: string[]; createdAt?: number }): void;
   newJournal(j: Journal): void;
   /** Attach a freshly-recorded video to an entry; uploads in the background. */
   addVideo(entryId: string, blob: Blob, durationMs?: number): Promise<MediaAttachment | null>;

@@ -45,8 +45,10 @@ interface BtnProps {
   onClick?: () => void;
   style?: JSX.CSSProperties;
   icon?: IconName;
+  // Explicit default: inside a <form>, a bare <button> would implicitly be type="submit".
+  type?: 'button' | 'submit';
 }
-export function Btn({ children, kind = 'primary', size = 'md', full, onClick, style = {}, icon }: BtnProps): VNode {
+export function Btn({ children, kind = 'primary', size = 'md', full, onClick, style = {}, icon, type = 'button' }: BtnProps): VNode {
   const base: JSX.CSSProperties = {
     display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8,
     fontFamily: 'var(--ui)', fontWeight: 600, cursor: 'pointer', border: '1px solid transparent',
@@ -67,6 +69,7 @@ export function Btn({ children, kind = 'primary', size = 'md', full, onClick, st
   };
   return (
     <button
+      type={type}
       onClick={onClick}
       style={{ ...base, ...sizes[size], ...kinds[kind], ...style }}
       onMouseEnter={(e) => { e.currentTarget.style.filter = 'brightness(.97)'; }}

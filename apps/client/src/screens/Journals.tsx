@@ -143,7 +143,7 @@ function JournalCard({ j, onOpen }: { j: Journal; onOpen: (j: Journal) => void }
   );
 }
 
-export function JournalsScreen({ desk, journals, onOpen, onNew }: { desk: boolean; journals: Journal[]; onOpen: (j: Journal) => void; onNew: () => void }): VNode {
+export function JournalsScreen({ desk, journals, onOpen, onNew, onSearch }: { desk: boolean; journals: Journal[]; onOpen: (j: Journal) => void; onNew: () => void; onSearch: () => void }): VNode {
   if (desk) {
     return (
       <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: 'var(--paper)' }}>
@@ -153,7 +153,7 @@ export function JournalsScreen({ desk, journals, onOpen, onNew }: { desk: boolea
             <p style={{ fontFamily: 'var(--ui)', fontSize: 13.5, color: 'var(--ink-3)', margin: '4px 0 0' }}>{journals.length} notebooks · {journals.reduce((a, b) => a + b.count, 0)} entries · all encrypted</p>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <SearchBar desk />
+            <SearchBar desk onClick={onSearch} />
             <Btn kind="primary" icon="plus" onClick={onNew}>New journal</Btn>
           </div>
         </div>
@@ -211,7 +211,7 @@ export function JournalsScreen({ desk, journals, onOpen, onNew }: { desk: boolea
         <h1 style={{ fontFamily: 'var(--serif)', fontSize: 32, fontWeight: 500, color: 'var(--ink)', margin: '24px 0 2px' }}>Journals</h1>
         <p style={{ fontFamily: 'var(--ui)', fontSize: 13.5, color: 'var(--ink-3)', margin: 0 }}>{journals.length} notebooks · all encrypted on this device</p>
 
-        <div style={{ margin: '18px 0' }}><SearchBar /></div>
+        <div style={{ margin: '18px 0' }}><SearchBar onClick={onSearch} /></div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 11 }}>
           {journals.map((j) => <JournalCard key={j.id} j={j} onOpen={onOpen} />)}
@@ -231,12 +231,12 @@ export function JournalsScreen({ desk, journals, onOpen, onNew }: { desk: boolea
   );
 }
 
-function SearchBar({ desk }: { desk?: boolean }): VNode {
+function SearchBar({ desk, onClick }: { desk?: boolean; onClick: () => void }): VNode {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 9, padding: desk ? '8px 14px' : '11px 14px', borderRadius: 12, background: 'var(--surface)', border: '1px solid var(--line)', width: desk ? 220 : '100%', boxSizing: 'border-box' }}>
+    <button onClick={onClick} style={{ display: 'flex', alignItems: 'center', gap: 9, padding: desk ? '8px 14px' : '11px 14px', borderRadius: 12, background: 'var(--surface)', border: '1px solid var(--line)', width: desk ? 220 : '100%', boxSizing: 'border-box', cursor: 'text', textAlign: 'left' }}>
       <Icon name="search" size={17} color="var(--ink-3)" />
       <span style={{ fontFamily: 'var(--ui)', fontSize: 13.5, color: 'var(--ink-3)' }}>Search all entries</span>
-    </div>
+    </button>
   );
 }
 

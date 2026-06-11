@@ -1,5 +1,5 @@
 import type { VNode } from 'preact';
-import { useState } from 'preact/hooks';
+import { useEffect, useState } from 'preact/hooks';
 import { Icon, type IconName } from './ui/Icon';
 import { Wordmark } from './ui/Wordmark';
 import { ConnectionDot, connLabel } from './ui/primitives';
@@ -11,11 +11,12 @@ import { Onboarding } from './screens/Onboarding';
 import { JournalsScreen, NewJournalSheet } from './screens/Journals';
 import { CalendarScreen } from './screens/Calendar';
 import { EditorScreen } from './screens/Editor';
+import { SearchSheet } from './ui/Search';
 
 type Flow = 'journals' | 'calendar' | 'editor';
 
 // ── DESKTOP sidebar ─────────────────────────────────────────
-function Sidebar({ flow, setFlow, journals, onOpenJournal, dark, toggleDark, status }: {
+function Sidebar({ flow, setFlow, journals, onOpenJournal, dark, toggleDark, status, onSearch }: {
   flow: Flow;
   setFlow: (f: Flow) => void;
   journals: Journal[];
@@ -23,6 +24,7 @@ function Sidebar({ flow, setFlow, journals, onOpenJournal, dark, toggleDark, sta
   dark: boolean;
   toggleDark: () => void;
   status: SyncStatus;
+  onSearch: () => void;
 }): VNode {
   const nav = (key: Flow, icon: IconName, label: string): VNode => {
     const active = flow === key;
@@ -40,6 +42,18 @@ function Sidebar({ flow, setFlow, journals, onOpenJournal, dark, toggleDark, sta
   return (
     <div style={{ width: 238, flexShrink: 0, borderRight: '1px solid var(--line)', background: 'var(--surface-2)', display: 'flex', flexDirection: 'column', padding: '18px 14px' }}>
       <div style={{ padding: '4px 8px 18px' }}><Wordmark size={22} /></div>
+
+      {/* Search field — opens the vault-wide search palette (also ⌘/Ctrl+K). */}
+      <button
+        onClick={onSearch}
+        style={{ display: 'flex', alignItems: 'center', gap: 9, width: '100%', boxSizing: 'border-box', cursor: 'text', padding: '8px 11px', marginBottom: 10, borderRadius: 10, border: '1px solid var(--line)', background: 'var(--surface)', color: 'var(--ink-3)', fontFamily: 'var(--ui)', fontSize: 13.5, textAlign: 'left' }}
+        onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--accent-line)'; }}
+        onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--line)'; }}
+      >
+        <Icon name="search" size={16} />
+        <span style={{ flex: 1 }}>Search</span>
+        <span style={{ fontFamily: 'var(--mono)', fontSize: 10.5, border: '1px solid var(--line)', borderRadius: 6, padding: '1px 5px' }}>⌘K</span>
+      </button>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
         {nav('journals', 'books', 'Journals')}
@@ -86,11 +100,12 @@ function Sidebar({ flow, setFlow, journals, onOpenJournal, dark, toggleDark, sta
 }
 
 // ── MOBILE bottom nav ───────────────────────────────────────
-function MobileNav({ flow, setFlow, onCompose, onSettings }: {
+function MobileNav({ flow, setFlow, onCompose, onSettings, onSearch }: {
   flow: Flow;
   setFlow: (f: Flow) => void;
   onCompose: () => void;
   onSettings: () => void;
+  onSearch: () => void;
 }): VNode {
   const item = (active: boolean, icon: IconName, label: string, onClick: () => void): VNode => (
     <button
@@ -110,7 +125,7 @@ function MobileNav({ flow, setFlow, onCompose, onSettings }: {
           <Icon name="feather" size={24} color="#fff" />
         </button>
       </div>
-      {item(false, 'search', 'Search', () => setFlow('journals'))}
+      {item(false, 'search', 'Search', onSearch)}
       {item(false, 'settings', 'Settings', onSettings)}
     </div>
   );
@@ -122,8 +137,21 @@ export function App(): VNode {
   const { status, entries, journals, newJournal, signIn, createEntry } = useAppData();
   const [flow, setFlowRaw] = useState<Flow>('journals');
   const [modal, setModal] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
   // Which entry the editor is currently editing (null → editor shows its empty state).
   const [openEntryId, setOpenEntryId] = useState<string | null>(null);
+
+  // ⌘/Ctrl+K opens search from anywhere (once unlocked).
+  useEffect(() => {
+    const onKey = (ev: KeyboardEvent): void => {
+      if ((ev.metaKey || ev.ctrlKey) && ev.key.toLowerCase() === 'k') {
+        ev.preventDefault();
+        setSearchOpen(true);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   // Locked until a mnemonic unlocks an in-memory identity (nothing is persisted).
   if (status === 'locked') {
@@ -159,8 +187,13 @@ export function App(): VNode {
   const screen = (() => {
     if (flow === 'calendar') return <CalendarScreen desk={desk} onOpenEntry={(id) => (id ? openEntry(id) : newEntry())} />;
     if (flow === 'editor') return <EditorScreen desk={desk} entryId={openEntryId} onBack={() => setFlow('journals')} onSelectEntry={openEntry} onNew={() => newEntry()} />;
-    return <JournalsScreen desk={desk} journals={journals} onOpen={openJournal} onNew={() => setModal(true)} />;
+    return <JournalsScreen desk={desk} journals={journals} onOpen={openJournal} onNew={() => setModal(true)} onSearch={() => setSearchOpen(true)} />;
   })();
+
+  // A picked result closes the palette and opens the entry in the editor.
+  const searchSheet = searchOpen && (
+    <SearchSheet desk={desk} onClose={() => setSearchOpen(false)} onOpen={(id) => { setSearchOpen(false); openEntry(id); }} />
+  );
 
   const onCreateJournal = (j: Journal) => {
     newJournal(j);
@@ -176,8 +209,9 @@ export function App(): VNode {
   if (desk) {
     return (
       <div style={{ height: '100%', display: 'flex', background: 'var(--paper)', position: 'relative' }}>
-        <Sidebar flow={flow} setFlow={navTo} journals={journals} onOpenJournal={openJournal} dark={dark} toggleDark={toggleDark} status={status} />
+        <Sidebar flow={flow} setFlow={navTo} journals={journals} onOpenJournal={openJournal} dark={dark} toggleDark={toggleDark} status={status} onSearch={() => setSearchOpen(true)} />
         <div style={{ flex: 1, minWidth: 0 }}>{screen}</div>
+        {searchSheet}
         {modal && <NewJournalSheet desk onClose={() => setModal(false)} onCreate={onCreateJournal} />}
       </div>
     );
@@ -188,7 +222,8 @@ export function App(): VNode {
   return (
     <div style={{ height: '100%', position: 'relative', background: 'var(--paper)' }}>
       {screen}
-      {showNav && <MobileNav flow={flow} setFlow={navTo} onCompose={() => newEntry()} onSettings={toggleDark} />}
+      {showNav && <MobileNav flow={flow} setFlow={navTo} onCompose={() => newEntry()} onSettings={toggleDark} onSearch={() => setSearchOpen(true)} />}
+      {searchSheet}
       {modal && <NewJournalSheet desk={false} onClose={() => setModal(false)} onCreate={onCreateJournal} />}
     </div>
   );

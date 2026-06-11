@@ -72,6 +72,19 @@ export const LABELS: Record<string, Label> = {
   dream:      { name: 'dream',      color: '#6A6AA0' }, // indigo
 };
 
+const LABEL_COLORS = Object.values(LABELS).map((l) => l.color);
+
+// Labels are free-form user text; ones outside the predefined palette get a
+// stable color from the same muted set (hash of the name, so every device
+// derives the same color without syncing it).
+export function labelInfo(id: string): Label {
+  const known = LABELS[id];
+  if (known) return known;
+  let h = 0;
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
+  return { name: id, color: LABEL_COLORS[h % LABEL_COLORS.length] };
+}
+
 // `count` and `last` here are placeholders: the live values are derived from real
 // entries in state/data.tsx (journalsWithCounts) and override whatever is set here.
 export const JOURNALS: Journal[] = [

@@ -2,28 +2,26 @@ import type { VNode } from 'preact';
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { Editor } from '@tiptap/core';
 import { Icon } from '../ui/Icon';
-import { LabelChip, SyncBadge, Cover, ConnChip } from '../ui/primitives';
-import { findJournal } from '../data/sample';
+import { SyncBadge, Cover, ConnChip } from '../ui/primitives';
+import { LabelField } from '../ui/LabelField';
+import { findJournal, LABELS } from '../data/sample';
 import { useAppData } from '../state/data';
-import type { JournalEntry } from '../sync/engine';
+import type { JournalEntry, MediaAttachment } from '../sync/engine';
 import { useRichEditor } from '../editor/useRichEditor';
+import { insertMediaAttachment } from '../editor/media';
 import { EditorToolbar } from '../editor/Toolbar';
 import { parseBody } from '../editor/doc';
 import { buildSlashCommands, createSlashHandle } from '../editor/slash';
 import { SlashMenu } from '../editor/SlashMenu';
 import { VideoCapture } from '../ui/VideoCapture';
+import { AudioCapture } from '../ui/AudioCapture';
 import { AttachmentList } from '../ui/Attachments';
+import { EntryDateTime } from '../ui/EntryDateTime';
 import '../editor/editor.css';
 
 const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const SAVE_DEBOUNCE_MS = 600;
 
-function dateLabel(ts: number): string {
-  return new Date(ts).toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
-}
-function timeLabel(ts: number): string {
-  return new Date(ts).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
-}
 function countWords(text: string): number {
   const t = text.trim();
   return t ? t.split(/\s+/).length : 0;
@@ -41,8 +39,8 @@ function EntryEditor({
   onEditorReady: (e: Editor | null) => void;
   onWords: (n: number) => void;
 }): VNode {
-  const { updateEntry, addVideo } = useAppData();
-  const [capturing, setCapturing] = useState(false);
+  const { entries, updateEntry, addMedia, removeMedia, mediaBlob } = useAppData();
+  const [capturing, setCapturing] = useState<'video' | 'audio' | null>(null);
   // Computed once per mount; this component is keyed by entry.id so a different
   // entry remounts it with fresh initial content.
   const initial = useMemo(() => parseBody(entry.bodyJson, entry.bodyText), [entry.id]);
@@ -66,18 +64,39 @@ function EntryEditor({
 
   // Stable for the lifetime of this mount (the editor mounts once; keyed by entry.id).
   const slashHandle = useMemo(createSlashHandle, []);
-  const slashCommands = useMemo(() => buildSlashCommands({ onVideo: () => setCapturing(true) }), []);
+  const slashCommands = useMemo(
+    () => buildSlashCommands({ onVideo: () => setCapturing('video'), onAudio: () => setCapturing('audio') }),
+    [],
+  );
+
+  // Stable per mount (keyed by entry.id): how inline media nodes get their
+  // bytes and how a confirmed delete purges them.
+  const mediaHandlers = useMemo(
+    () => ({
+      resolve: (att: MediaAttachment) => mediaBlob(entry.id, att),
+      onRemoved: (att: MediaAttachment) => removeMedia(att.id),
+    }),
+    [],
+  );
 
   const { editor, mountRef } = useRichEditor({
     initial,
     placeholder: 'Begin where you are…',
     slash: { handle: slashHandle, commands: slashCommands },
+    media: mediaHandlers,
     onChange: (c) => {
       body.current = c;
       onWords(countWords(c.text));
       scheduleSave();
     },
   });
+
+  // Store the recording, then embed it in the document at the cursor; the
+  // entry update rides the normal autosave of the changed document.
+  const attach = async (kind: MediaAttachment['kind'], blob: Blob, durationMs: number): Promise<void> => {
+    const att = await addMedia(entry.id, kind, blob, durationMs);
+    if (att && editor) insertMediaAttachment(editor, att);
+  };
 
   useEffect(() => {
     onEditorReady(editor);
@@ -108,14 +127,28 @@ function EntryEditor({
     scheduleSave();
   };
 
+  // Autocomplete candidates: every label already used across the journal plus
+  // the predefined palette, most-used first. Labels live inside entry bodies —
+  // there is no separate label registry to query.
+  const labelSuggestions = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const e of entries) {
+      if (e.deleted) continue;
+      for (const l of e.labels) counts.set(l, (counts.get(l) ?? 0) + 1);
+    }
+    for (const id of Object.keys(LABELS)) if (!counts.has(id)) counts.set(id, 0);
+    return [...counts.keys()].sort(
+      (a, b) => (counts.get(b) ?? 0) - (counts.get(a) ?? 0) || a.localeCompare(b),
+    );
+  }, [entries]);
+
   return (
     <div>
-      <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
-        {entry.labels.map((l) => <LabelChip key={l} id={l} />)}
-        <button style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: 'var(--ui)', fontSize: 12, fontWeight: 600, color: 'var(--ink-3)', background: 'transparent', border: '1px dashed var(--line)', borderRadius: 999, padding: '3px 9px', cursor: 'pointer' }}>
-          <Icon name="plus" size={13} /> label
-        </button>
-      </div>
+      <LabelField
+        labels={entry.labels}
+        suggestions={labelSuggestions}
+        onChange={(labels) => updateEntry(entry.id, { labels })}
+      />
 
       <textarea
         ref={(el) => { if (el) fitTitle(el); }}
@@ -133,10 +166,7 @@ function EntryEditor({
       />
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap', margin: '10px 0 16px', color: 'var(--ink-3)' }}>
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-          <Icon name="clock" size={14} color="var(--ink-3)" />
-          <span style={{ fontFamily: 'var(--ui)', fontSize: 13 }}>{dateLabel(entry.createdAt)} · {timeLabel(entry.createdAt)}</span>
-        </span>
+        <EntryDateTime value={entry.createdAt} desk={desk} onChange={(ts) => updateEntry(entry.id, { createdAt: ts })} />
         {journal && (
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
             <span style={{ width: 8, height: 8, borderRadius: 9, background: journal.color }} />
@@ -149,13 +179,21 @@ function EntryEditor({
       <div ref={mountRef} />
       <SlashMenu handle={slashHandle} />
 
-      <AttachmentList entryId={entry.id} attachments={entry.attachments ?? []} />
+      {/* Legacy attachments only (pre-inline entries); new recordings are inline nodes. */}
+      <AttachmentList entry={entry} />
 
-      {capturing && (
+      {capturing === 'video' && (
         <VideoCapture
           desk={desk}
-          onClose={() => setCapturing(false)}
-          onCapture={(blob, durationMs) => void addVideo(entry.id, blob, durationMs)}
+          onClose={() => setCapturing(null)}
+          onCapture={(blob, durationMs) => void attach('video', blob, durationMs)}
+        />
+      )}
+      {capturing === 'audio' && (
+        <AudioCapture
+          desk={desk}
+          onClose={() => setCapturing(null)}
+          onCapture={(blob, durationMs) => void attach('audio', blob, durationMs)}
         />
       )}
     </div>

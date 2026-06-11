@@ -1,7 +1,7 @@
 import type { JSX, VNode, ComponentChildren } from 'preact';
 import { Icon, type IconName } from './Icon';
 import { hexA } from './color';
-import { LABELS, type CoverPattern } from '../data/sample';
+import { labelInfo, type CoverPattern } from '../data/sample';
 import { useAppData, type SyncStatus } from '../state/data';
 
 // ── Striped placeholder (for photos) ────────────────────────
@@ -82,9 +82,8 @@ export function Btn({ children, kind = 'primary', size = 'md', full, onClick, st
 }
 
 // ── Label chip ──────────────────────────────────────────────
-export function LabelChip({ id, size = 'md' }: { id: string; size?: 'sm' | 'md' }): VNode | null {
-  const L = LABELS[id];
-  if (!L) return null;
+export function LabelChip({ id, size = 'md', onRemove }: { id: string; size?: 'sm' | 'md'; onRemove?: () => void }): VNode {
+  const L = labelInfo(id);
   const s = size === 'sm';
   return (
     <span
@@ -97,6 +96,22 @@ export function LabelChip({ id, size = 'md' }: { id: string; size?: 'sm' | 'md' 
     >
       <span style={{ width: 6, height: 6, borderRadius: 9, background: L.color }} />
       {L.name}
+      {onRemove && (
+        <button
+          title={`Remove "${L.name}"`}
+          onClick={onRemove}
+          style={{
+            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+            width: 14, height: 14, margin: '0 -3px 0 -1px', padding: 0,
+            background: 'transparent', border: 'none', borderRadius: 999,
+            color: L.color, cursor: 'pointer', opacity: 0.65,
+          }}
+          onMouseEnter={(e) => { e.currentTarget.style.opacity = '1'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.opacity = '0.65'; }}
+        >
+          <Icon name="x" size={s ? 10 : 11} />
+        </button>
+      )}
     </span>
   );
 }
@@ -202,6 +217,42 @@ export function ConnChip({ compact }: { compact?: boolean }): VNode {
       <ConnectionDot status={status} size={8} />
       {!compact && <span>{connLabel(status)}</span>}
     </span>
+  );
+}
+
+// ── Loading indicators ──────────────────────────────────────
+
+/** Inline activity spinner: a rotating ring for "work in progress" states. */
+export function Spinner({ size = 16, color = 'var(--accent)' }: { size?: number; color?: string }): VNode {
+  return (
+    <span
+      class="mneme-spin"
+      style={{
+        width: size, height: size, flexShrink: 0, display: 'inline-block', boxSizing: 'border-box',
+        borderRadius: 999, border: `2px solid ${color}`, borderTopColor: 'transparent',
+      }}
+    />
+  );
+}
+
+/**
+ * First-sync banner: shown while the initial pull after sign-in is still
+ * running, so an empty timeline reads as "still arriving", not "nothing there".
+ */
+export function SyncNotice(): VNode {
+  return (
+    <div
+      style={{
+        display: 'flex', alignItems: 'center', gap: 11, padding: '11px 14px', borderRadius: 12,
+        background: 'var(--accent-soft)', border: '1px solid var(--accent-line)',
+      }}
+    >
+      <Spinner size={16} />
+      <span style={{ fontFamily: 'var(--ui)', fontSize: 12.5, lineHeight: 1.5, color: 'var(--accent-ink)' }}>
+        <strong>Syncing your journal…</strong> Entries are downloaded from the relay and decrypted on this
+        device. They appear as they arrive.
+      </span>
+    </div>
   );
 }
 

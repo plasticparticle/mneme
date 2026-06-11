@@ -46,6 +46,18 @@ func TestProtectedRouteRequiresToken(t *testing.T) {
 	}
 }
 
+func TestDeleteAccountRequiresToken(t *testing.T) {
+	srv := New(nil, nil, testConfig())
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodDelete, "/v1/account", nil)
+
+	srv.Routes().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401 (account deletion must be device-authenticated)", rec.Code)
+	}
+}
+
 func TestDeriveIDDeterministic(t *testing.T) {
 	pub := []byte("a-32-byte-public-key-fixture-xx!")
 	if got, want := deriveID(pub), deriveID(pub); got != want {

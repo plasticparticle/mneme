@@ -106,6 +106,16 @@ The device key is derived from the seed (`info="device"`) rather than generated 
 mnemonic alone fully reconstructs a working device. (Tradeoff: today there is effectively one logical
 device identity per mnemonic; true per-device keys are a later refinement.)
 
+**Phrase rotation (leaked-mnemonic response).** ✅ A mnemonic cannot be changed in place — every key
+and the `owner_id` derive from it — so "Replace recovery phrase" (sidebar/settings) performs a full
+migration (`sync/rotate.ts`): generate a new phrase, re-encrypt every entry and media object under
+the new keys, push them as a brand-new owner, then `DELETE /v1/account` on the old owner. The old
+account is wiped only after the vault is fully stored under the new one; any earlier failure leaves
+it intact, and retrying with the same new phrase is idempotent. After rotation the leaked phrase
+authenticates (TOFU) into an *empty* vault, the old session tokens are dead, and the old per-owner
+local OPFS database is destroyed. Caveat: rotation removes ciphertext going forward — it cannot
+retract copies an attacker already exfiltrated while the old phrase was valid.
+
 ---
 
 ## 5. Authentication & tenant isolation

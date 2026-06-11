@@ -195,6 +195,38 @@ func TestFullFlow(t *testing.T) {
 	noAuth := &client{t: t, base: ts.URL}
 	noAuth.post("/v1/sync/pull", map[string]any{"since": 0}, http.StatusUnauthorized, nil)
 	noAuth.rawGet("/v1/media/"+mediaID+"/chunks/0", http.StatusUnauthorized)
+
+	// 8. Account deletion (the server half of mnemonic rotation): everything the
+	// owner ever stored — and the session that asked — must stop existing.
+	c.do(http.MethodDelete, "/v1/account", nil, http.StatusNoContent, nil)
+	c.post("/v1/sync/pull", map[string]any{"since": 0}, http.StatusUnauthorized, nil) // session cascaded away
+	c.token = ""
+
+	// Re-registering the same keys works (TOFU) and finds a clean slate: no
+	// entries, no media. This is exactly what a leaked-but-rotated phrase sees.
+	c.post("/v1/register", map[string]string{
+		"owner_pubkey":  b64(ownerPub),
+		"device_pubkey": b64(devicePub),
+		"signature":     b64(ed25519.Sign(devicePriv, regMsg)),
+	}, http.StatusOK, &reg)
+	c.post("/v1/auth/challenge", map[string]string{"device_id": reg.DeviceID}, http.StatusOK, &chal)
+	challenge, _ = base64.StdEncoding.DecodeString(chal.Challenge)
+	c.post("/v1/auth/verify", map[string]string{
+		"device_id": reg.DeviceID,
+		"challenge": chal.Challenge,
+		"signature": b64(ed25519.Sign(devicePriv, challenge)),
+	}, http.StatusOK, &verified)
+	c.token = verified.Token
+
+	var afterWipe struct {
+		Entries []json.RawMessage `json:"entries"`
+	}
+	c.post("/v1/sync/pull", map[string]any{"since": 0}, http.StatusOK, &afterWipe)
+	if len(afterWipe.Entries) != 0 {
+		t.Fatalf("entries survived account deletion: %d", len(afterWipe.Entries))
+	}
+	c.do(http.MethodGet, "/v1/media/"+mediaID, nil, http.StatusNotFound, nil)
+	c.rawGet("/v1/media/"+mediaID+"/chunks/0", http.StatusNotFound)
 }
 
 // ── tiny HTTP client ────────────────────────────────────────────────────────

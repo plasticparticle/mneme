@@ -107,6 +107,19 @@ export class RelayClient {
     return new Uint8Array(await res.arrayBuffer());
   }
 
+  /**
+   * Permanently delete the authenticated owner and everything stored for it
+   * (entries, media, reminders, devices, sessions). Used by phrase rotation
+   * after the vault has been re-pushed under the new owner.
+   */
+  async deleteAccount(token: string): Promise<void> {
+    const res = await fetch(`${this.baseUrl}/v1/account`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    await this.check(res);
+  }
+
   private async post<T>(path: string, body: unknown, token?: string): Promise<T> {
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     if (token) headers.Authorization = `Bearer ${token}`;

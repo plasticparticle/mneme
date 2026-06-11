@@ -2,8 +2,9 @@ import type { VNode } from 'preact';
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { Editor } from '@tiptap/core';
 import { Icon } from '../ui/Icon';
-import { LabelChip, SyncBadge, Cover, ConnChip } from '../ui/primitives';
-import { findJournal } from '../data/sample';
+import { SyncBadge, Cover, ConnChip } from '../ui/primitives';
+import { LabelField } from '../ui/LabelField';
+import { findJournal, LABELS } from '../data/sample';
 import { useAppData } from '../state/data';
 import type { JournalEntry } from '../sync/engine';
 import { useRichEditor } from '../editor/useRichEditor';
@@ -36,7 +37,7 @@ function EntryEditor({
   onEditorReady: (e: Editor | null) => void;
   onWords: (n: number) => void;
 }): VNode {
-  const { updateEntry, addVideo } = useAppData();
+  const { entries, updateEntry, addVideo } = useAppData();
   const [capturing, setCapturing] = useState(false);
   // Computed once per mount; this component is keyed by entry.id so a different
   // entry remounts it with fresh initial content.
@@ -103,14 +104,28 @@ function EntryEditor({
     scheduleSave();
   };
 
+  // Autocomplete candidates: every label already used across the journal plus
+  // the predefined palette, most-used first. Labels live inside entry bodies —
+  // there is no separate label registry to query.
+  const labelSuggestions = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const e of entries) {
+      if (e.deleted) continue;
+      for (const l of e.labels) counts.set(l, (counts.get(l) ?? 0) + 1);
+    }
+    for (const id of Object.keys(LABELS)) if (!counts.has(id)) counts.set(id, 0);
+    return [...counts.keys()].sort(
+      (a, b) => (counts.get(b) ?? 0) - (counts.get(a) ?? 0) || a.localeCompare(b),
+    );
+  }, [entries]);
+
   return (
     <div>
-      <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
-        {entry.labels.map((l) => <LabelChip key={l} id={l} />)}
-        <button style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: 'var(--ui)', fontSize: 12, fontWeight: 600, color: 'var(--ink-3)', background: 'transparent', border: '1px dashed var(--line)', borderRadius: 999, padding: '3px 9px', cursor: 'pointer' }}>
-          <Icon name="plus" size={13} /> label
-        </button>
-      </div>
+      <LabelField
+        labels={entry.labels}
+        suggestions={labelSuggestions}
+        onChange={(labels) => updateEntry(entry.id, { labels })}
+      />
 
       <textarea
         ref={(el) => { if (el) fitTitle(el); }}

@@ -1,7 +1,7 @@
 import type { JSX, VNode, ComponentChildren } from 'preact';
 import { Icon, type IconName } from './Icon';
 import { hexA } from './color';
-import { LABELS, type CoverPattern } from '../data/sample';
+import { labelInfo, type CoverPattern } from '../data/sample';
 import { useAppData, type SyncStatus } from '../state/data';
 
 // ── Striped placeholder (for photos) ────────────────────────
@@ -82,9 +82,8 @@ export function Btn({ children, kind = 'primary', size = 'md', full, onClick, st
 }
 
 // ── Label chip ──────────────────────────────────────────────
-export function LabelChip({ id, size = 'md' }: { id: string; size?: 'sm' | 'md' }): VNode | null {
-  const L = LABELS[id];
-  if (!L) return null;
+export function LabelChip({ id, size = 'md', onRemove }: { id: string; size?: 'sm' | 'md'; onRemove?: () => void }): VNode {
+  const L = labelInfo(id);
   const s = size === 'sm';
   return (
     <span
@@ -97,6 +96,22 @@ export function LabelChip({ id, size = 'md' }: { id: string; size?: 'sm' | 'md' 
     >
       <span style={{ width: 6, height: 6, borderRadius: 9, background: L.color }} />
       {L.name}
+      {onRemove && (
+        <button
+          title={`Remove "${L.name}"`}
+          onClick={onRemove}
+          style={{
+            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+            width: 14, height: 14, margin: '0 -3px 0 -1px', padding: 0,
+            background: 'transparent', border: 'none', borderRadius: 999,
+            color: L.color, cursor: 'pointer', opacity: 0.65,
+          }}
+          onMouseEnter={(e) => { e.currentTarget.style.opacity = '1'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.opacity = '0.65'; }}
+        >
+          <Icon name="x" size={s ? 10 : 11} />
+        </button>
+      )}
     </span>
   );
 }

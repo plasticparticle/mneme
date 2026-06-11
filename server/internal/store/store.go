@@ -252,6 +252,15 @@ func (s *Store) GetMedia(ctx context.Context, ownerID, mediaID string) (MediaBlo
 	return m, err
 }
 
+// DeleteMedia removes a media object's index row. Deleting an unknown id is not
+// an error — the client's offline deletion queue retries until acknowledged.
+func (s *Store) DeleteMedia(ctx context.Context, ownerID, mediaID string) error {
+	_, err := s.pool.Exec(ctx,
+		`DELETE FROM media_blobs WHERE owner_id = $1 AND media_id = $2`,
+		ownerID, mediaID)
+	return err
+}
+
 // ── Reminders ───────────────────────────────────────────────────────────────
 
 type Reminder struct {

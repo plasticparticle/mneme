@@ -44,7 +44,38 @@ export const MIGRATIONS: string[] = [
   CREATE INDEX media_entry    ON media(entry_id);
   CREATE INDEX media_unsynced ON media(synced) WHERE synced = 0;
   `,
-  // ── v3 (FUTURE) — FTS5 full-text index (§3 mandates FTS5 for search) ──
+  // ── v3 — entry templates (§5a, §10 step 7) ──
+  // Templates sync as encrypted blobs through the entry oplog (the record kind
+  // lives inside the ciphertext). `builtin` is the predefined-template slug
+  // (NULL for user templates); `pristine` marks an untouched built-in seed —
+  // pristine rows are local-only (never pushed) and get retired when an edited
+  // or deleted copy of the same built-in arrives from another device.
+  `
+  CREATE TABLE templates (
+    id          TEXT PRIMARY KEY,           -- random 128-bit hex, never date-encoded (§3)
+    name        TEXT NOT NULL DEFAULT '',
+    body_text   TEXT NOT NULL DEFAULT '',   -- flattened plaintext (previews)
+    body_json   TEXT,                       -- TipTap/ProseMirror document JSON
+    builtin     TEXT,                       -- built-in slug, NULL for user templates
+    pristine    INTEGER NOT NULL DEFAULT 0, -- 1 → untouched built-in seed (local-only)
+    created_at  INTEGER NOT NULL,           -- ms since epoch
+    updated_at  INTEGER NOT NULL,           -- ms — also the LWW clock (§3)
+    deleted     INTEGER NOT NULL DEFAULT 0,
+    dirty       INTEGER NOT NULL DEFAULT 0  -- 1 → still waiting in the sync outbox
+  );
+  CREATE INDEX templates_dirty ON templates(dirty) WHERE dirty = 1;
+  `,
+  // ── v4 — media tombstones (relay-side deletion queue) ──
+  // A confirmed media delete must also remove the ciphertext from the relay
+  // (DELETE /v1/media/{id}). The id waits here until the relay acknowledges,
+  // so deletions done offline survive reloads — same idea as the dirty flags.
+  `
+  CREATE TABLE media_tombstones (
+    id          TEXT PRIMARY KEY,           -- media id awaiting relay-side deletion
+    created_at  INTEGER NOT NULL            -- ms since epoch (when the user deleted it)
+  );
+  `,
+  // ── v5 (FUTURE) — FTS5 full-text index (§3 mandates FTS5 for search) ──
   // The published wa-sqlite 1.0.0 wasm builds are compiled WITHOUT the FTS5
   // module, so creating this table fails today ("no such module: fts5"). When we
   // ship an FTS5-enabled wasm, append the migration below as a forward-only step

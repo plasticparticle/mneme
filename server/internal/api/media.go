@@ -145,6 +145,41 @@ func (s *Server) handleGetMedia(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// DELETE /v1/media/{id} — remove one media object: the index row first, then a
+// best-effort sweep of its ciphertext chunks (same pattern as account deletion).
+// Idempotent: deleting an id the relay never saw (or already deleted) succeeds,
+// so the client's offline deletion queue can retry safely.
+func (s *Server) handleDeleteMedia(w http.ResponseWriter, r *http.Request) {
+	owner := principalOf(r.Context()).OwnerID
+	mediaID, _, ok := mediaParams(w, r, false)
+	if !ok {
+		return
+	}
+	m, err := s.store.GetMedia(r.Context(), owner, mediaID)
+	if errors.Is(err, store.ErrNotFound) {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "media lookup failed")
+		return
+	}
+	if err := s.store.DeleteMedia(r.Context(), owner, mediaID); err != nil {
+		writeError(w, http.StatusInternalServerError, "media deletion failed")
+		return
+	}
+	// Chunk cleanup after the index row is gone: a failure here only orphans
+	// opaque ciphertext that nothing references anymore.
+	for n := 0; n < m.Chunks; n++ {
+		key := fmt.Sprintf("%s/%d", m.S3Key, n)
+		if err := s.blobs.Delete(r.Context(), key); err != nil &&
+			!errors.Is(err, blobs.ErrNotConfigured) && !errors.Is(err, blobs.ErrNotFound) {
+			log.Printf("media delete: orphaned chunk %s: %v", key, err)
+		}
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // GET /v1/media/{id}/chunks/{n} — download one encrypted chunk.
 func (s *Server) handleGetMediaChunk(w http.ResponseWriter, r *http.Request) {
 	owner := principalOf(r.Context()).OwnerID

@@ -28,6 +28,7 @@ the auth model.
 | POST | `/v1/media/{id}/complete` | ✅ | finalize an upload (record chunk count) |
 | GET | `/v1/media/{id}` | ✅ | media metadata (ciphertext bytes, chunk count) |
 | GET | `/v1/media/{id}/chunks/{n}` | ✅ | download one encrypted media chunk |
+| DELETE | `/v1/media/{id}` | ✅ | delete one media object (index + chunks) |
 | DELETE | `/v1/account` | ✅ | wipe the owner entirely (phrase rotation) |
 
 Errors are `{ "error": "message" }` with an appropriate status (400/401/404/500). CORS preflight
@@ -132,11 +133,18 @@ the relay learns nothing beyond the random id and ciphertext sizes.
 { "media_id": "…", "bytes": 1049892, "chunks": 2 }
 
 // GET /v1/media/{id}/chunks/{n}  →  200 octet-stream (the encrypted chunk)
+
+// DELETE /v1/media/{id}  →  204
 ```
 
 `{id}` must match `[A-Za-z0-9_-]{16,64}` (clients use random 128-bit hex — never date-encoded).
 Without `S3_ENDPOINT` configured the media endpoints answer `503`; clients keep recordings queued
 locally and retry. Re-uploading the same media id is idempotent.
+
+`DELETE` removes the Postgres index row first, then best-effort-deletes the S3 chunks (a failure
+there only orphans ciphertext nothing references). It is **idempotent** — deleting an unknown or
+already-deleted id answers `204` — because clients queue deletions while offline (the local
+`media_tombstones` table) and retry until acknowledged.
 
 ---
 

@@ -3,7 +3,7 @@
 // the JournalEntry shape the rest of the app already speaks. This is the durable
 // local store; the in-memory list in state/data.tsx is a reactive mirror of it.
 import type { DbRequest, DbResponse, SqlParam, SqlValue } from './protocol';
-import type { JournalEntry, MediaAttachment } from '../sync/engine';
+import type { JournalEntry, MediaAttachment, TemplateRecord } from '../sync/engine';
 
 // Distributive omit so each variant of the DbRequest union keeps its own fields
 // (a plain Omit<DbRequest, 'id'> would collapse to just the shared `kind`).
@@ -53,6 +53,46 @@ const UPSERT_SET =
   `title=excluded.title, body_text=excluded.body_text, body_json=excluded.body_json, ` +
   `labels=excluded.labels, attachments=excluded.attachments, deleted=excluded.deleted, dirty=excluded.dirty`;
 
+// ── template rows (schema v3) ──
+
+const TPL_COLS = 'id, name, body_text, body_json, builtin, pristine, created_at, updated_at, deleted, dirty';
+
+function rowToTemplate(r: SqlValue[]): TemplateRecord {
+  return {
+    id: r[0] as string,
+    name: (r[1] as string) ?? '',
+    bodyText: (r[2] as string) ?? '',
+    bodyJson: (r[3] as string | null) ?? undefined,
+    builtin: (r[4] as string | null) ?? undefined,
+    pristine: !!(r[5] as number),
+    createdAt: r[6] as number,
+    updatedAt: r[7] as number,
+    deleted: !!(r[8] as number),
+  };
+}
+
+function templateParams(t: TemplateRecord, dirty: 0 | 1, pristine: 0 | 1): SqlParam[] {
+  return [
+    t.id,
+    t.name ?? '',
+    t.bodyText ?? '',
+    t.bodyJson ?? null,
+    t.builtin ?? null,
+    pristine,
+    t.createdAt,
+    t.updatedAt,
+    t.deleted ? 1 : 0,
+    dirty,
+  ];
+}
+
+const TPL_PLACEHOLDERS = '(?,?,?,?,?,?,?,?,?,?)';
+
+const TPL_UPSERT_SET =
+  `name=excluded.name, body_text=excluded.body_text, body_json=excluded.body_json, ` +
+  `builtin=excluded.builtin, pristine=excluded.pristine, created_at=excluded.created_at, ` +
+  `updated_at=excluded.updated_at, deleted=excluded.deleted, dirty=excluded.dirty`;
+
 // ── media rows (schema v2): plaintext bytes + upload-outbox flag ──
 
 export interface MediaRecord {
@@ -79,6 +119,21 @@ function rowToMedia(r: SqlValue[]): MediaRecord {
     data: (r[6] as Uint8Array | null) ?? null,
     synced: !!(r[7] as number),
   };
+}
+
+/**
+ * Best-effort removal of a per-owner OPFS directory (`mneme/<ownerId>`). After a
+ * phrase rotation the old owner's plaintext DB must not linger on disk — the
+ * rotation exists precisely because that identity may be compromised.
+ */
+export async function destroyOwnerDb(ownerId: string): Promise<void> {
+  try {
+    const root = await navigator.storage.getDirectory();
+    const parent = await root.getDirectoryHandle('mneme');
+    await parent.removeEntry(ownerId, { recursive: true });
+  } catch {
+    /* OPFS unavailable, or the directory never existed */
+  }
 }
 
 export class LocalDb {
@@ -123,6 +178,19 @@ export class LocalDb {
     await this.#send({ kind: 'open', dir: `mneme/${ownerId}`, file: 'journal.db' }).then((r) => {
       if (!r.ok) throw new Error(r.error);
     });
+  }
+
+  /**
+   * Terminate the worker so a different owner's DB can be opened (phrase
+   * rotation re-homes the vault under the new owner_id). In-flight requests
+   * are rejected; call open() again afterwards.
+   */
+  close(): void {
+    this.#worker?.terminate();
+    this.#worker = null;
+    const err = new Error('LocalDb closed');
+    for (const p of this.#pending.values()) p.reject(err);
+    this.#pending.clear();
   }
 
   /** All non-deleted entries, newest first — the timeline seed on unlock. */
@@ -190,6 +258,87 @@ export class LocalDb {
     return rows.map(rowToEntry);
   }
 
+  // ── templates (schema v3) ──
+
+  /** All non-deleted templates, oldest first (built-in seeds before user templates). */
+  async allTemplates(): Promise<TemplateRecord[]> {
+    const rows = await this.#query(
+      `SELECT ${TPL_COLS} FROM templates WHERE deleted = 0 ORDER BY created_at ASC`,
+    );
+    return rows.map(rowToTemplate);
+  }
+
+  /** Total template rows including tombstones — 0 means this device was never seeded. */
+  async templateCount(): Promise<number> {
+    const rows = await this.#query(`SELECT COUNT(*) FROM templates`);
+    return (rows[0]?.[0] as number) ?? 0;
+  }
+
+  /** Templates still awaiting a relay push (rebuilds the outbox after a reload). */
+  async dirtyTemplates(): Promise<TemplateRecord[]> {
+    const rows = await this.#query(`SELECT ${TPL_COLS} FROM templates WHERE dirty = 1`);
+    return rows.map(rowToTemplate);
+  }
+
+  /** A local create/edit/delete: wins on this device, loses pristine, joins the outbox. */
+  async putLocalTemplate(t: TemplateRecord): Promise<void> {
+    await this.#run(
+      `INSERT INTO templates (${TPL_COLS}) VALUES ${TPL_PLACEHOLDERS} ` +
+        `ON CONFLICT(id) DO UPDATE SET ${TPL_UPSERT_SET}`,
+      templateParams(t, 1, 0),
+    );
+  }
+
+  /** Lay down built-in seeds (pristine, non-dirty). Existing rows — tombstones included — win. */
+  async seedTemplates(templates: TemplateRecord[]): Promise<void> {
+    if (!templates.length) return;
+    const statements = templates.map((t) => ({
+      sql: `INSERT OR IGNORE INTO templates (${TPL_COLS}) VALUES ${TPL_PLACEHOLDERS}`,
+      params: templateParams(t, 0, 1),
+    }));
+    const res = await this.#send({ kind: 'batch', statements });
+    if (!res.ok) throw new Error(res.error);
+  }
+
+  /** Merge relay templates under last-write-wins: only newer versions overwrite (§3). */
+  async mergeRemoteTemplates(templates: TemplateRecord[]): Promise<void> {
+    if (!templates.length) return;
+    const statements = templates.map((t) => ({
+      sql:
+        `INSERT INTO templates (${TPL_COLS}) VALUES ${TPL_PLACEHOLDERS} ` +
+        `ON CONFLICT(id) DO UPDATE SET ${TPL_UPSERT_SET} WHERE excluded.updated_at > templates.updated_at`,
+      params: templateParams(t, 0, 0),
+    }));
+    const res = await this.#send({ kind: 'batch', statements });
+    if (!res.ok) throw new Error(res.error);
+  }
+
+  /** Clear the dirty flag for versions the relay acknowledged (precise on updated_at). */
+  async markTemplatesSynced(templates: TemplateRecord[]): Promise<void> {
+    if (!templates.length) return;
+    const statements = templates.map((t) => ({
+      sql: `UPDATE templates SET dirty = 0 WHERE id = ? AND updated_at = ?`,
+      params: [t.id, t.updatedAt] as SqlParam[],
+    }));
+    const res = await this.#send({ kind: 'batch', statements });
+    if (!res.ok) throw new Error(res.error);
+  }
+
+  /**
+   * Hard-delete pristine built-in seeds that another device's edit/delete of the
+   * same built-in has superseded (the seeds were local-only, so no tombstone is
+   * needed — the superseding record itself keeps the slug occupied).
+   */
+  async dropTemplates(ids: string[]): Promise<void> {
+    if (!ids.length) return;
+    const statements = ids.map((id) => ({
+      sql: `DELETE FROM templates WHERE id = ? AND pristine = 1`,
+      params: [id] as SqlParam[],
+    }));
+    const res = await this.#send({ kind: 'batch', statements });
+    if (!res.ok) throw new Error(res.error);
+  }
+
   // ── media (schema v2) ──
 
   /** Store a media row (a fresh recording → synced=false; a download → synced=true). */
@@ -207,6 +356,12 @@ export class LocalDb {
     return rows.length ? rowToMedia(rows[0]) : null;
   }
 
+  /** Every media row, bytes included — used to migrate recordings during phrase rotation. */
+  async allMedia(): Promise<MediaRecord[]> {
+    const rows = await this.#query(`SELECT ${MEDIA_COLS} FROM media`);
+    return rows.map(rowToMedia);
+  }
+
   /** Media rows still awaiting a relay upload (rebuilds the media outbox after a reload). */
   async unsyncedMedia(): Promise<MediaRecord[]> {
     const rows = await this.#query(`SELECT ${MEDIA_COLS} FROM media WHERE synced = 0`);
@@ -216,5 +371,28 @@ export class LocalDb {
   /** Clear the media outbox flag once the relay has the full object. */
   async markMediaSynced(id: string): Promise<void> {
     await this.#run(`UPDATE media SET synced = 1 WHERE id = ?`, [id]);
+  }
+
+  /** Drop a recording's bytes for good (the user confirmed deleting the attachment). */
+  async deleteMedia(id: string): Promise<void> {
+    await this.#run(`DELETE FROM media WHERE id = ?`, [id]);
+  }
+
+  // ── media tombstones (schema v4): relay-side deletion queue ──
+
+  /** Queue a media id for relay-side deletion (survives reloads until acknowledged). */
+  async addMediaTombstone(id: string): Promise<void> {
+    await this.#run(`INSERT OR IGNORE INTO media_tombstones (id, created_at) VALUES (?, ?)`, [id, Date.now()]);
+  }
+
+  /** Media ids still awaiting relay-side deletion (rebuilds the queue after a reload). */
+  async mediaTombstones(): Promise<string[]> {
+    const rows = await this.#query(`SELECT id FROM media_tombstones`);
+    return rows.map((r) => r[0] as string);
+  }
+
+  /** The relay acknowledged the deletion — the tombstone has done its job. */
+  async clearMediaTombstone(id: string): Promise<void> {
+    await this.#run(`DELETE FROM media_tombstones WHERE id = ?`, [id]);
   }
 }

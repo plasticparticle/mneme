@@ -27,15 +27,40 @@ project. Scaffolded so far:
   delivery is still a stub.
 - **Infra** — `docker-compose.yml` (Postgres + MinIO + server), `server/Dockerfile`, `.devcontainer/`.
 
-Media (§10 step 5) is in for **video**: record via `getUserMedia`+MediaRecorder in the editor
-(`ui/VideoCapture.tsx`), chunked XChaCha20 encryption under the media key with per-chunk AAD
+Media (§10 step 5) is in for **video and audio**: record via `getUserMedia`+MediaRecorder in the
+editor (`ui/VideoCapture.tsx`, `ui/AudioCapture.tsx`, inserted via the `/` slash menu; `addMedia`
+in `state/data.tsx`), chunked XChaCha20 encryption under the media key with per-chunk AAD
 (`crypto/media.ts`), local plaintext bytes + upload outbox in the wa-sqlite `media` table (schema v2),
-background upload + lazy cross-device download (`sync/media.ts`, `state/data.tsx`); attachment
-metadata rides inside the encrypted entry body (`MediaAttachment` in `sync/engine.ts`).
+background upload + lazy cross-device download (`sync/media.ts`, `state/data.tsx`). Recordings are
+**inline TipTap nodes** (`editor/media.tsx`, a block atom whose attrs carry the `MediaAttachment`
+metadata inside bodyJson — still inside the encrypted entry body, `sync/engine.ts`); deleting one
+requires an explicit confirmation and then purges the local bytes **and the relay copy**
+(`removeMedia` → `DELETE /v1/media/{id}`, idempotent; queued in the local `media_tombstones`
+table while offline and retried until acknowledged). Entries from before inline media render
+their attachments-array via the legacy `<AttachmentList>` fallback.
+
+**Entry templates** (§10 step 7, private only) are in: predefined seeds + user-created, all
+user-editable/deletable. Templates sync as encrypted blobs **through the entry oplog** — the record
+kind (`kind: 'template'`) lives inside the ciphertext (`sync/engine.ts`), so the relay cannot tell
+templates from entries and **no server changes were needed**. Built-ins (`data/templates.ts`) seed
+once per device as pristine, local-only rows (random ids — a well-known id would leak the record
+type); the first edit/delete makes one a real synced record, and its `builtin` slug lets other
+devices retire their own pristine seed of it (supersede pass in `state/data.tsx` pull). Local store:
+`templates` table (schema v3); rotation carries templates (`sync/rotate.ts`). UI: manager sheet
+(`ui/Templates.tsx`, sidebar "Templates" / mobile settings) with create/edit/rename/delete/use, the
+`/` slash palette inserts a template at the cursor, and the new-journal "Start from" picker is wired
+to live templates. Wire-path check: `scripts/templates-roundtrip.ts` (relay must be running). The
+§5b signed **public** template registry is still not built.
+
+Recovery-phrase **rotation** is in (the "my mnemonic may have leaked" path): `sync/rotate.ts`
+re-encrypts the whole vault (entries + media) under a fresh phrase/owner, then `DELETE /v1/account`
+wipes the old owner server-side (cascade in Postgres + best-effort S3 chunk cleanup) and the old
+per-owner OPFS DB is destroyed locally. UI: "Replace recovery phrase" sheet (`ui/RotatePhrase.tsx`)
+from the desktop sidebar shield / mobile settings sheet. Old account stays intact until the final
+wipe; see docs/SECURITY.md §4 and docs/API.md "Account".
 
 Not yet: FTS5 (blocked on a custom wa-sqlite wasm build), seed at-rest encryption (Argon2id, §6),
-image/audio attachments + inline TipTap media (the rest of step 5), push transport (step 6),
-Tauri shells (step 8).
+image attachments (the rest of step 5), push transport (step 6), Tauri shells (step 8).
 
 ### Frontend design source
 The product visual design is a **handoff bundle from Claude Design** (claude.ai/design), available at:

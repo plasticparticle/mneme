@@ -46,6 +46,18 @@ func TestProtectedRouteRequiresToken(t *testing.T) {
 	}
 }
 
+func TestDeleteMediaRequiresToken(t *testing.T) {
+	srv := New(nil, nil, testConfig())
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodDelete, "/v1/media/0123456789abcdef", nil)
+
+	srv.Routes().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401 (media deletion must be device-authenticated)", rec.Code)
+	}
+}
+
 func TestDeleteAccountRequiresToken(t *testing.T) {
 	srv := New(nil, nil, testConfig())
 	rec := httptest.NewRecorder()

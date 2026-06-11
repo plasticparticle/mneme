@@ -1,6 +1,6 @@
 // Camera modal: live preview → record (MediaRecorder) → review → attach.
 // The captured Blob never leaves this component except via onCapture; encryption
-// and upload happen in the data layer (state/data.tsx addVideo).
+// and upload happen in the data layer (state/data.tsx addMedia).
 import type { VNode } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { Icon } from './Icon';

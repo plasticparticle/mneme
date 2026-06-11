@@ -17,3 +17,7 @@ export function newEntryId(): string {
 export function newMediaId(): string {
   return randomId();
 }
+
+export function newTemplateId(): string {
+  return randomId();
+}

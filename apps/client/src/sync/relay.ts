@@ -108,6 +108,18 @@ export class RelayClient {
   }
 
   /**
+   * Permanently delete one media object (index row + ciphertext chunks).
+   * Idempotent on the relay, so the offline deletion queue can retry safely.
+   */
+  async deleteMedia(token: string, mediaId: string): Promise<void> {
+    const res = await fetch(`${this.baseUrl}/v1/media/${mediaId}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    await this.check(res);
+  }
+
+  /**
    * Permanently delete the authenticated owner and everything stored for it
    * (entries, media, reminders, devices, sessions). Used by phrase rotation
    * after the vault has been re-pushed under the new owner.

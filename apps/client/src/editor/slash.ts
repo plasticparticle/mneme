@@ -2,9 +2,10 @@
 // Built on TipTap's Suggestion utility. The ProseMirror plugin and the
 // Preact-rendered <SlashMenu> talk through a small mutable handle so neither
 // side owns the other's lifecycle (the editor mounts once, outside Preact).
-import { Extension, type Editor, type Range } from '@tiptap/core';
+import { Extension, type Editor, type JSONContent, type Range } from '@tiptap/core';
 import { Suggestion, exitSuggestion, type SuggestionProps } from '@tiptap/suggestion';
 import type { IconName } from '../ui/Icon';
+import type { TemplateRecord } from '../sync/engine';
 
 export interface SlashCommand {
   title: string;
@@ -37,7 +38,9 @@ export function createSlashHandle(): SlashHandle {
   return { listener: null };
 }
 
-export function buildSlashCommands(opts: { onVideo?: () => void } = {}): SlashCommand[] {
+export function buildSlashCommands(
+  opts: { onVideo?: () => void; onAudio?: () => void; templates?: TemplateRecord[] } = {},
+): SlashCommand[] {
   const commands: SlashCommand[] = [
     {
       title: 'Heading 1', hint: 'Large section heading', icon: 'heading', keywords: 'h1 title big',
@@ -85,10 +88,39 @@ export function buildSlashCommands(opts: { onVideo?: () => void } = {}): SlashCo
       },
     });
   }
+  if (opts.onAudio) {
+    commands.push({
+      title: 'Audio', hint: 'Record a voice note', icon: 'mic', keywords: 'voice memo microphone record sound media',
+      run: (e, r) => {
+        e.chain().focus().deleteRange(r).run();
+        opts.onAudio?.();
+      },
+    });
+  }
+  // Entry templates: typing "/" then the template's name drops its blocks in
+  // at the cursor. Tombstoned or body-less templates never make it here.
+  for (const t of opts.templates ?? []) {
+    if (t.deleted) continue;
+    let doc: JSONContent | null = null;
+    try {
+      doc = t.bodyJson ? (JSON.parse(t.bodyJson) as JSONContent) : null;
+    } catch {
+      /* unreadable body — skip the command rather than insert garbage */
+    }
+    const content = doc?.content;
+    if (!content?.length) continue;
+    commands.push({
+      title: t.name || 'Untitled template', hint: 'Insert template', icon: 'copy', keywords: 'template insert',
+      run: (e, r) => e.chain().focus().deleteRange(r).insertContent(content).run(),
+    });
+  }
   return commands;
 }
 
-export function slashExtension(handle: SlashHandle, commands: SlashCommand[]): Extension {
+// `commands` is a getter so the palette always sees the current command list —
+// the editor mounts once, but templates can be created/renamed/deleted while
+// an entry stays open.
+export function slashExtension(handle: SlashHandle, commands: () => SlashCommand[]): Extension {
   return Extension.create({
     name: 'slashCommands',
     addProseMirrorPlugins() {
@@ -105,7 +137,7 @@ export function slashExtension(handle: SlashHandle, commands: SlashCommand[]): E
           command: ({ editor, range, props }) => props.run(editor, range),
           items: ({ query }) => {
             const q = query.trim().toLowerCase();
-            return commands.filter((c) => `${c.title} ${c.keywords}`.toLowerCase().includes(q));
+            return commands().filter((c) => `${c.title} ${c.keywords}`.toLowerCase().includes(q));
           },
           render: () => ({
             onStart: (p) => handle.listener?.show(toState(p)),

@@ -1,5 +1,5 @@
 import type { VNode } from 'preact';
-import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { Editor } from '@tiptap/core';
 import { Icon } from '../ui/Icon';
 import { SyncBadge, Cover, ConnChip } from '../ui/primitives';
@@ -11,7 +11,7 @@ import { useRichEditor } from '../editor/useRichEditor';
 import { insertMediaAttachment } from '../editor/media';
 import { EditorToolbar } from '../editor/Toolbar';
 import { parseBody } from '../editor/doc';
-import { buildSlashCommands, createSlashHandle } from '../editor/slash';
+import { buildSlashCommands, createSlashHandle, type SlashCommand } from '../editor/slash';
 import { SlashMenu } from '../editor/SlashMenu';
 import { VideoCapture } from '../ui/VideoCapture';
 import { AudioCapture } from '../ui/AudioCapture';
@@ -39,7 +39,7 @@ function EntryEditor({
   onEditorReady: (e: Editor | null) => void;
   onWords: (n: number) => void;
 }): VNode {
-  const { entries, updateEntry, addMedia, removeMedia, mediaBlob } = useAppData();
+  const { entries, templates, updateEntry, addMedia, removeMedia, mediaBlob } = useAppData();
   const [capturing, setCapturing] = useState<'video' | 'audio' | null>(null);
   // Computed once per mount; this component is keyed by entry.id so a different
   // entry remounts it with fresh initial content.
@@ -64,10 +64,14 @@ function EntryEditor({
 
   // Stable for the lifetime of this mount (the editor mounts once; keyed by entry.id).
   const slashHandle = useMemo(createSlashHandle, []);
-  const slashCommands = useMemo(
-    () => buildSlashCommands({ onVideo: () => setCapturing('video'), onAudio: () => setCapturing('audio') }),
-    [],
+  // Commands rebuild when templates change, but the editor reads them through a
+  // stable getter — the "/" palette stays current without remounting the editor.
+  const slashCommands = useRef<SlashCommand[]>([]);
+  slashCommands.current = useMemo(
+    () => buildSlashCommands({ onVideo: () => setCapturing('video'), onAudio: () => setCapturing('audio'), templates }),
+    [templates],
   );
+  const getSlashCommands = useCallback(() => slashCommands.current, []);
 
   // Stable per mount (keyed by entry.id): how inline media nodes get their
   // bytes and how a confirmed delete purges them.
@@ -82,7 +86,7 @@ function EntryEditor({
   const { editor, mountRef } = useRichEditor({
     initial,
     placeholder: 'Begin where you are…',
-    slash: { handle: slashHandle, commands: slashCommands },
+    slash: { handle: slashHandle, commands: getSlashCommands },
     media: mediaHandlers,
     onChange: (c) => {
       body.current = c;

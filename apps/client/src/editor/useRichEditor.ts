@@ -7,6 +7,7 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import { Editor, type JSONContent } from '@tiptap/core';
 import { buildExtensions, docToText } from './doc';
 import { slashExtension, type SlashCommand, type SlashHandle } from './slash';
+import { mediaAttachmentNode, type MediaNodeHandlers } from './media';
 
 export interface RichEditorChange {
   json: string; // serialized ProseMirror doc
@@ -18,8 +19,11 @@ export function useRichEditor(opts: {
   placeholder: string;
   editable?: boolean;
   onChange?: (change: RichEditorChange) => void;
-  /** Enables the "/" command palette; the caller renders <SlashMenu handle={...}>. */
-  slash?: { handle: SlashHandle; commands: SlashCommand[] };
+  /** Enables the "/" command palette; the caller renders <SlashMenu handle={...}>.
+   * `commands` is a getter so the list can change while the editor stays mounted. */
+  slash?: { handle: SlashHandle; commands: () => SlashCommand[] };
+  /** Enables inline mediaAttachment nodes (required to open docs containing them). */
+  media?: MediaNodeHandlers;
 }): { editor: Editor | null; mountRef: RefObject<HTMLDivElement> } {
   const mountRef = useRef<HTMLDivElement>(null);
   const [editor, setEditor] = useState<Editor | null>(null);
@@ -35,6 +39,7 @@ export function useRichEditor(opts: {
       extensions: [
         ...buildExtensions(opts.placeholder),
         ...(opts.slash ? [slashExtension(opts.slash.handle, opts.slash.commands)] : []),
+        ...(opts.media ? [mediaAttachmentNode(opts.media)] : []),
       ],
       content: opts.initial,
       editable: opts.editable ?? true,

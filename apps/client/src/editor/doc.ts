@@ -50,6 +50,8 @@ export function docToText(doc: JSONContent): string {
   const out: string[] = [];
   const walk = (node: JSONContent): void => {
     if (node.type === 'text' && node.text) out.push(node.text);
+    // Inline media has no text content; give previews/search a small marker.
+    if (node.type === 'mediaAttachment') out.push(node.attrs?.kind === 'audio' ? '🎙 audio' : '🎬 video');
     if (node.content) node.content.forEach(walk);
     // Block-level nodes get a separating newline so previews read naturally.
     if (node.type && node.type !== 'text' && node.type !== 'doc') out.push('\n');

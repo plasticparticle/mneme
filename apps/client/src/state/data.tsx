@@ -8,12 +8,14 @@ import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'p
 import { RelayClient, RelayError, defaultRelayUrl } from '../sync/relay';
 import { authenticate, identityFromMnemonic, type Session } from '../sync/identity';
 import type { Identity } from '../crypto/keys';
-import { pushEntries, pullEntries, type JournalEntry, type MediaAttachment } from '../sync/engine';
+import { pushEntries, pushTemplates, pullEntries, type JournalEntry, type MediaAttachment, type TemplateRecord } from '../sync/engine';
 import { uploadMedia, downloadMedia } from '../sync/media';
-import { newEntryId, newMediaId } from '../sync/ids';
+import { rotateAccount, type RotationProgress } from '../sync/rotate';
+import { newEntryId, newMediaId, newTemplateId } from '../sync/ids';
 import { ENTRIES, JOURNALS, OPEN_ENTRY, type Journal } from '../data/sample';
+import { seedBuiltinTemplates } from '../data/templates';
 import { blocksToDoc, textToDoc, docToText } from '../editor/doc';
-import { LocalDb, type MediaRecord } from '../db';
+import { LocalDb, destroyOwnerDb, type MediaRecord } from '../db';
 
 export type SyncStatus = 'locked' | 'connecting' | 'online' | 'offline';
 
@@ -23,16 +25,42 @@ interface AppData {
   pendingCount: number;
   // True while a push to the relay is in flight.
   saving: boolean;
+  // True from sign-in until the first sync attempt finishes (pull done or
+  // offline). While set, an empty timeline means "still arriving" — screens
+  // show a syncing notice instead of an empty state.
+  bootstrapping: boolean;
   entries: JournalEntry[];
   journals: Journal[];
+  // Entry templates — built-in seeds and user-created records alike, tombstones
+  // included (callers filter on `deleted`).
+  templates: TemplateRecord[];
   signIn(mnemonic: string): Promise<void>;
   createEntry(input: { journalId: string; title?: string; bodyText?: string; bodyJson?: string; labels?: string[] }): JournalEntry;
-  updateEntry(id: string, patch: { title?: string; bodyText?: string; bodyJson?: string; labels?: string[] }): void;
+  updateEntry(id: string, patch: { title?: string; bodyText?: string; bodyJson?: string; labels?: string[]; createdAt?: number; attachments?: MediaAttachment[] }): void;
   newJournal(j: Journal): void;
-  /** Attach a freshly-recorded video to an entry; uploads in the background. */
-  addVideo(entryId: string, blob: Blob, durationMs?: number): Promise<MediaAttachment | null>;
+  createTemplate(input: { name: string; bodyText?: string; bodyJson?: string }): TemplateRecord;
+  updateTemplate(id: string, patch: { name?: string; bodyText?: string; bodyJson?: string }): void;
+  /** Tombstones the template (built-ins included) so the deletion reaches other devices. */
+  deleteTemplate(id: string): void;
+  /**
+   * Persist a freshly-recorded clip locally and queue its background upload.
+   * Returns the attachment metadata for the caller to embed in the entry
+   * document (the editor inserts it as an inline node in bodyJson).
+   */
+  addMedia(entryId: string, kind: MediaAttachment['kind'], blob: Blob, durationMs?: number): Promise<MediaAttachment | null>;
+  /**
+   * After the user confirmed deleting a recording: purge its local bytes +
+   * upload-queue slot and delete it from the relay (queued durably if offline).
+   */
+  removeMedia(mediaId: string): void;
   /** Resolve an attachment to playable bytes: local DB first, then relay download. */
   mediaBlob(entryId: string, att: MediaAttachment): Promise<Blob | null>;
+  /**
+   * Replace the recovery phrase: re-encrypt the vault under `newMnemonic` (a new
+   * owner), wipe the old account from the relay, and re-home local state. Throws
+   * (with the old account fully intact) if anything fails before the wipe.
+   */
+  rotatePhrase(newMnemonic: string, onProgress?: (p: RotationProgress) => void): Promise<void>;
 }
 
 const Ctx = createContext<AppData | null>(null);
@@ -71,7 +99,7 @@ function seedEntries(): JournalEntry[] {
   });
 }
 
-function mergeByLWW(prev: JournalEntry[], incoming: JournalEntry[]): JournalEntry[] {
+function mergeByLWW<T extends { id: string; updatedAt: number }>(prev: T[], incoming: T[]): T[] {
   const byId = new Map(prev.map((e) => [e.id, e]));
   for (const e of incoming) {
     const cur = byId.get(e.id);
@@ -114,8 +142,10 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
   const [status, setStatus] = useState<SyncStatus>('locked');
   const [pendingCount, setPendingCount] = useState(0);
   const [saving, setSaving] = useState(false);
+  const [bootstrapping, setBootstrapping] = useState(false);
   const [entries, setEntries] = useState<JournalEntry[]>([]);
   const [journals, setJournals] = useState<Journal[]>(JOURNALS);
+  const [templates, setTemplates] = useState<TemplateRecord[]>([]);
 
   const session = useRef<Session | null>(null);
   // Kept after sign-in so the background loop can re-authenticate without the mnemonic.
@@ -125,22 +155,37 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
   const dbReady = useRef(false);
   const cursor = useRef(0);
   const pending = useRef<Map<string, JournalEntry>>(new Map());
+  // Template outbox: created/edited/tombstoned templates not yet on the relay.
+  const pendingTemplates = useRef<Map<string, TemplateRecord>>(new Map());
   // Media upload outbox: recordings (with bytes) not yet fully on the relay.
   const pendingMedia = useRef<Map<string, MediaRecord>>(new Map());
+  // Media deletion queue: confirmed deletes the relay hasn't acknowledged yet
+  // (mirrored in the media_tombstones table so they survive reloads).
+  const pendingMediaDeletes = useRef<Set<string>>(new Set());
   const mediaFlushing = useRef(false);
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Mirror the (mutable) outbox depth into reactive state so the UI can react.
   const syncPendingCount = useCallback(
-    () => setPendingCount(pending.current.size + pendingMedia.current.size),
+    () =>
+      setPendingCount(
+        pending.current.size +
+          pendingTemplates.current.size +
+          pendingMedia.current.size +
+          pendingMediaDeletes.current.size,
+      ),
     [],
   );
 
-  // Upload queued recordings one media object at a time (chunked inside uploadMedia).
-  // Runs after the entry flush so the attachment metadata usually lands first.
+  // Upload queued recordings one media object at a time (chunked inside uploadMedia),
+  // then push queued deletions. Runs after the entry flush so the attachment
+  // metadata usually lands first. Uploads strictly before deletions: a recording
+  // deleted while its upload was already snapshotted gets uploaded, then removed
+  // by its tombstone — never resurrected the other way around.
   const flushMedia = useCallback(async () => {
     const s = session.current;
-    if (!s || mediaFlushing.current || pendingMedia.current.size === 0) return;
+    if (!s || mediaFlushing.current) return;
+    if (pendingMedia.current.size === 0 && pendingMediaDeletes.current.size === 0) return;
     mediaFlushing.current = true;
     try {
       for (const rec of [...pendingMedia.current.values()]) {
@@ -151,6 +196,12 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
         await uploadMedia(relay, s.token, s.identity.mediaKey, rec.id, rec.data);
         pendingMedia.current.delete(rec.id);
         if (dbReady.current) void db.markMediaSynced(rec.id);
+        syncPendingCount();
+      }
+      for (const id of [...pendingMediaDeletes.current]) {
+        await relay.deleteMedia(s.token, id); // idempotent on the relay
+        pendingMediaDeletes.current.delete(id);
+        if (dbReady.current) void db.clearMediaTombstone(id);
         syncPendingCount();
       }
     } catch (e) {
@@ -165,17 +216,21 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
   const flush = useCallback(async () => {
     const s = session.current;
     if (!s) return;
-    if (pending.current.size === 0) {
-      void flushMedia(); // no dirty entries, but recordings may still be queued
+    if (pending.current.size === 0 && pendingTemplates.current.size === 0) {
+      void flushMedia(); // no dirty records, but recordings may still be queued
       return;
     }
     const batch = [...pending.current.values()];
+    const tplBatch = [...pendingTemplates.current.values()];
     setSaving(true);
     try {
       const applied = await pushEntries(relay, s.token, s.identity.dataKey, batch);
       for (const id of applied) pending.current.delete(id);
       // Clear the dirty flag locally for exactly the versions the relay accepted.
       if (dbReady.current) void db.markSynced(batch.filter((e) => applied.has(e.id)));
+      const appliedTpl = await pushTemplates(relay, s.token, s.identity.dataKey, tplBatch);
+      for (const id of appliedTpl) pendingTemplates.current.delete(id);
+      if (dbReady.current) void db.markTemplatesSynced(tplBatch.filter((t) => appliedTpl.has(t.id)));
       syncPendingCount();
       setStatus('online');
     } catch {
@@ -196,6 +251,22 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
         setEntries((prev) => mergeByLWW(prev, res.entries));
         // Persist the merge (the DB enforces the same LWW guard before overwriting).
         if (dbReady.current) void db.mergeRemote(res.entries);
+      }
+      if (res.templates.length) {
+        if (dbReady.current) void db.mergeRemoteTemplates(res.templates);
+        setTemplates((prev) => {
+          const merged = mergeByLWW(prev, res.templates);
+          // A synced copy of a built-in (someone edited or deleted it on another
+          // device) retires this device's untouched seed of the same built-in —
+          // the two carry different random ids, so LWW alone can't pair them.
+          const syncedSlugs = new Set(res.templates.filter((t) => t.builtin).map((t) => t.builtin));
+          const superseded = new Set(
+            merged.filter((t) => t.pristine && t.builtin && syncedSlugs.has(t.builtin)).map((t) => t.id),
+          );
+          if (superseded.size === 0) return merged;
+          if (dbReady.current) void db.dropTemplates([...superseded]);
+          return merged.filter((t) => !superseded.has(t.id));
+        });
       }
       setStatus('online');
     } catch {
@@ -227,6 +298,11 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
 
   const signIn = useCallback(
     async (mnemonic: string) => {
+      // Leave the onboarding screen immediately: deriving keys, loading the
+      // SQLite wasm, and the first relay sync all take visible time — the app
+      // shell shows "connecting" + the first-sync notice instead of freezing.
+      setStatus('connecting');
+      setBootstrapping(true);
       const id = identityFromMnemonic(mnemonic); // local, synchronous
       identity.current = id;
       try {
@@ -241,16 +317,34 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
           await db.mergeRemote(local);
         }
         setEntries([...local].sort((a, b) => b.updatedAt - a.updatedAt));
+        // Templates: first run on this device (no rows at all, tombstones
+        // included) lays down the built-in seeds — pristine + non-dirty, so
+        // they stay local until the user makes one their own.
+        let localTpl = await db.allTemplates();
+        if ((await db.templateCount()) === 0) {
+          localTpl = seedBuiltinTemplates(Date.now());
+          await db.seedTemplates(localTpl);
+        }
+        setTemplates(localTpl);
         // Rebuild the outboxes from work left unsynced by a previous offline session.
         for (const e of await db.dirtyEntries()) pending.current.set(e.id, e);
+        for (const t of await db.dirtyTemplates()) pendingTemplates.current.set(t.id, t);
         for (const m of await db.unsyncedMedia()) pendingMedia.current.set(m.id, m);
+        for (const id of await db.mediaTombstones()) pendingMediaDeletes.current.add(id);
         syncPendingCount();
       } catch {
         // OPFS unavailable: run in-memory only (no persistence this session).
         dbReady.current = false;
         setEntries((prev) => (prev.length ? prev : seedEntries()));
+        setTemplates((prev) => (prev.length ? prev : seedBuiltinTemplates(Date.now())));
       }
-      await connect(true);
+      try {
+        await connect(true);
+      } finally {
+        // First sync attempt is over (pulled, or definitively offline) — empty
+        // journals now mean "empty", no longer "still arriving".
+        setBootstrapping(false);
+      }
     },
     [db, connect, syncPendingCount],
   );
@@ -299,18 +393,80 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
     setJournals((prev) => [...prev, j]);
   }, []);
 
-  // Attach a recording: bytes go to the local DB + media outbox; the attachment
-  // metadata rides inside the (encrypted) entry body so other devices learn the
-  // media id. The relay only ever sees that random id and ciphertext chunks.
-  const addVideo: AppData['addVideo'] = useCallback(
-    async (entryId, blob, durationMs) => {
+  const createTemplate: AppData['createTemplate'] = useCallback(
+    (input) => {
+      const now = Date.now();
+      const t: TemplateRecord = {
+        id: newTemplateId(),
+        name: input.name,
+        bodyText: input.bodyText ?? '',
+        bodyJson: input.bodyJson,
+        createdAt: now,
+        updatedAt: now,
+      };
+      setTemplates((prev) => mergeByLWW(prev, [t]));
+      if (dbReady.current) void db.putLocalTemplate(t);
+      pendingTemplates.current.set(t.id, t);
+      syncPendingCount();
+      void flush();
+      return t;
+    },
+    [db, flush, syncPendingCount],
+  );
+
+  const updateTemplate: AppData['updateTemplate'] = useCallback(
+    (id, patch) => {
+      const now = Date.now();
+      setTemplates((prev) => {
+        const cur = prev.find((t) => t.id === id);
+        if (!cur) return prev;
+        // The first edit of a built-in seed turns it into a real synced record
+        // (pristine is cleared); the builtin slug rides along so other devices
+        // retire their own seed of it.
+        const next: TemplateRecord = { ...cur, ...patch, pristine: false, updatedAt: now };
+        if (dbReady.current) void db.putLocalTemplate(next);
+        pendingTemplates.current.set(id, next);
+        syncPendingCount();
+        void flush();
+        return mergeByLWW(prev, [next]);
+      });
+    },
+    [db, flush, syncPendingCount],
+  );
+
+  const deleteTemplate: AppData['deleteTemplate'] = useCallback(
+    (id) => {
+      const now = Date.now();
+      setTemplates((prev) => {
+        const cur = prev.find((t) => t.id === id);
+        if (!cur) return prev;
+        // Tombstone rather than drop: the deletion must out-sync other devices'
+        // copies — and, via the builtin slug, their pristine seeds too.
+        const next: TemplateRecord = { ...cur, deleted: true, pristine: false, updatedAt: now };
+        if (dbReady.current) void db.putLocalTemplate(next);
+        pendingTemplates.current.set(id, next);
+        syncPendingCount();
+        void flush();
+        return mergeByLWW(prev, [next]);
+      });
+    },
+    [db, flush, syncPendingCount],
+  );
+
+  // Store a recording: bytes go to the local DB + media outbox. The attachment
+  // metadata is returned for the editor to embed as an inline node in the entry
+  // document (bodyJson), which rides inside the encrypted entry body — so other
+  // devices learn the media id while the relay only ever sees that random id
+  // and ciphertext chunks.
+  const addMedia: AppData['addMedia'] = useCallback(
+    async (entryId, kind, blob, durationMs) => {
       const data = new Uint8Array(await blob.arrayBuffer());
       if (data.length === 0) return null;
       const now = Date.now();
       const att: MediaAttachment = {
         id: newMediaId(),
-        kind: 'video',
-        mime: blob.type || 'video/webm',
+        kind,
+        mime: blob.type || (kind === 'audio' ? 'audio/webm' : 'video/webm'),
         bytes: data.length,
         durationMs,
         createdAt: now,
@@ -327,21 +483,29 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
       };
       if (dbReady.current) void db.putMedia(rec);
       pendingMedia.current.set(rec.id, rec);
-      let attached = false;
-      setEntries((prev) => {
-        const cur = prev.find((e) => e.id === entryId);
-        if (!cur) return prev;
-        attached = true;
-        const next: JournalEntry = { ...cur, attachments: [...(cur.attachments ?? []), att], updatedAt: now };
-        if (dbReady.current) void db.putLocal(next);
-        pending.current.set(entryId, next);
-        return mergeByLWW(prev, [next]);
-      });
       syncPendingCount();
       void flush();
-      return attached ? att : null;
+      return att;
     },
     [db, flush, syncPendingCount],
+  );
+
+  // Permanent deletion (the caller has already removed the entry's reference
+  // and shown the "cannot be undone" confirmation): purge the local bytes and
+  // queue the relay-side delete (DELETE /v1/media/{id}). The tombstone persists
+  // until the relay acknowledges, so deletes made offline still happen later.
+  const removeMedia: AppData['removeMedia'] = useCallback(
+    (mediaId) => {
+      pendingMedia.current.delete(mediaId);
+      pendingMediaDeletes.current.add(mediaId);
+      if (dbReady.current) {
+        void db.deleteMedia(mediaId).catch(() => undefined);
+        void db.addMediaTombstone(mediaId).catch(() => undefined);
+      }
+      syncPendingCount();
+      void flushMedia(); // reach the relay now if we're online
+    },
+    [db, syncPendingCount, flushMedia],
   );
 
   // Resolve attachment bytes for playback: outbox → local DB → relay download
@@ -376,6 +540,82 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
       }
     },
     [db, relay],
+  );
+
+  // Replace the recovery phrase (sync/rotate.ts). The rotation sheet blocks edits
+  // while this runs; flipping to 'connecting' first tears down the background
+  // interval so no flush/pull races the migration against the old account.
+  const rotatePhrase: AppData['rotatePhrase'] = useCallback(
+    async (newMnemonic, onProgress) => {
+      const s = session.current;
+      if (!s) throw new Error('not signed in');
+      setStatus('connecting');
+      try {
+        const oldOwnerId = s.ownerId;
+        const localMedia = dbReady.current
+          ? await db.allMedia().catch(() => [...pendingMedia.current.values()])
+          : [...pendingMedia.current.values()];
+        const mediaById = new Map(localMedia.map((m) => [m.id, m]));
+
+        const result = await rotateAccount({
+          relay,
+          old: s,
+          newMnemonic,
+          localDirty: [...pending.current.values()],
+          localDirtyTemplates: [...pendingTemplates.current.values()],
+          localMediaBytes: (id) => Promise.resolve(mediaById.get(id)?.data ?? null),
+          onProgress,
+        });
+
+        // The vault now lives under the new owner: swap the in-memory identity.
+        identity.current = result.session.identity;
+        session.current = result.session;
+        cursor.current = 0;
+        pending.current.clear();
+        pendingTemplates.current.clear();
+        pendingMedia.current.clear();
+
+        // Everything the relay holds lands non-dirty; local-only rows (e.g. the
+        // sample timeline and pristine template seeds) move across unchanged.
+        const all = mergeByLWW(entries, result.entries);
+        const allTpl = mergeByLWW(templates, result.templates);
+
+        // Re-home the local DB under the new owner_id, then destroy the old
+        // per-owner directory — it holds plaintext under a possibly-leaked identity.
+        if (dbReady.current) {
+          db.close();
+          try {
+            await db.open(result.session.ownerId);
+            await db.mergeRemote(all);
+            // Seeds keep their pristine/local-only standing; everything else
+            // is on the new relay account already, so it lands non-dirty.
+            await db.seedTemplates(allTpl.filter((t) => t.pristine));
+            await db.mergeRemoteTemplates(allTpl.filter((t) => !t.pristine));
+          } catch {
+            dbReady.current = false;
+          }
+          void destroyOwnerDb(oldOwnerId);
+        }
+        for (const m of localMedia) {
+          const rec: MediaRecord = { ...m, synced: result.uploadedMedia.has(m.id) };
+          if (dbReady.current) void db.putMedia(rec);
+          // Recordings the relay couldn't take (e.g. no object store) re-enter
+          // the outbox and upload to the new account when it becomes possible.
+          if (!rec.synced && rec.data) pendingMedia.current.set(rec.id, rec);
+        }
+
+        setEntries(all);
+        setTemplates(allTpl);
+        syncPendingCount();
+        setStatus('online'); // re-arms the background loop against the new account
+      } catch (e) {
+        // Failed before the wipe: the old account is intact. The reconnect loop
+        // re-authenticates the (unchanged) identity on its own.
+        setStatus('offline');
+        throw e;
+      }
+    },
+    [relay, db, entries, templates, syncPendingCount],
   );
 
   // Background loop. While online: periodic flush + pull. While offline: retry the
@@ -416,6 +656,6 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
     });
   }, [journals, entries]);
 
-  const value: AppData = { status, pendingCount, saving, entries, journals: journalsWithCounts, signIn, createEntry, updateEntry, newJournal, addVideo, mediaBlob };
+  const value: AppData = { status, pendingCount, saving, bootstrapping, entries, journals: journalsWithCounts, templates, signIn, createEntry, updateEntry, newJournal, createTemplate, updateTemplate, deleteTemplate, addMedia, removeMedia, mediaBlob, rotatePhrase };
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

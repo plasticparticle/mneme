@@ -115,9 +115,6 @@ function EntryEditor({
         <button style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: 'var(--ui)', fontSize: 12, fontWeight: 600, color: 'var(--ink-3)', background: 'transparent', border: '1px dashed var(--line)', borderRadius: 999, padding: '3px 9px', cursor: 'pointer' }}>
           <Icon name="plus" size={13} /> label
         </button>
-        <button onClick={() => setCapturing(true)} style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontFamily: 'var(--ui)', fontSize: 12, fontWeight: 600, color: 'var(--ink-3)', background: 'transparent', border: '1px dashed var(--line)', borderRadius: 999, padding: '3px 9px', cursor: 'pointer' }}>
-          <Icon name="video" size={13} /> video
-        </button>
       </div>
 
       <textarea

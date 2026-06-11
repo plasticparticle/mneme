@@ -1,18 +1,31 @@
 import type { VNode, ComponentChildren } from 'preact';
 import { useState } from 'preact/hooks';
 import { Icon } from '../ui/Icon';
-import { Btn, Cover, ConnChip } from '../ui/primitives';
+import { Btn, Cover, ConnChip, SyncNotice } from '../ui/primitives';
 import { hexA } from '../ui/color';
 import type { CoverPattern, Journal } from '../data/sample';
+import type { TemplateRecord } from '../sync/engine';
 
 const JCOLORS = ['#B0563A', '#4E8B85', '#6A6AA0', '#B08A2E', '#5A7BA6', '#6E8B5E', '#8E6A93', '#C06A4A'];
 const JCOVERS: CoverPattern[] = ['lines', 'dots', 'grid', 'plain', 'photo'];
 
-export function NewJournalSheet({ desk, onClose, onCreate }: { desk: boolean; onClose: () => void; onCreate: (j: Journal) => void }): VNode {
+export function NewJournalSheet({
+  desk,
+  templates,
+  onClose,
+  onCreate,
+}: {
+  desk: boolean;
+  /** Live (non-deleted) entry templates for the "Start from" picker. */
+  templates: TemplateRecord[];
+  onClose: () => void;
+  /** `template` set → also start the journal's first entry from it. */
+  onCreate: (j: Journal, template?: TemplateRecord) => void;
+}): VNode {
   const [name, setName] = useState('');
   const [color, setColor] = useState(JCOLORS[1]);
   const [cover, setCover] = useState<CoverPattern>('lines');
-  const [tpl, setTpl] = useState('blank');
+  const [tpl, setTpl] = useState('blank'); // template id, or 'blank'
   const draft: Journal = { id: 'new', name: name || 'Untitled journal', subtitle: 'New journal', color, cover, count: 0, last: 'Just now' };
 
   const body = (
@@ -60,13 +73,13 @@ export function NewJournalSheet({ desk, onClose, onCreate }: { desk: boolean; on
 
       <Field label="Start from">
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          {([['blank', 'Blank'], ['daily', 'Daily prompt'], ['gratitude', 'Three things'], ['dream', 'Dream log']] as const).map(([k, l]) => (
+          {[{ id: 'blank', label: 'Blank' }, ...templates.map((t) => ({ id: t.id, label: t.name || 'Untitled template' }))].map(({ id, label }) => (
             <button
-              key={k}
-              onClick={() => setTpl(k)}
-              style={{ fontFamily: 'var(--ui)', fontSize: 13, fontWeight: 600, padding: '8px 13px', borderRadius: 999, cursor: 'pointer', background: tpl === k ? 'var(--accent-soft)' : 'var(--surface)', color: tpl === k ? 'var(--accent-ink)' : 'var(--ink-2)', border: `1px solid ${tpl === k ? 'var(--accent)' : 'var(--line)'}` }}
+              key={id}
+              onClick={() => setTpl(id)}
+              style={{ fontFamily: 'var(--ui)', fontSize: 13, fontWeight: 600, padding: '8px 13px', borderRadius: 999, cursor: 'pointer', background: tpl === id ? 'var(--accent-soft)' : 'var(--surface)', color: tpl === id ? 'var(--accent-ink)' : 'var(--ink-2)', border: `1px solid ${tpl === id ? 'var(--accent)' : 'var(--line)'}` }}
             >
-              {l}
+              {label}
             </button>
           ))}
         </div>
@@ -74,7 +87,19 @@ export function NewJournalSheet({ desk, onClose, onCreate }: { desk: boolean; on
 
       <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
         <Btn kind="ghost" size="md" onClick={onClose} style={{ flex: 1 }}>Cancel</Btn>
-        <Btn kind="primary" size="md" onClick={() => onCreate({ ...draft, id: 'j-' + Date.now(), name: name || 'Untitled journal', subtitle: 'New journal' })} style={{ flex: 2 }}>Create journal</Btn>
+        <Btn
+          kind="primary"
+          size="md"
+          onClick={() =>
+            onCreate(
+              { ...draft, id: 'j-' + Date.now(), name: name || 'Untitled journal', subtitle: 'New journal' },
+              templates.find((t) => t.id === tpl),
+            )
+          }
+          style={{ flex: 2 }}
+        >
+          Create journal
+        </Btn>
       </div>
     </div>
   );
@@ -143,7 +168,7 @@ function JournalCard({ j, onOpen }: { j: Journal; onOpen: (j: Journal) => void }
   );
 }
 
-export function JournalsScreen({ desk, journals, onOpen, onNew }: { desk: boolean; journals: Journal[]; onOpen: (j: Journal) => void; onNew: () => void }): VNode {
+export function JournalsScreen({ desk, journals, onOpen, onNew, onSearch, syncing }: { desk: boolean; journals: Journal[]; onOpen: (j: Journal) => void; onNew: () => void; onSearch: () => void; syncing?: boolean }): VNode {
   if (desk) {
     return (
       <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: 'var(--paper)' }}>
@@ -153,10 +178,11 @@ export function JournalsScreen({ desk, journals, onOpen, onNew }: { desk: boolea
             <p style={{ fontFamily: 'var(--ui)', fontSize: 13.5, color: 'var(--ink-3)', margin: '4px 0 0' }}>{journals.length} notebooks · {journals.reduce((a, b) => a + b.count, 0)} entries · all encrypted</p>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <SearchBar desk />
+            <SearchBar desk onClick={onSearch} />
             <Btn kind="primary" icon="plus" onClick={onNew}>New journal</Btn>
           </div>
         </div>
+        {syncing && <div style={{ padding: '0 34px 14px' }}><SyncNotice /></div>}
         <div style={{ flex: 1, overflow: 'auto', padding: '8px 34px 34px' }}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16 }}>
             {journals.map((j) => (
@@ -211,7 +237,9 @@ export function JournalsScreen({ desk, journals, onOpen, onNew }: { desk: boolea
         <h1 style={{ fontFamily: 'var(--serif)', fontSize: 32, fontWeight: 500, color: 'var(--ink)', margin: '24px 0 2px' }}>Journals</h1>
         <p style={{ fontFamily: 'var(--ui)', fontSize: 13.5, color: 'var(--ink-3)', margin: 0 }}>{journals.length} notebooks · all encrypted on this device</p>
 
-        <div style={{ margin: '18px 0' }}><SearchBar /></div>
+        <div style={{ margin: '18px 0' }}><SearchBar onClick={onSearch} /></div>
+
+        {syncing && <div style={{ margin: '0 0 14px' }}><SyncNotice /></div>}
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 11 }}>
           {journals.map((j) => <JournalCard key={j.id} j={j} onOpen={onOpen} />)}
@@ -231,12 +259,12 @@ export function JournalsScreen({ desk, journals, onOpen, onNew }: { desk: boolea
   );
 }
 
-function SearchBar({ desk }: { desk?: boolean }): VNode {
+function SearchBar({ desk, onClick }: { desk?: boolean; onClick: () => void }): VNode {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 9, padding: desk ? '8px 14px' : '11px 14px', borderRadius: 12, background: 'var(--surface)', border: '1px solid var(--line)', width: desk ? 220 : '100%', boxSizing: 'border-box' }}>
+    <button onClick={onClick} style={{ display: 'flex', alignItems: 'center', gap: 9, padding: desk ? '8px 14px' : '11px 14px', borderRadius: 12, background: 'var(--surface)', border: '1px solid var(--line)', width: desk ? 220 : '100%', boxSizing: 'border-box', cursor: 'text', textAlign: 'left' }}>
       <Icon name="search" size={17} color="var(--ink-3)" />
       <span style={{ fontFamily: 'var(--ui)', fontSize: 13.5, color: 'var(--ink-3)' }}>Search all entries</span>
-    </div>
+    </button>
   );
 }
 

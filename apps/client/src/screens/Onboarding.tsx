@@ -7,6 +7,48 @@ import { generateMnemonic, mnemonicWords, validateMnemonic, wordsToMnemonic } fr
 
 type View = 'welcome' | 'create' | 'confirm' | 'restore' | 'unlock';
 
+// Visually hidden but NOT display:none/visibility:hidden, so password-manager
+// extensions still see and fill it. 1×1 px + opacity keeps it past their
+// viewability heuristics; clip/clip-path would risk failing them.
+const managerOnly: JSX.CSSProperties = {
+  position: 'absolute', left: 0, top: 0, width: 1, height: 1,
+  padding: 0, border: 'none', margin: 0, opacity: 0, pointerEvents: 'none',
+  fontSize: 16, // prevent iOS zoom-on-focus if it ever receives focus
+};
+
+// A username/password pair for password managers only. The password value is the
+// space-separated 12-word phrase; `onPhraseInput` (restore) receives manager
+// autofill, `readOnly` (create) makes it save-only.
+function ManagerCredential({ phrase, mode, onPhraseInput }: {
+  phrase: string;
+  mode: 'new' | 'current';
+  onPhraseInput?: (text: string) => void;
+}): VNode {
+  return (
+    <div aria-hidden="true">
+      <input
+        type="text"
+        name="username"
+        autocomplete="username"
+        value="mneme journal"
+        readOnly
+        tabIndex={-1}
+        style={managerOnly}
+      />
+      <input
+        type="password"
+        name="password"
+        autocomplete={mode === 'new' ? 'new-password' : 'current-password'}
+        value={phrase}
+        readOnly={!onPhraseInput}
+        tabIndex={-1}
+        onInput={onPhraseInput ? (e) => onPhraseInput((e.target as HTMLInputElement).value) : undefined}
+        style={managerOnly}
+      />
+    </div>
+  );
+}
+
 const hStyle = (desk: boolean): JSX.CSSProperties => ({
   fontFamily: 'var(--serif)', fontWeight: 500, fontSize: desk ? 30 : 26, color: 'var(--ink)', margin: '0 0 6px', letterSpacing: 0.2,
 });
@@ -58,6 +100,14 @@ export function Onboarding({ desk, onEnter }: { desk: boolean; onEnter: (mnemoni
     } catch {
       /* clipboard unavailable */
     }
+  };
+
+  // The hidden manager-facing field mirrors the grid as one space-separated phrase…
+  const restorePhrase = restoreWords.map((w) => w.trim()).filter(Boolean).join(' ');
+  // …and an edit there (i.e. password-manager autofill) replaces the whole grid.
+  const syncFromPhrase = (text: string): void => {
+    const tokens = tokenize(text);
+    setRestoreWords(Array.from({ length: 12 }, (_, k) => tokens[k] ?? ''));
   };
 
   // unlock step
@@ -120,7 +170,11 @@ export function Onboarding({ desk, onEnter }: { desk: boolean; onEnter: (mnemoni
   // ─────────────── CREATE (recovery phrase) ───────────────
   if (view === 'create') {
     return wrap(
-      <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+      <form
+        onSubmit={(e) => { e.preventDefault(); setRevealed(true); setView('confirm'); }}
+        style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, position: 'relative' }}
+      >
+        <ManagerCredential phrase={mnemonic} mode="new" />
         <BackRow onClick={() => setView('welcome')} step="Step 1 of 2" />
         <h2 style={hStyle(desk)}>Your recovery phrase</h2>
         <p style={pStyle}>
@@ -144,6 +198,7 @@ export function Onboarding({ desk, onEnter }: { desk: boolean; onEnter: (mnemoni
           </div>
           {!revealed && (
             <button
+              type="button"
               onClick={() => setRevealed(true)}
               style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--ink)' }}
             >
@@ -165,8 +220,8 @@ export function Onboarding({ desk, onEnter }: { desk: boolean; onEnter: (mnemoni
         </Callout>
 
         <div style={{ flex: 1 }} />
-        <Btn kind="primary" size="lg" full icon="arrowR" onClick={() => { setRevealed(true); setView('confirm'); }} style={{ marginTop: 16 }}>I’ve written it down</Btn>
-      </div>,
+        <Btn kind="primary" size="lg" full icon="arrowR" type="submit" style={{ marginTop: 16 }}>I’ve written it down</Btn>
+      </form>,
       { top: true },
     );
   }
@@ -228,7 +283,11 @@ export function Onboarding({ desk, onEnter }: { desk: boolean; onEnter: (mnemoni
   // ─────────────── RESTORE ───────────────
   if (view === 'restore') {
     return wrap(
-      <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+      <form
+        onSubmit={(e) => { e.preventDefault(); if (restoreValid) onEnter(restoreMnemonic); }}
+        style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, position: 'relative' }}
+      >
+        <ManagerCredential phrase={restorePhrase} mode="current" onPhraseInput={syncFromPhrase} />
         <BackRow onClick={() => setView('welcome')} step="Restore" />
         <h2 style={{ ...hStyle(desk), flexShrink: 0 }}>Enter your phrase</h2>
         <p style={{ ...pStyle, flexShrink: 0 }}>Type the twelve words from any device where this journal already lives. Order matters.</p>
@@ -241,6 +300,9 @@ export function Onboarding({ desk, onEnter }: { desk: boolean; onEnter: (mnemoni
                 value={w}
                 placeholder="·····"
                 size={1}
+                autocomplete="off"
+                data-1p-ignore
+                data-lpignore="true"
                 onInput={(e) => setRestoreWords((a) => a.map((x, j) => (j === i ? (e.target as HTMLInputElement).value : x)))}
                 onPaste={(e) => {
                   const tokens = tokenize(e.clipboardData?.getData('text') ?? '');
@@ -259,6 +321,7 @@ export function Onboarding({ desk, onEnter }: { desk: boolean; onEnter: (mnemoni
 
         <div style={{ flexShrink: 0 }}>
           <button
+            type="button"
             onClick={pasteFromClipboard}
             style={{ alignSelf: 'flex-start', marginTop: 12, background: 'transparent', border: 'none', cursor: 'pointer', fontFamily: 'var(--ui)', fontSize: 12.5, color: 'var(--accent-ink)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}
           >
@@ -274,13 +337,13 @@ export function Onboarding({ desk, onEnter }: { desk: boolean; onEnter: (mnemoni
             kind={restoreValid ? 'primary' : 'ghost'}
             size="lg"
             full
-            onClick={() => restoreValid && onEnter(restoreMnemonic)}
+            type="submit"
             style={{ marginTop: 16, opacity: restoreValid ? 1 : 0.55, pointerEvents: restoreValid ? 'auto' : 'none' }}
           >
             {restoreFilled < 12 ? `${restoreFilled} / 12 words` : restoreValid ? 'Restore journal' : 'Phrase not valid'}
           </Btn>
         </div>
-      </div>,
+      </form>,
       { top: true },
     );
   }
@@ -347,7 +410,7 @@ function KeypadKey({ children, onClick, faint }: { children: ComponentChildren; 
 function BackRow({ onClick, step }: { onClick: () => void; step?: string }): VNode {
   return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 22 }}>
-      <button onClick={onClick} style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--ink-2)', fontFamily: 'var(--ui)', fontSize: 14, fontWeight: 600, marginLeft: -6 }}>
+      <button type="button" onClick={onClick} style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--ink-2)', fontFamily: 'var(--ui)', fontSize: 14, fontWeight: 600, marginLeft: -6 }}>
         <Icon name="left" size={20} /> Back
       </button>
       {step && <span style={{ fontFamily: 'var(--ui)', fontSize: 12, fontWeight: 600, color: 'var(--ink-3)', letterSpacing: 0.4 }}>{step}</span>}

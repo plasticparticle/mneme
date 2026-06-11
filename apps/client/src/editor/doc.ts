@@ -60,6 +60,19 @@ export function docToText(doc: JSONContent): string {
   return out.join('').replace(/\n{2,}/g, '\n').trim();
 }
 
+/** Media ids of every inline mediaAttachment node in a doc (editor/media.tsx). */
+export function docMediaIds(doc: JSONContent): string[] {
+  const ids: string[] = [];
+  const walk = (node: JSONContent): void => {
+    if (node.type === 'mediaAttachment' && typeof node.attrs?.id === 'string' && node.attrs.id) {
+      ids.push(node.attrs.id);
+    }
+    node.content?.forEach(walk);
+  };
+  walk(doc);
+  return ids;
+}
+
 /** Convert the design's sample blocks into a ProseMirror doc (for lived-in seed content). */
 export function blocksToDoc(blocks: Block[]): JSONContent {
   const content: JSONContent[] = [];

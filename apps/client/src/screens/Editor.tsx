@@ -1,6 +1,6 @@
 import type { VNode } from 'preact';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
-import type { Editor } from '@tiptap/core';
+import type { Editor, JSONContent } from '@tiptap/core';
 import { Icon } from '../ui/Icon';
 import { SyncBadge, Cover, ConnChip } from '../ui/primitives';
 import { LabelField } from '../ui/LabelField';
@@ -10,7 +10,8 @@ import type { JournalEntry, MediaAttachment } from '../sync/engine';
 import { useRichEditor } from '../editor/useRichEditor';
 import { insertMediaAttachment } from '../editor/media';
 import { EditorToolbar } from '../editor/Toolbar';
-import { parseBody } from '../editor/doc';
+import { parseBody, docMediaIds } from '../editor/doc';
+import { ConfirmDialog } from '../ui/ConfirmDialog';
 import { buildSlashCommands, createSlashHandle, type SlashCommand } from '../editor/slash';
 import { SlashMenu } from '../editor/SlashMenu';
 import { VideoCapture } from '../ui/VideoCapture';
@@ -204,6 +205,76 @@ function EntryEditor({
   );
 }
 
+// ⋯ menu in the editor header — holds the destructive entry actions. Deleting
+// tombstones the entry (syncs to every device) and removes its recordings from
+// this device and the relay, so it always confirms first.
+function EntryMenu({ desk, entry, onDeleted }: { desk: boolean; entry: JournalEntry | null; onDeleted: () => void }): VNode {
+  const { deleteEntry } = useAppData();
+  const [open, setOpen] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+
+  // How many recordings the deletion takes with it (inline nodes + legacy list).
+  const mediaCount = useMemo(() => {
+    if (!entry) return 0;
+    const ids = new Set((entry.attachments ?? []).map((a) => a.id));
+    if (entry.bodyJson) {
+      try {
+        for (const m of docMediaIds(JSON.parse(entry.bodyJson) as JSONContent)) ids.add(m);
+      } catch {
+        /* unparseable body — count the legacy list only */
+      }
+    }
+    return ids.size;
+  }, [entry]);
+
+  const btnStyle = desk
+    ? { width: 34, height: 34, borderRadius: 10, border: '1px solid var(--line)', background: 'var(--surface)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: entry ? 'pointer' : 'default', opacity: entry ? 1 : 0.5 }
+    : { width: 36, height: 36, borderRadius: 999, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'transparent', border: 'none', cursor: entry ? 'pointer' : 'default', opacity: entry ? 1 : 0.5 };
+
+  return (
+    <span style={{ position: 'relative', display: 'inline-flex' }}>
+      <button title="Entry actions" disabled={!entry} onClick={() => setOpen((o) => !o)} style={btnStyle}>
+        <Icon name="more" size={desk ? 18 : 20} color="var(--ink-2)" />
+      </button>
+      {open && entry && (
+        <>
+          <div onClick={() => setOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 65 }} />
+          <div style={{ position: 'absolute', top: 'calc(100% + 6px)', right: 0, zIndex: 66, minWidth: 180, background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 12, boxShadow: '0 10px 30px rgba(30,20,12,.18)', padding: 5 }}>
+            <button
+              onClick={() => {
+                setOpen(false);
+                setConfirming(true);
+              }}
+              style={{ display: 'flex', alignItems: 'center', gap: 9, width: '100%', textAlign: 'left', padding: '9px 11px', borderRadius: 8, border: 'none', background: 'transparent', cursor: 'pointer', fontFamily: 'var(--ui)', fontSize: 13.5, fontWeight: 600, color: '#E4573D' }}
+            >
+              <Icon name="trash" size={15} color="#E4573D" /> Delete entry…
+            </button>
+          </div>
+        </>
+      )}
+      {confirming && entry && (
+        <ConfirmDialog
+          title="Delete this entry?"
+          confirmLabel="Delete entry"
+          onCancel={() => setConfirming(false)}
+          onConfirm={() => {
+            setConfirming(false);
+            deleteEntry(entry.id);
+            onDeleted();
+          }}
+        >
+          <strong style={{ color: 'var(--ink)' }}>“{entry.title || 'Untitled'}”</strong> will be removed from all your
+          devices
+          {mediaCount > 0
+            ? `, and its ${mediaCount === 1 ? 'recording' : `${mediaCount} recordings`} will be deleted from this device and the sync server`
+            : ''}
+          . <strong style={{ color: 'var(--ink)' }}>This cannot be undone.</strong>
+        </ConfirmDialog>
+      )}
+    </span>
+  );
+}
+
 export function EditorScreen({
   desk,
   entryId,
@@ -274,7 +345,7 @@ export function EditorScreen({
             <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
               <span style={{ fontFamily: 'var(--ui)', fontSize: 12.5, color: 'var(--ink-3)' }}>{words} words</span>
               <SyncBadge />
-              <button style={{ width: 34, height: 34, borderRadius: 10, border: '1px solid var(--line)', background: 'var(--surface)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}><Icon name="more" size={18} color="var(--ink-2)" /></button>
+              <EntryMenu desk entry={entry} onDeleted={() => undefined} />
             </div>
           </div>
           <div style={{ flex: 1, overflow: 'auto' }}>
@@ -307,7 +378,7 @@ export function EditorScreen({
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <ConnChip compact />
           <button title="New entry" onClick={onNew} style={{ width: 36, height: 36, borderRadius: 999, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'transparent', border: 'none', cursor: 'pointer' }}><Icon name="plus" size={20} color="var(--accent-ink)" /></button>
-          <button style={{ width: 36, height: 36, borderRadius: 999, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'transparent', border: 'none', cursor: 'pointer' }}><Icon name="more" size={20} color="var(--ink-2)" /></button>
+          <EntryMenu desk={false} entry={entry} onDeleted={onBack} />
         </div>
       </div>
 

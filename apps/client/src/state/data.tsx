@@ -14,7 +14,8 @@ import { rotateAccount, type RotationProgress } from '../sync/rotate';
 import { newEntryId, newMediaId, newTemplateId } from '../sync/ids';
 import { ENTRIES, JOURNALS, OPEN_ENTRY, type Journal } from '../data/sample';
 import { seedBuiltinTemplates } from '../data/templates';
-import { blocksToDoc, textToDoc, docToText } from '../editor/doc';
+import type { JSONContent } from '@tiptap/core';
+import { blocksToDoc, textToDoc, docToText, docMediaIds } from '../editor/doc';
 import { LocalDb, destroyOwnerDb, type MediaRecord } from '../db';
 
 export type SyncStatus = 'locked' | 'connecting' | 'online' | 'offline';
@@ -37,6 +38,12 @@ interface AppData {
   signIn(mnemonic: string): Promise<void>;
   createEntry(input: { journalId: string; title?: string; bodyText?: string; bodyJson?: string; labels?: string[] }): JournalEntry;
   updateEntry(id: string, patch: { title?: string; bodyText?: string; bodyJson?: string; labels?: string[]; createdAt?: number; attachments?: MediaAttachment[] }): void;
+  /**
+   * After the user confirmed: tombstone the entry (the deletion syncs to other
+   * devices through the LWW oplog) and delete every recording it references —
+   * locally and on the relay.
+   */
+  deleteEntry(id: string): void;
   newJournal(j: Journal): void;
   createTemplate(input: { name: string; bodyText?: string; bodyJson?: string }): TemplateRecord;
   updateTemplate(id: string, patch: { name?: string; bodyText?: string; bodyJson?: string }): void;
@@ -508,6 +515,40 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
     [db, syncPendingCount, flushMedia],
   );
 
+  // Tombstone an entry (the caller has shown the confirmation). The tombstone
+  // row keeps winning LWW against stale copies and pushes like any edit, so the
+  // deletion reaches every device; the entry's recordings — inline nodes and
+  // legacy attachments alike — go through the same confirmed-delete path as a
+  // single recording (local purge + relay DELETE).
+  const deleteEntry: AppData['deleteEntry'] = useCallback(
+    (id) => {
+      const now = Date.now();
+      let victim: JournalEntry | undefined;
+      setEntries((prev) => {
+        const cur = prev.find((e) => e.id === id);
+        if (!cur || cur.deleted) return prev;
+        victim = cur;
+        const next: JournalEntry = { ...cur, deleted: true, updatedAt: now };
+        if (dbReady.current) void db.putLocal(next);
+        pending.current.set(id, next);
+        return mergeByLWW(prev, [next]);
+      });
+      if (!victim) return;
+      const mediaIds = new Set((victim.attachments ?? []).map((a) => a.id));
+      if (victim.bodyJson) {
+        try {
+          for (const m of docMediaIds(JSON.parse(victim.bodyJson) as JSONContent)) mediaIds.add(m);
+        } catch {
+          /* unparseable body — nothing to collect */
+        }
+      }
+      for (const m of mediaIds) removeMedia(m);
+      syncPendingCount();
+      void flush();
+    },
+    [db, flush, syncPendingCount, removeMedia],
+  );
+
   // Resolve attachment bytes for playback: outbox → local DB → relay download
   // (decrypted with the media key, then cached locally for next time).
   const mediaBlob: AppData['mediaBlob'] = useCallback(
@@ -656,6 +697,10 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
     });
   }, [journals, entries]);
 
-  const value: AppData = { status, pendingCount, saving, bootstrapping, entries, journals: journalsWithCounts, templates, signIn, createEntry, updateEntry, newJournal, createTemplate, updateTemplate, deleteTemplate, addMedia, removeMedia, mediaBlob, rotatePhrase };
+  // Tombstones stay in the raw list (so LWW keeps winning against stale copies
+  // and the outbox can push them) but every consumer sees only live entries.
+  const liveEntries = useMemo(() => entries.filter((e) => !e.deleted), [entries]);
+
+  const value: AppData = { status, pendingCount, saving, bootstrapping, entries: liveEntries, journals: journalsWithCounts, templates, signIn, createEntry, updateEntry, deleteEntry, newJournal, createTemplate, updateTemplate, deleteTemplate, addMedia, removeMedia, mediaBlob, rotatePhrase };
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

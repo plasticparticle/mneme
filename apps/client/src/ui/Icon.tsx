@@ -8,7 +8,7 @@ export type IconName =
   | 'books' | 'tag' | 'mic' | 'image' | 'check' | 'quote' | 'bold' | 'italic'
   | 'list' | 'checklist' | 'heading' | 'settings' | 'more' | 'moon' | 'feather'
   | 'pin' | 'clock' | 'copy' | 'eye' | 'eyeoff' | 'shield' | 'arrowR' | 'sun'
-  | 'grid' | 'timeline' | 'x' | 'video' | 'olist' | 'code' | 'divider';
+  | 'grid' | 'timeline' | 'x' | 'video' | 'olist' | 'code' | 'divider' | 'trash';
 
 interface IconProps {
   name: IconName;
@@ -65,6 +65,7 @@ export function Icon({ name, size = 20, stroke = 1.7, style = {}, color = 'curre
     olist: <><path d="M10 6h10M10 12h10M10 18h10" {...P} /><path d="M4 6h1v4M4 10h2" {...P} /><path d="M6 18H4c0-1 2-2 2-3s-1-1.5-2-1" {...P} /></>,
     code: <><path d="M9 8l-4 4 4 4M15 8l4 4-4 4" {...P} /></>,
     divider: <><path d="M4 12h16M9 6h6M9 18h6" {...P} /></>,
+    trash: <><path d="M5 7h14M10 7V5.5A1.5 1.5 0 0 1 11.5 4h1A1.5 1.5 0 0 1 14 5.5V7M7.5 7l.6 11.2a2 2 0 0 0 2 1.8h3.8a2 2 0 0 0 2-1.8L16.5 7" {...P} /><path d="M10.3 11v5.5M13.7 11v5.5" {...P} /></>,
   };
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" style={{ display: 'block', flexShrink: 0, ...style }}>

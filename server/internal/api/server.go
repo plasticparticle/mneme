@@ -48,6 +48,7 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("POST /v1/media/{id}/complete", s.auth(http.HandlerFunc(s.handleCompleteMedia)))
 	mux.Handle("GET /v1/media/{id}", s.auth(http.HandlerFunc(s.handleGetMedia)))
 	mux.Handle("GET /v1/media/{id}/chunks/{n}", s.auth(http.HandlerFunc(s.handleGetMediaChunk)))
+	mux.Handle("DELETE /v1/account", s.auth(http.HandlerFunc(s.handleDeleteAccount)))
 
 	return s.cors(logging(mux))
 }

@@ -112,6 +112,39 @@ func (s *Store) LookupSession(ctx context.Context, tokenHash []byte) (ownerID, d
 	return ownerID, deviceID, err
 }
 
+// ── Account deletion (mnemonic rotation) ────────────────────────────────────
+
+// ListOwnerMedia returns every media index row for an owner, so the caller can
+// remove the chunk objects from object storage before/after the DB wipe.
+func (s *Store) ListOwnerMedia(ctx context.Context, ownerID string) ([]MediaBlob, error) {
+	rows, err := s.pool.Query(ctx,
+		`SELECT media_id, s3_key, bytes, chunks FROM media_blobs WHERE owner_id = $1`, ownerID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []MediaBlob
+	for rows.Next() {
+		var m MediaBlob
+		if err := rows.Scan(&m.MediaID, &m.S3Key, &m.Bytes, &m.Chunks); err != nil {
+			return nil, err
+		}
+		out = append(out, m)
+	}
+	return out, rows.Err()
+}
+
+// DeleteOwner removes the owner row; every other table (devices, sessions,
+// challenges, entry_blobs, media_blobs, reminders, push_subs) cascades from it.
+// This is the server half of mnemonic rotation: after the client has re-pushed
+// everything under a fresh owner, the old owner's data must stop existing — the
+// leaked phrase keeps authenticating otherwise.
+func (s *Store) DeleteOwner(ctx context.Context, ownerID string) error {
+	_, err := s.pool.Exec(ctx, `DELETE FROM owners WHERE owner_id = $1`, ownerID)
+	return err
+}
+
 // PurgeExpired removes stale challenges and sessions. Safe to call periodically.
 func (s *Store) PurgeExpired(ctx context.Context) error {
 	if _, err := s.pool.Exec(ctx, `DELETE FROM auth_challenges WHERE expires_at <= now()`); err != nil {

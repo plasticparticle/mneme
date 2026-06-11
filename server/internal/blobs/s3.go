@@ -54,6 +54,11 @@ func (s *s3Store) Put(ctx context.Context, key string, data []byte) error {
 	return err
 }
 
+func (s *s3Store) Delete(ctx context.Context, key string) error {
+	// RemoveObject on a missing key is a no-op in S3 semantics — matches the interface.
+	return s.client.RemoveObject(ctx, s.bucket, key, minio.RemoveObjectOptions{})
+}
+
 func (s *s3Store) Get(ctx context.Context, key string) ([]byte, error) {
 	obj, err := s.client.GetObject(ctx, s.bucket, key, minio.GetObjectOptions{})
 	if err != nil {

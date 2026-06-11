@@ -26,6 +26,8 @@ var ErrNotFound = errors.New("blob not found")
 type Store interface {
 	Put(ctx context.Context, key string, data []byte) error
 	Get(ctx context.Context, key string) ([]byte, error)
+	// Delete removes one chunk. Deleting a key that was never stored is not an error.
+	Delete(ctx context.Context, key string) error
 }
 
 // New selects a Store from config: S3/MinIO when an endpoint is set, Disabled otherwise.
@@ -43,6 +45,7 @@ func (Disabled) Put(context.Context, string, []byte) error { return ErrNotConfig
 func (Disabled) Get(context.Context, string) ([]byte, error) {
 	return nil, ErrNotConfigured
 }
+func (Disabled) Delete(context.Context, string) error { return ErrNotConfigured }
 
 // Memory is an in-process Store for tests.
 type Memory struct {
@@ -69,4 +72,11 @@ func (s *Memory) Get(_ context.Context, key string) ([]byte, error) {
 		return nil, ErrNotFound
 	}
 	return data, nil
+}
+
+func (s *Memory) Delete(_ context.Context, key string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.m, key)
+	return nil
 }

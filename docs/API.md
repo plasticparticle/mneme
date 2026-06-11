@@ -28,6 +28,7 @@ the auth model.
 | POST | `/v1/media/{id}/complete` | ✅ | finalize an upload (record chunk count) |
 | GET | `/v1/media/{id}` | ✅ | media metadata (ciphertext bytes, chunk count) |
 | GET | `/v1/media/{id}/chunks/{n}` | ✅ | download one encrypted media chunk |
+| DELETE | `/v1/account` | ✅ | wipe the owner entirely (phrase rotation) |
 
 Errors are `{ "error": "message" }` with an appropriate status (400/401/404/500). CORS preflight
 (`OPTIONS`) is answered for configured origins (`CORS_ORIGINS`).
@@ -136,6 +137,22 @@ the relay learns nothing beyond the random id and ciphertext sizes.
 `{id}` must match `[A-Za-z0-9_-]{16,64}` (clients use random 128-bit hex — never date-encoded).
 Without `S3_ENDPOINT` configured the media endpoints answer `503`; clients keep recordings queued
 locally and retry. Re-uploading the same media id is idempotent.
+
+---
+
+## Account
+
+### `DELETE /v1/account` → `204 No Content`
+
+Deletes **everything** stored for the authenticated owner: entry blobs, the media index and its S3
+chunks, reminders, push subscriptions, devices, and all sessions (including the one making the
+request). There is no request body and no undo.
+
+This is the server half of **recovery-phrase rotation** (`apps/client/src/sync/rotate.ts`): because
+`owner_id` and all keys are derived from the mnemonic, a phrase can't be changed in place — the
+client derives a fresh identity from a new phrase, re-encrypts and re-pushes the whole vault as a
+brand-new owner, and only then calls this endpoint with the *old* session token. Afterwards the old
+phrase still passes TOFU registration (it's just a keypair) but opens an empty vault.
 
 ---
 

@@ -13,6 +13,7 @@ import { identityFromMnemonic, authenticate } from '../src/sync/identity';
 import { generateMnemonic } from '../src/crypto/mnemonic';
 import { pushEntries, pullEntries, type JournalEntry, type MediaAttachment } from '../src/sync/engine';
 import { uploadMedia, downloadMedia } from '../src/sync/media';
+import { rotateAccount } from '../src/sync/rotate';
 import { newEntryId, newMediaId } from '../src/sync/ids';
 import { MEDIA_CHUNK_BYTES } from '../src/crypto/media';
 
@@ -95,5 +96,46 @@ try {
     throw e;
   }
 }
+
+// ── Rotation: replace the (possibly leaked) phrase ──────────────────────────
+// Re-encrypts the vault under a fresh mnemonic (new owner, new keys), wipes the
+// old account, and proves the old phrase is now useless.
+const newMnemonic = generateMnemonic();
+const rotated = await rotateAccount({
+  relay,
+  old: sessionB, // any authenticated session for the old phrase
+  newMnemonic,
+  localMediaBytes: () => Promise.resolve(null), // force the relay-download path
+});
+const idNew = identityFromMnemonic(newMnemonic);
+assert.notEqual(rotated.session.ownerId, sessionA.ownerId, 'rotation must create a new owner');
+console.log('rotated to owner', rotated.session.ownerId.slice(0, 12) + '…');
+
+// The vault decrypts under the NEW phrase…
+const pulledNew = await pullEntries(relay, rotated.session.token, idNew.dataKey, 0);
+const gotNew = pulledNew.entries.find((e) => e.id === entry.id);
+assert.ok(gotNew, 'rotated entry present under the new owner');
+assert.equal(gotNew.bodyText, entry.bodyText, 'plaintext survives rotation');
+
+// …media too (when the relay has an object store)…
+if (rotated.uploadedMedia.has(mediaId)) {
+  const data = await downloadMedia(relay, rotated.session.token, idNew.mediaKey, mediaId);
+  assert.deepEqual(data, payload, 'media bytes survive rotation under the new media key');
+  console.log('media re-encrypted under the new media key ✓');
+}
+
+// …old sessions are dead…
+await assert.rejects(
+  pullEntries(relay, sessionA.token, idA.dataKey, 0),
+  (e: unknown) => e instanceof RelayError && e.status === 401,
+  'old session must be invalidated by the wipe',
+);
+
+// …and the old phrase opens an empty vault (TOFU re-registration, zero blobs).
+const idOldAgain = identityFromMnemonic(mnemonic);
+const sessionOld = await authenticate(relay, idOldAgain);
+const pulledOld = await pullEntries(relay, sessionOld.token, idOldAgain.dataKey, 0);
+assert.equal(pulledOld.entries.length, 0, 'the old (leaked) phrase unlocks nothing');
+console.log('old phrase now opens an empty vault ✓');
 
 console.log('\nINTEGRATION OK');

@@ -93,7 +93,11 @@ password-manager autofill target on phrase restore, and **math typesetting** (`e
 `@tiptap/extension-mathematics` + KaTeX; type `$$x$$` inline / `$$$x$$$` block, or the `/` Math
 commands; click a formula to edit it in a live-preview LaTeX dialog. The formula is a `latex` attr
 inside bodyJson, so it stays inside the encrypted entry body; `docToText` surfaces the LaTeX source
-to previews/search and `DocPreview` renders it in template previews).
+to previews/search and `DocPreview` renders it in template previews), and a **preferences overlay**
+(`ui/Preferences.tsx` — desktop sidebar gear / mobile settings → Preferences) with light/dark/system
+appearance + five accent themes (`hooks/useTheme.ts`; device-local localStorage, never synced — the
+old boolean dark key migrates) and writing stats computed locally over the decrypted entries
+(`state/stats.ts`: totals, streaks, days journaled).
 
 Not yet: FTS5 (blocked on a custom wa-sqlite wasm build), push transport + reminders UI (step 6),
 export/import (step 7), Tauri shells (step 8) and their OS-keychain at-rest storage (§6).

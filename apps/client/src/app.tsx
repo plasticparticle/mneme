@@ -98,20 +98,30 @@ function Sidebar({ flow, setFlow, journals, onOpenJournal, dark, toggleDark, sta
         ))}
       </div>
 
-      <div style={{ borderTop: '1px solid var(--line)', paddingTop: 12, marginTop: 8, display: 'flex', alignItems: 'center', gap: 10 }}>
-        <div style={{ width: 32, height: 32, borderRadius: 999, background: 'linear-gradient(145deg, var(--accent), #7b3a1e)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontFamily: 'var(--serif)', fontSize: 15, fontWeight: 600 }}>V</div>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontFamily: 'var(--ui)', fontSize: 13, fontWeight: 600, color: 'var(--ink)' }}>Your vault</div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-            <ConnectionDot status={status} size={7} />
-            {/* Truncated like the admin dashboard's vault label, so a self-hoster
-                can match this vault there; hover for the full id. */}
-            <span title={ownerId ?? undefined} style={{ fontFamily: 'var(--mono)', fontSize: 10.5, color: 'var(--ink-3)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              {connLabel(status).toLowerCase()}
-              {ownerId ? ` · ${ownerId.slice(0, 8)}…` : ''}
-            </span>
+      {/* Identity on its own line, actions below: four 30px buttons no longer
+          fit beside the avatar + status + vault id in a 238px sidebar. */}
+      <div style={{ borderTop: '1px solid var(--line)', paddingTop: 12, marginTop: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ width: 32, height: 32, borderRadius: 999, background: 'linear-gradient(145deg, var(--accent), #7b3a1e)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontFamily: 'var(--serif)', fontSize: 15, fontWeight: 600 }}>V</div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            {/* The vault id is the title: truncated like the admin dashboard's
+                vault label, so a self-hoster can match this vault there; hover
+                for the full id. */}
+            <div title={ownerId ? `Vault ID: ${ownerId}` : undefined} style={{ display: 'flex', alignItems: 'baseline', gap: 6, minWidth: 0 }}>
+              <span style={{ fontFamily: 'var(--mono)', fontSize: 12.5, fontWeight: 600, color: 'var(--ink)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {ownerId ? `${ownerId.slice(0, 8)}…` : 'Your vault'}
+              </span>
+              {ownerId && (
+                <span style={{ fontFamily: 'var(--ui)', fontSize: 9.5, fontWeight: 700, letterSpacing: 0.6, textTransform: 'uppercase', color: 'var(--ink-3)', flexShrink: 0 }}>vault id</span>
+              )}
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+              <ConnectionDot status={status} size={7} />
+              <span style={{ fontFamily: 'var(--mono)', fontSize: 10.5, color: 'var(--ink-3)' }}>{connLabel(status).toLowerCase()}</span>
+            </div>
           </div>
         </div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 4, marginTop: 8 }}>
         <button
           title="Replace recovery phrase"
           onClick={onRotate}
@@ -140,6 +150,7 @@ function Sidebar({ flow, setFlow, journals, onOpenJournal, dark, toggleDark, sta
         >
           <Icon name={dark ? 'sun' : 'moon'} size={17} color="var(--ink-3)" />
         </button>
+        </div>
       </div>
     </div>
   );
@@ -193,8 +204,8 @@ function MobileSettingsSheet({ onClose, dark, toggleDark, ownerId, onRotate, onD
         {/* Truncated like the admin dashboard's vault label, so a self-hoster
             can match this vault there (the desktop sidebar footer shows the same). */}
         {ownerId && (
-          <div title={ownerId} style={{ textAlign: 'center', fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--ink-3)', paddingTop: 16 }}>
-            vault {ownerId.slice(0, 8)}…
+          <div title={`Vault ID: ${ownerId}`} style={{ textAlign: 'center', fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--ink-3)', paddingTop: 16 }}>
+            vault id {ownerId.slice(0, 8)}…
           </div>
         )}
       </div>

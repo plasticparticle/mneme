@@ -266,7 +266,28 @@ export function App(): VNode {
 
   const screen = (() => {
     if (flow === 'calendar') return <CalendarScreen desk={desk} onOpenEntry={(id) => (id ? openEntry(id) : newEntry())} />;
-    if (flow === 'editor') return <EditorScreen desk={desk} entryId={openEntryId} onBack={() => setFlow(editorReturn)} onSelectEntry={openEntry} onNew={newEntry} />;
+    if (flow === 'editor') {
+      return (
+        <EditorScreen
+          desk={desk}
+          entryId={openEntryId}
+          onBack={() => setFlow(editorReturn)}
+          onSelectEntry={openEntry}
+          onNew={newEntry}
+          // Mobile delete: return to the notebook's own entry list, not the
+          // library — the journal you were writing in stays the active context.
+          onDeleted={(journalId) => {
+            const j = journalId ? journals.find((x) => x.id === journalId) : undefined;
+            if (j) {
+              setOpenJournalId(j.id);
+              setFlow('journal');
+            } else {
+              setFlow('journals');
+            }
+          }}
+        />
+      );
+    }
     if (flow === 'journal' && !desk && openJournalObj) {
       return (
         <JournalEntriesScreen

@@ -11,7 +11,8 @@ import { Mathematics } from '@tiptap/extension-mathematics';
 import katex from 'katex';
 import { Btn } from '../ui/primitives';
 import { Icon } from '../ui/Icon';
-import 'katex/dist/katex.min.css';
+// KaTeX's stylesheet rides in editor.css (a CSS import here would break
+// node-side tsx scripts that import editor modules).
 
 export type MathKind = 'inline' | 'block';
 

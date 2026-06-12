@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+  <!-- The Mneme mark (ui/Wordmark.tsx): ring + dot in the terracotta accent.
+       Stroke slightly heavier than the wordmark so it stays legible at 16px. -->
+  <circle cx="12" cy="12" r="9.2" fill="none" stroke="#B0563A" stroke-width="2.3"/>
+  <circle cx="12" cy="12" r="3.6" fill="#B0563A"/>
+</svg>

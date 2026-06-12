@@ -85,6 +85,8 @@
     position: fixed; inset: 0; background: rgba(30, 22, 16, .4); backdrop-filter: blur(2px);
     display: flex; align-items: center; justify-content: center; z-index: 10;
   }
+  /* The id rule above outranks .hidden (id > class specificity) — restate it. */
+  #modalWrap.hidden { display: none; }
   #modal {
     background: var(--card); border: 1px solid var(--line); border-radius: 12px;
     padding: 22px 24px; width: min(420px, 88vw);

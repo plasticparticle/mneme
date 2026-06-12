@@ -9,7 +9,7 @@ export type IconName =
   | 'list' | 'checklist' | 'heading' | 'settings' | 'more' | 'moon' | 'feather'
   | 'pin' | 'clock' | 'copy' | 'eye' | 'eyeoff' | 'shield' | 'arrowR' | 'sun'
   | 'grid' | 'timeline' | 'x' | 'video' | 'olist' | 'code' | 'divider' | 'trash'
-  | 'file' | 'download' | 'math';
+  | 'file' | 'download' | 'math' | 'monitor';
 
 interface IconProps {
   name: IconName;
@@ -70,6 +70,7 @@ export function Icon({ name, size = 20, stroke = 1.7, style = {}, color = 'curre
     file: <><path d="M6.5 3.5h7L18.5 8.5v11a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1v-15a1 1 0 0 1 1-1z" {...P} /><path d="M13.5 3.5v5h5" {...P} /></>,
     download: <><path d="M12 4v11M7.5 11l4.5 4.5L16.5 11" {...P} /><path d="M5 19.5h14" {...P} /></>,
     math: <><path d="M3.5 13.5h2.5l2.5 5L13 5.5h7.5" {...P} /><path d="M14.5 12.5l5 6M19.5 12.5l-5 6" {...P} /></>,
+    monitor: <><rect x="3.5" y="5" width="17" height="12" rx="2" {...P} /><path d="M9.5 20.5h5M12 17v3.5" {...P} /></>,
   };
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" style={{ display: 'block', flexShrink: 0, ...style }}>

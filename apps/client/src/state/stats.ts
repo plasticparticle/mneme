@@ -26,9 +26,37 @@ export function dayStreak(entries: JournalEntry[], now: number): number {
   return streak;
 }
 
-function wordCount(text: string): number {
+export function wordCount(text: string): number {
   const t = text.trim();
   return t ? t.split(/\s+/).length : 0;
+}
+
+/** Whitespace-word total across all entries. */
+export function totalWords(entries: JournalEntry[]): number {
+  let words = 0;
+  for (const e of entries) words += wordCount(e.bodyText);
+  return words;
+}
+
+/** Number of distinct UTC days with at least one entry. */
+export function journaledDays(entries: JournalEntry[]): number {
+  const days = new Set<number>();
+  for (const e of entries) days.add(utcDayIndex(e.createdAt));
+  return days.size;
+}
+
+/** The longest run of consecutive UTC days with entries, anywhere in history. */
+export function longestStreak(entries: JournalEntry[]): number {
+  const days = [...new Set(entries.map((e) => utcDayIndex(e.createdAt)))].sort((a, b) => a - b);
+  let best = 0;
+  let run = 0;
+  let prev = Number.NaN;
+  for (const d of days) {
+    run = d === prev + 1 ? run + 1 : 1;
+    if (run > best) best = run;
+    prev = d;
+  }
+  return best;
 }
 
 /** Whitespace-word total across entries in the given UTC (year, month 0-11). */

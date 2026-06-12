@@ -17,12 +17,13 @@ import { RotatePhraseSheet } from './ui/RotatePhrase';
 import { DeleteVaultSheet } from './ui/DeleteVault';
 import { TemplatesSheet } from './ui/Templates';
 import { SearchSheet } from './ui/Search';
+import { PreferencesSheet } from './ui/Preferences';
 
 // 'journal' is the mobile-only drill-in: the entry list of one notebook.
 type Flow = 'journals' | 'journal' | 'calendar' | 'editor';
 
 // ── DESKTOP sidebar ─────────────────────────────────────────
-function Sidebar({ flow, setFlow, journals, onOpenJournal, dark, toggleDark, status, ownerId, onRotate, onDeleteVault, onTemplates, onSearch, onLock }: {
+function Sidebar({ flow, setFlow, journals, onOpenJournal, dark, toggleDark, status, ownerId, onRotate, onDeleteVault, onTemplates, onSearch, onLock, onPreferences }: {
   flow: Flow;
   setFlow: (f: Flow) => void;
   journals: Journal[];
@@ -36,6 +37,7 @@ function Sidebar({ flow, setFlow, journals, onOpenJournal, dark, toggleDark, sta
   onTemplates: () => void;
   onSearch: () => void;
   onLock: () => void;
+  onPreferences: () => void;
 }): VNode {
   const nav = (key: Flow, icon: IconName, label: string): VNode => {
     const active = flow === key;
@@ -150,19 +152,26 @@ function Sidebar({ flow, setFlow, journals, onOpenJournal, dark, toggleDark, sta
         >
           <Icon name={dark ? 'sun' : 'moon'} size={17} color="var(--ink-3)" />
         </button>
+        <button
+          title="Preferences"
+          onClick={onPreferences}
+          style={{ width: 30, height: 30, borderRadius: 8, border: 'none', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+        >
+          <Icon name="settings" size={17} color="var(--ink-3)" />
+        </button>
         </div>
       </div>
     </div>
   );
 }
 
-// Compact mobile settings: appearance + the replace-recovery-phrase entry point
-// (the bottom-nav settings button used to just toggle the theme).
-function MobileSettingsSheet({ onClose, dark, toggleDark, ownerId, onRotate, onDeleteVault, onTemplates, onLock }: {
+// Compact mobile settings: preferences (appearance/theme/stats) + the
+// replace-recovery-phrase entry point and other vault actions.
+function MobileSettingsSheet({ onClose, dark, ownerId, onPreferences, onRotate, onDeleteVault, onTemplates, onLock }: {
   onClose: () => void;
   dark: boolean;
-  toggleDark: () => void;
   ownerId: string | null;
+  onPreferences: () => void;
   onRotate: () => void;
   onDeleteVault: () => void;
   onTemplates: () => void;
@@ -175,10 +184,11 @@ function MobileSettingsSheet({ onClose, dark, toggleDark, ownerId, onRotate, onD
         <div style={{ width: 38, height: 4, borderRadius: 9, background: 'var(--line)', margin: '0 auto 16px' }} />
         <h3 style={{ fontFamily: 'var(--serif)', fontSize: 19, fontWeight: 500, color: 'var(--ink)', margin: '0 0 16px' }}>Settings</h3>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <button onClick={toggleDark} style={row}>
-            <Icon name={dark ? 'sun' : 'moon'} size={18} color="var(--ink-2)" />
-            <span style={{ flex: 1 }}>Appearance</span>
+          <button onClick={() => { onClose(); onPreferences(); }} style={row}>
+            <Icon name={dark ? 'moon' : 'sun'} size={18} color="var(--ink-2)" />
+            <span style={{ flex: 1 }}>Preferences</span>
             <span style={{ fontFamily: 'var(--mono)', fontSize: 12, color: 'var(--ink-3)' }}>{dark ? 'dark' : 'light'}</span>
+            <Icon name="right" size={16} color="var(--ink-3)" />
           </button>
           <button onClick={() => { onClose(); onTemplates(); }} style={row}>
             <Icon name="copy" size={18} color="var(--ink-2)" />
@@ -247,7 +257,8 @@ function MobileNav({ flow, setFlow, onCompose, onSettings, onSearch }: {
 
 export function App(): VNode {
   const desk = useIsDesktop();
-  const { dark, toggleDark } = useTheme();
+  const theme = useTheme();
+  const { dark, toggleDark } = theme;
   const { status, hasVault, ownerId, bootstrapping, entries, journals, templates, newJournal, signIn, unlock, lock, createEntry, rotatePhrase, deleteVault } = useAppData();
   const [flow, setFlowRaw] = useState<Flow>('journals');
   const [modal, setModal] = useState(false);
@@ -255,6 +266,7 @@ export function App(): VNode {
   const [deleteVaultOpen, setDeleteVaultOpen] = useState(false);
   const [templatesOpen, setTemplatesOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [prefsOpen, setPrefsOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   // Which entry the editor is currently editing (null → editor shows its empty state).
   const [openEntryId, setOpenEntryId] = useState<string | null>(null);
@@ -371,9 +383,10 @@ export function App(): VNode {
   if (desk) {
     return (
       <div style={{ height: '100%', display: 'flex', background: 'var(--paper)', position: 'relative' }}>
-        <Sidebar flow={flow} setFlow={navTo} journals={journals} onOpenJournal={openJournal} dark={dark} toggleDark={toggleDark} status={status} ownerId={ownerId} onRotate={() => setRotateOpen(true)} onDeleteVault={() => setDeleteVaultOpen(true)} onTemplates={() => setTemplatesOpen(true)} onSearch={() => setSearchOpen(true)} onLock={lock} />
+        <Sidebar flow={flow} setFlow={navTo} journals={journals} onOpenJournal={openJournal} dark={dark} toggleDark={toggleDark} status={status} ownerId={ownerId} onRotate={() => setRotateOpen(true)} onDeleteVault={() => setDeleteVaultOpen(true)} onTemplates={() => setTemplatesOpen(true)} onSearch={() => setSearchOpen(true)} onLock={lock} onPreferences={() => setPrefsOpen(true)} />
         <div style={{ flex: 1, minWidth: 0 }}>{screen}</div>
         {searchSheet}
+        {prefsOpen && <PreferencesSheet desk theme={theme} onClose={() => setPrefsOpen(false)} />}
         {modal && <NewJournalSheet desk templates={templates.filter((t) => !t.deleted)} onClose={() => setModal(false)} onCreate={onCreateJournal} />}
         {templatesOpen && <TemplatesSheet desk onClose={() => setTemplatesOpen(false)} onUse={(t) => { setTemplatesOpen(false); newEntryFromTemplate(t); }} />}
         {rotateOpen && <RotatePhraseSheet desk onClose={() => setRotateOpen(false)} rotate={rotatePhrase} />}
@@ -391,7 +404,8 @@ export function App(): VNode {
       {showNav && <MobileNav flow={flow === 'journal' ? 'journals' : flow} setFlow={navTo} onCompose={() => newEntry(flow === 'journal' ? openJournalObj?.id : undefined)} onSettings={() => setSettingsOpen(true)} onSearch={() => setSearchOpen(true)} />}
       {searchSheet}
       {modal && <NewJournalSheet desk={false} templates={templates.filter((t) => !t.deleted)} onClose={() => setModal(false)} onCreate={onCreateJournal} />}
-      {settingsOpen && <MobileSettingsSheet onClose={() => setSettingsOpen(false)} dark={dark} toggleDark={toggleDark} ownerId={ownerId} onRotate={() => setRotateOpen(true)} onDeleteVault={() => setDeleteVaultOpen(true)} onTemplates={() => setTemplatesOpen(true)} onLock={lock} />}
+      {settingsOpen && <MobileSettingsSheet onClose={() => setSettingsOpen(false)} dark={dark} ownerId={ownerId} onPreferences={() => setPrefsOpen(true)} onRotate={() => setRotateOpen(true)} onDeleteVault={() => setDeleteVaultOpen(true)} onTemplates={() => setTemplatesOpen(true)} onLock={lock} />}
+      {prefsOpen && <PreferencesSheet desk={false} theme={theme} onClose={() => setPrefsOpen(false)} />}
       {templatesOpen && <TemplatesSheet desk={false} onClose={() => setTemplatesOpen(false)} onUse={(t) => { setTemplatesOpen(false); newEntryFromTemplate(t); }} />}
       {rotateOpen && <RotatePhraseSheet desk={false} onClose={() => setRotateOpen(false)} rotate={rotatePhrase} />}
       {deleteVaultOpen && <DeleteVaultSheet desk={false} onClose={() => setDeleteVaultOpen(false)} deleteVault={deleteVault} />}

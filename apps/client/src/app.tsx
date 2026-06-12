@@ -1,4 +1,4 @@
-import type { JSX, VNode } from 'preact';
+import type { VNode } from 'preact';
 import { useEffect, useState } from 'preact/hooks';
 import { Icon, type IconName } from './ui/Icon';
 import { Wordmark } from './ui/Wordmark';
@@ -26,22 +26,16 @@ import { AskJournalSheet } from './ui/AskJournal';
 type Flow = 'journals' | 'journal' | 'calendar' | 'editor';
 
 // ── DESKTOP sidebar ─────────────────────────────────────────
-function Sidebar({ flow, setFlow, journals, onOpenJournal, dark, toggleDark, status, ownerId, onRotate, onDeleteVault, onTemplates, onSearch, onLock, onPreferences, onAiSettings, onAsk }: {
+function Sidebar({ flow, setFlow, journals, onOpenJournal, status, ownerId, onTemplates, onSearch, onPreferences, onAsk }: {
   flow: Flow;
   setFlow: (f: Flow) => void;
   journals: Journal[];
   onOpenJournal: (j: Journal) => void;
-  dark: boolean;
-  toggleDark: () => void;
   status: SyncStatus;
   ownerId: string | null;
-  onRotate: () => void;
-  onDeleteVault: () => void;
   onTemplates: () => void;
   onSearch: () => void;
-  onLock: () => void;
   onPreferences: () => void;
-  onAiSettings: () => void;
   /** null while the AI assistant is disabled — the row hides itself. */
   onAsk: (() => void) | null;
 }): VNode {
@@ -117,146 +111,30 @@ function Sidebar({ flow, setFlow, journals, onOpenJournal, dark, toggleDark, sta
         ))}
       </div>
 
-      {/* Identity on its own line, actions below: four 30px buttons no longer
-          fit beside the avatar + status + vault id in a 238px sidebar. */}
-      <div style={{ borderTop: '1px solid var(--line)', paddingTop: 12, marginTop: 8 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div style={{ width: 32, height: 32, borderRadius: 999, background: 'linear-gradient(145deg, var(--accent), #7b3a1e)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontFamily: 'var(--serif)', fontSize: 15, fontWeight: 600 }}>V</div>
+      {/* Footer: the identity row IS the preferences button — every vault
+          action (lock, rotate, delete, AI, appearance) lives in the dialog. */}
+      <div style={{ borderTop: '1px solid var(--line)', paddingTop: 10, marginTop: 8 }}>
+        <button
+          title="Preferences"
+          onClick={onPreferences}
+          style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left', cursor: 'pointer', padding: '7px 8px', borderRadius: 12, border: 'none', background: 'transparent' }}
+          onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface)')}
+          onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+        >
+          <div style={{ width: 32, height: 32, borderRadius: 999, flexShrink: 0, background: 'linear-gradient(145deg, var(--accent), var(--accent-ink))', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontFamily: 'var(--serif)', fontSize: 15, fontWeight: 600 }}>V</div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            {/* The vault id is the title: truncated like the admin dashboard's
-                vault label, so a self-hoster can match this vault there; hover
-                for the full id. */}
-            <div title={ownerId ? `Vault ID: ${ownerId}` : undefined} style={{ display: 'flex', alignItems: 'baseline', gap: 6, minWidth: 0 }}>
-              <span style={{ fontFamily: 'var(--mono)', fontSize: 12.5, fontWeight: 600, color: 'var(--ink)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                {ownerId ? `${ownerId.slice(0, 8)}…` : 'Your vault'}
-              </span>
-              {ownerId && (
-                <span style={{ fontFamily: 'var(--ui)', fontSize: 9.5, fontWeight: 700, letterSpacing: 0.6, textTransform: 'uppercase', color: 'var(--ink-3)', flexShrink: 0 }}>vault id</span>
-              )}
+            {/* Truncated like the admin dashboard's vault label (full id +
+                actions live in the preferences dialog). */}
+            <div style={{ fontFamily: 'var(--mono)', fontSize: 12.5, fontWeight: 600, color: 'var(--ink)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {ownerId ? `${ownerId.slice(0, 8)}…` : 'Your vault'}
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
               <ConnectionDot status={status} size={7} />
               <span style={{ fontFamily: 'var(--mono)', fontSize: 10.5, color: 'var(--ink-3)' }}>{connLabel(status).toLowerCase()}</span>
             </div>
           </div>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 4, marginTop: 8 }}>
-        <button
-          title="Replace recovery phrase"
-          onClick={onRotate}
-          style={{ width: 30, height: 30, borderRadius: 8, border: 'none', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-        >
-          <Icon name="shield" size={17} color="var(--ink-3)" />
-        </button>
-        <button
-          title="Delete vault"
-          onClick={onDeleteVault}
-          style={{ width: 30, height: 30, borderRadius: 8, border: 'none', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-        >
-          <Icon name="trash" size={17} color="var(--ink-3)" />
-        </button>
-        <button
-          title="Lock journal"
-          onClick={onLock}
-          style={{ width: 30, height: 30, borderRadius: 8, border: 'none', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-        >
-          <Icon name="lock" size={17} color="var(--ink-3)" />
-        </button>
-        <button
-          title={dark ? 'Switch to light' : 'Switch to dark'}
-          onClick={toggleDark}
-          style={{ width: 30, height: 30, borderRadius: 8, border: 'none', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-        >
-          <Icon name={dark ? 'sun' : 'moon'} size={17} color="var(--ink-3)" />
-        </button>
-        <button
-          title="AI assistant"
-          onClick={onAiSettings}
-          style={{ width: 30, height: 30, borderRadius: 8, border: 'none', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-        >
-          <Icon name="feather" size={17} color="var(--ink-3)" />
-        </button>
-        <button
-          title="Preferences"
-          onClick={onPreferences}
-          style={{ width: 30, height: 30, borderRadius: 8, border: 'none', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-        >
           <Icon name="settings" size={17} color="var(--ink-3)" />
         </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// Compact mobile settings: preferences (appearance/theme/stats) + the
-// replace-recovery-phrase entry point and other vault actions.
-function MobileSettingsSheet({ onClose, dark, ownerId, onPreferences, onRotate, onDeleteVault, onTemplates, onLock, onAiSettings, onAsk }: {
-  onClose: () => void;
-  dark: boolean;
-  ownerId: string | null;
-  onPreferences: () => void;
-  onRotate: () => void;
-  onDeleteVault: () => void;
-  onTemplates: () => void;
-  onLock: () => void;
-  onAiSettings: () => void;
-  /** null while the AI assistant is disabled — the row hides itself. */
-  onAsk: (() => void) | null;
-}): VNode {
-  const row: JSX.CSSProperties = { display: 'flex', alignItems: 'center', gap: 12, width: '100%', textAlign: 'left', cursor: 'pointer', padding: '13px 14px', borderRadius: 12, border: '1px solid var(--line)', background: 'var(--paper)', fontFamily: 'var(--ui)', fontSize: 14, fontWeight: 600, color: 'var(--ink)' };
-  return (
-    <div onClick={onClose} style={{ position: 'absolute', inset: 0, zIndex: 60, background: 'rgba(30,22,16,.34)', backdropFilter: 'blur(2px)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}>
-      <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', boxSizing: 'border-box', background: 'var(--surface)', borderRadius: '24px 24px 0 0', border: '1px solid var(--line)', padding: '20px 22px 30px', boxShadow: '0 20px 60px rgba(30,20,12,.3)' }}>
-        <div style={{ width: 38, height: 4, borderRadius: 9, background: 'var(--line)', margin: '0 auto 16px' }} />
-        <h3 style={{ fontFamily: 'var(--serif)', fontSize: 19, fontWeight: 500, color: 'var(--ink)', margin: '0 0 16px' }}>Settings</h3>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <button onClick={() => { onClose(); onPreferences(); }} style={row}>
-            <Icon name={dark ? 'moon' : 'sun'} size={18} color="var(--ink-2)" />
-            <span style={{ flex: 1 }}>Preferences</span>
-            <span style={{ fontFamily: 'var(--mono)', fontSize: 12, color: 'var(--ink-3)' }}>{dark ? 'dark' : 'light'}</span>
-            <Icon name="right" size={16} color="var(--ink-3)" />
-          </button>
-          <button onClick={() => { onClose(); onTemplates(); }} style={row}>
-            <Icon name="copy" size={18} color="var(--ink-2)" />
-            <span style={{ flex: 1 }}>Templates</span>
-            <Icon name="right" size={16} color="var(--ink-3)" />
-          </button>
-          {onAsk && (
-            <button onClick={() => { onClose(); onAsk(); }} style={row}>
-              <Icon name="feather" size={18} color="var(--ink-2)" />
-              <span style={{ flex: 1 }}>Ask my journal</span>
-              <Icon name="right" size={16} color="var(--ink-3)" />
-            </button>
-          )}
-          <button onClick={() => { onClose(); onAiSettings(); }} style={row}>
-            <Icon name="feather" size={18} color="var(--ink-2)" />
-            <span style={{ flex: 1 }}>AI assistant</span>
-            <Icon name="right" size={16} color="var(--ink-3)" />
-          </button>
-          <button onClick={() => { onClose(); onRotate(); }} style={row}>
-            <Icon name="shield" size={18} color="var(--accent)" />
-            <span style={{ flex: 1 }}>Replace recovery phrase</span>
-            <Icon name="right" size={16} color="var(--ink-3)" />
-          </button>
-          <button onClick={() => { onClose(); onLock(); }} style={row}>
-            <Icon name="lock" size={18} color="var(--ink-2)" />
-            <span style={{ flex: 1 }}>Lock journal</span>
-            <Icon name="right" size={16} color="var(--ink-3)" />
-          </button>
-          <button onClick={() => { onClose(); onDeleteVault(); }} style={row}>
-            <Icon name="trash" size={18} color="var(--accent)" />
-            <span style={{ flex: 1, color: 'var(--accent-ink)' }}>Delete vault</span>
-            <Icon name="right" size={16} color="var(--ink-3)" />
-          </button>
-        </div>
-        {/* Truncated like the admin dashboard's vault label, so a self-hoster
-            can match this vault there (the desktop sidebar footer shows the same). */}
-        {ownerId && (
-          <div title={`Vault ID: ${ownerId}`} style={{ textAlign: 'center', fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--ink-3)', paddingTop: 16 }}>
-            vault id {ownerId.slice(0, 8)}…
-          </div>
-        )}
       </div>
     </div>
   );
@@ -297,14 +175,12 @@ function MobileNav({ flow, setFlow, onCompose, onSettings, onSearch }: {
 export function App(): VNode {
   const desk = useIsDesktop();
   const theme = useTheme();
-  const { dark, toggleDark } = theme;
   const { status, hasVault, ownerId, bootstrapping, entries, journals, templates, aiSettings, newJournal, deleteJournal, signIn, unlock, lock, createEntry, rotatePhrase, deleteVault } = useAppData();
   const [flow, setFlowRaw] = useState<Flow>('journals');
   const [modal, setModal] = useState(false);
   const [rotateOpen, setRotateOpen] = useState(false);
   const [deleteVaultOpen, setDeleteVaultOpen] = useState(false);
   const [templatesOpen, setTemplatesOpen] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const [prefsOpen, setPrefsOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [aiSettingsOpen, setAiSettingsOpen] = useState(false);
@@ -443,11 +319,11 @@ export function App(): VNode {
   if (desk) {
     return (
       <div style={{ height: '100%', display: 'flex', background: 'var(--paper)', position: 'relative' }}>
-        <Sidebar flow={flow} setFlow={navTo} journals={journals} onOpenJournal={openJournal} dark={dark} toggleDark={toggleDark} status={status} ownerId={ownerId} onRotate={() => setRotateOpen(true)} onDeleteVault={() => setDeleteVaultOpen(true)} onTemplates={() => setTemplatesOpen(true)} onSearch={() => setSearchOpen(true)} onLock={lock} onPreferences={() => setPrefsOpen(true)} onAiSettings={() => setAiSettingsOpen(true)} onAsk={aiSettings?.enabled ? () => setAskOpen(true) : null} />
+        <Sidebar flow={flow} setFlow={navTo} journals={journals} onOpenJournal={openJournal} status={status} ownerId={ownerId} onTemplates={() => setTemplatesOpen(true)} onSearch={() => setSearchOpen(true)} onPreferences={() => setPrefsOpen(true)} onAsk={aiSettings?.enabled ? () => setAskOpen(true) : null} />
         <div style={{ flex: 1, minWidth: 0 }}>{screen}</div>
         {searchSheet}
         {deleteJournalSheet}
-        {prefsOpen && <PreferencesSheet desk theme={theme} onClose={() => setPrefsOpen(false)} />}
+        {prefsOpen && <PreferencesSheet desk theme={theme} onClose={() => setPrefsOpen(false)} ownerId={ownerId} status={status} onLock={lock} onRotate={() => setRotateOpen(true)} onDeleteVault={() => setDeleteVaultOpen(true)} onAiSettings={() => setAiSettingsOpen(true)} />}
         {modal && <NewJournalSheet desk templates={templates.filter((t) => !t.deleted)} onClose={() => setModal(false)} onCreate={onCreateJournal} />}
         {templatesOpen && <TemplatesSheet desk onClose={() => setTemplatesOpen(false)} onUse={(t) => { setTemplatesOpen(false); newEntryFromTemplate(t); }} />}
         {rotateOpen && <RotatePhraseSheet desk onClose={() => setRotateOpen(false)} rotate={rotatePhrase} />}
@@ -464,12 +340,13 @@ export function App(): VNode {
     <div style={{ height: '100%', position: 'relative', background: 'var(--paper)' }}>
       {screen}
       {/* Inside a notebook the Journals tab stays lit and compose writes into it. */}
-      {showNav && <MobileNav flow={flow === 'journal' ? 'journals' : flow} setFlow={navTo} onCompose={() => newEntry(flow === 'journal' ? openJournalObj?.id : undefined)} onSettings={() => setSettingsOpen(true)} onSearch={() => setSearchOpen(true)} />}
+      {/* Settings in the bottom nav goes straight to the preferences sheet —
+          it holds the journal/assistant/vault rows the old settings sheet had. */}
+      {showNav && <MobileNav flow={flow === 'journal' ? 'journals' : flow} setFlow={navTo} onCompose={() => newEntry(flow === 'journal' ? openJournalObj?.id : undefined)} onSettings={() => setPrefsOpen(true)} onSearch={() => setSearchOpen(true)} />}
       {searchSheet}
       {deleteJournalSheet}
       {modal && <NewJournalSheet desk={false} templates={templates.filter((t) => !t.deleted)} onClose={() => setModal(false)} onCreate={onCreateJournal} />}
-      {settingsOpen && <MobileSettingsSheet onClose={() => setSettingsOpen(false)} dark={dark} ownerId={ownerId} onPreferences={() => setPrefsOpen(true)} onRotate={() => setRotateOpen(true)} onDeleteVault={() => setDeleteVaultOpen(true)} onTemplates={() => setTemplatesOpen(true)} onLock={lock} onAiSettings={() => setAiSettingsOpen(true)} onAsk={aiSettings?.enabled ? () => setAskOpen(true) : null} />}
-      {prefsOpen && <PreferencesSheet desk={false} theme={theme} onClose={() => setPrefsOpen(false)} />}
+      {prefsOpen && <PreferencesSheet desk={false} theme={theme} onClose={() => setPrefsOpen(false)} ownerId={ownerId} status={status} onLock={lock} onRotate={() => setRotateOpen(true)} onDeleteVault={() => setDeleteVaultOpen(true)} onAiSettings={() => setAiSettingsOpen(true)} onTemplates={() => setTemplatesOpen(true)} onAsk={aiSettings?.enabled ? () => setAskOpen(true) : null} />}
       {templatesOpen && <TemplatesSheet desk={false} onClose={() => setTemplatesOpen(false)} onUse={(t) => { setTemplatesOpen(false); newEntryFromTemplate(t); }} />}
       {rotateOpen && <RotatePhraseSheet desk={false} onClose={() => setRotateOpen(false)} rotate={rotatePhrase} />}
       {deleteVaultOpen && <DeleteVaultSheet desk={false} onClose={() => setDeleteVaultOpen(false)} deleteVault={deleteVault} />}

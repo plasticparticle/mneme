@@ -42,7 +42,7 @@ project. Scaffolded so far:
   (docs/API.md "Admin", docs/SECURITY.md §2). **Vault deletion** exists on both sides, each behind a
   typed-"delete" confirmation: the operator via `DELETE /admin/vaults/{id}` (confirm string enforced
   server-side; dashboard row button + modal) and the user via the client's "Delete vault" sheet
-  (`ui/DeleteVault.tsx`, sidebar trash / mobile settings → `deleteVault` in `state/data.tsx`: relay
+  (`ui/DeleteVault.tsx`, Preferences → Vault → `deleteVault` in `state/data.tsx`: relay
   `DELETE /v1/account` first, then local OPFS destroy + seal clear, back to onboarding). A user
   session can only ever delete its own vault — `/v1/account` takes no id.
 - **Infra** — `docker-compose.yml` (Postgres + MinIO + server), `server/Dockerfile`, `.devcontainer/`.
@@ -79,7 +79,7 @@ Recovery-phrase **rotation** is in (the "my mnemonic may have leaked" path): `sy
 re-encrypts the whole vault (entries + media) under a fresh phrase/owner, then `DELETE /v1/account`
 wipes the old owner server-side (cascade in Postgres + best-effort S3 chunk cleanup) and the old
 per-owner OPFS DB is destroyed locally. UI: "Replace recovery phrase" sheet (`ui/RotatePhrase.tsx`)
-from the desktop sidebar shield / mobile settings sheet. Old account stays intact until the final
+from Preferences → Vault. Old account stays intact until the final
 wipe; see docs/SECURITY.md §4 and docs/API.md "Account".
 
 Smaller client features in: **vault-wide search** (`ui/Search.tsx` — ⌘/Ctrl+K palette, desktop
@@ -100,12 +100,16 @@ password-manager autofill target on phrase restore, and **math typesetting** (`e
 commands; click a formula to edit it in a live-preview LaTeX dialog. The formula is a `latex` attr
 inside bodyJson, so it stays inside the encrypted entry body; `docToText` surfaces the LaTeX source
 to previews/search and `DocPreview` renders it in template previews), and a **preferences overlay**
-(`ui/Preferences.tsx` — desktop sidebar gear / mobile settings → Preferences) with light/dark/system
+(`ui/Preferences.tsx` — THE settings surface: desktop sidebar identity row / mobile Settings tab;
+the old footer icon strip and mobile settings sheet are gone) with light/dark/system
 appearance, six theme skins (Paper/Modern/Terminal/Forest/Blossom/Lavender — full `[data-skin]`
 surface/type ramps in `tokens.css`, each light+dark) × six orthogonal accent tints (picking a skin
 adopts its default accent; `hooks/useTheme.ts`; all device-local localStorage, never synced — the
-old boolean dark key migrates) and writing stats computed locally over the decrypted entries
-(`state/stats.ts`: totals, streaks, days journaled).
+old boolean dark key migrates), writing stats computed locally over the decrypted entries
+(`state/stats.ts`: totals, streaks, days journaled), the assistant rows (AI settings; Templates and
+Ask-my-journal on mobile, where the sidebar isn't there to host them), and the vault section
+(identity card with connection status, lock, phrase rotation, vault deletion — rows hand off to the
+existing sheets).
 
 **Lab/learning-notebook capabilities** (a positioning widening, not a pivot): **tables**
 (`@tiptap/extension-table` TableKit, resizable; `/` Table command; row/column controls lead the
@@ -129,12 +133,12 @@ Deliberately NOT built: compliance-grade ELN features — signed immutable recor
 calls via the dangerous-direct-browser-access CORS header) and Ollama (fully local) — behind one
 `AiProvider` interface (`ai/types.ts`; an OpenAI-compatible backend is one new file). **Zero relay
 involvement**: requests go browser→provider; journal plaintext must NEVER be proxied through the
-relay. Two surfaces: **"Ask my journal"** (`ui/AskJournal.tsx`, sidebar row / mobile settings,
+relay. Two surfaces: **"Ask my journal"** (`ui/AskJournal.tsx`, sidebar row / Preferences on mobile,
 only when enabled) — Q&A over the decrypted in-memory entries, context built by `ai/context.ts`
 (search-ranked via the extracted `src/search/core.ts` + recency, per-backend char budgets),
 streaming, transcript memory-only; and **editor writing help** (`/` slash commands Continue/
 Summarize/Suggest-title → `ui/AiActionDialog.tsx`, current entry only, confirm-before-insert;
-gated at editor mount). Settings (`ui/AiSettings.tsx`, vault menu / mobile settings) carry the
+gated at editor mount). Settings (`ui/AiSettings.tsx`, Preferences → Assistant) carry the
 per-backend privacy copy — the cloud card states that context entries leave E2EE for that request.
 The API key is sealed at rest: `Identity.aiKey` (HKDF info="ai-settings", `crypto/keys.ts`) wraps
 the settings JSON via `crypto/aead.ts` (version byte + AAD `mneme:ai-settings:v1`, `ai/settings.ts`)

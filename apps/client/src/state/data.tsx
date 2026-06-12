@@ -158,6 +158,14 @@ function startOfLocalDay(ts: number): number {
   return d.getTime();
 }
 
+// New entries are headlined with their local creation time ("2026-06-12 14:03:55")
+// instead of starting untitled.
+function defaultEntryTitle(ts: number): string {
+  const d = new Date(ts);
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+}
+
 // A short relative label for a notebook's most-recent edit ("Today", "3 days ago",
 // "12 Jun"). `last` was a hardcoded sample string; this derives it from real data.
 export function relativeDay(ts: number, now: number): string {
@@ -491,7 +499,7 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
       const entry: JournalEntry = {
         id: newEntryId(),
         journalId: input.journalId,
-        title: input.title ?? '',
+        title: input.title ?? defaultEntryTitle(now),
         bodyText: input.bodyText ?? '',
         bodyJson: input.bodyJson,
         labels: input.labels ?? [],

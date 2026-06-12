@@ -10,13 +10,15 @@ import type { Journal } from './data/sample';
 import type { TemplateRecord } from './sync/engine';
 import { Onboarding } from './screens/Onboarding';
 import { JournalsScreen, NewJournalSheet } from './screens/Journals';
+import { JournalEntriesScreen } from './screens/JournalEntries';
 import { CalendarScreen } from './screens/Calendar';
 import { EditorScreen } from './screens/Editor';
 import { RotatePhraseSheet } from './ui/RotatePhrase';
 import { TemplatesSheet } from './ui/Templates';
 import { SearchSheet } from './ui/Search';
 
-type Flow = 'journals' | 'calendar' | 'editor';
+// 'journal' is the mobile-only drill-in: the entry list of one notebook.
+type Flow = 'journals' | 'journal' | 'calendar' | 'editor';
 
 // ── DESKTOP sidebar ─────────────────────────────────────────
 function Sidebar({ flow, setFlow, journals, onOpenJournal, dark, toggleDark, status, onRotate, onTemplates, onSearch }: {
@@ -201,6 +203,10 @@ export function App(): VNode {
   const [searchOpen, setSearchOpen] = useState(false);
   // Which entry the editor is currently editing (null → editor shows its empty state).
   const [openEntryId, setOpenEntryId] = useState<string | null>(null);
+  // Which notebook the mobile 'journal' flow is showing.
+  const [openJournalId, setOpenJournalId] = useState<string | null>(null);
+  // Where the mobile editor's back button returns to (the flow it was entered from).
+  const [editorReturn, setEditorReturn] = useState<Flow>('journals');
 
   // ⌘/Ctrl+K opens search from anywhere (once unlocked).
   useEffect(() => {
@@ -225,8 +231,9 @@ export function App(): VNode {
 
   const setFlow = (f: Flow) => setFlowRaw(f);
 
-  // Open an existing entry in the editor.
+  // Open an existing entry in the editor, remembering which flow to return to.
   const openEntry = (id: string) => {
+    if (flow !== 'editor') setEditorReturn(flow);
     setOpenEntryId(id);
     setFlow('editor');
   };
@@ -234,8 +241,7 @@ export function App(): VNode {
   // Create a fresh empty entry (encrypted + queued for the relay) and open it.
   const newEntry = (journalId?: string) => {
     const entry = createEntry({ journalId: journalId ?? journals[0]?.id ?? 'j-personal' });
-    setOpenEntryId(entry.id);
-    setFlow('editor');
+    openEntry(entry.id);
   };
 
   // Start a new entry pre-filled from a template ("Use" in the templates sheet,
@@ -246,23 +252,43 @@ export function App(): VNode {
       bodyJson: t.bodyJson,
       bodyText: t.bodyText,
     });
-    setOpenEntryId(entry.id);
-    setFlow('editor');
+    openEntry(entry.id);
   };
 
-  // Opening a notebook jumps to its most recent entry, or starts a new one in it.
-  // While the first sync is still running, an empty notebook stays on the journals
-  // screen (the syncing notice explains why) instead of silently creating a blank
-  // entry for content that just hasn't arrived yet.
+  // Opening a notebook: on mobile it drills into the notebook's entry list (the
+  // editor is full-screen there, so jumping straight into the latest entry left
+  // no way to browse or pick another one). On desktop it jumps to the most
+  // recent entry — the editor's left pane already shows the journal-scoped list.
+  // While the first sync is still running, an empty notebook stays on the
+  // journals screen on desktop (the syncing notice explains why) instead of
+  // silently creating a blank entry for content that just hasn't arrived yet.
   const openJournal = (j: Journal) => {
+    if (!desk) {
+      setOpenJournalId(j.id);
+      setFlow('journal');
+      return;
+    }
     const latest = entries.filter((e) => e.journalId === j.id).sort((a, b) => b.updatedAt - a.updatedAt)[0];
     if (latest) openEntry(latest.id);
     else if (!bootstrapping) newEntry(j.id);
   };
 
+  const openJournalObj = journals.find((j) => j.id === openJournalId);
+
   const screen = (() => {
     if (flow === 'calendar') return <CalendarScreen desk={desk} onOpenEntry={(id) => (id ? openEntry(id) : newEntry())} />;
-    if (flow === 'editor') return <EditorScreen desk={desk} entryId={openEntryId} onBack={() => setFlow('journals')} onSelectEntry={openEntry} onNew={newEntry} />;
+    if (flow === 'editor') return <EditorScreen desk={desk} entryId={openEntryId} onBack={() => setFlow(editorReturn)} onSelectEntry={openEntry} onNew={newEntry} />;
+    if (flow === 'journal' && !desk && openJournalObj) {
+      return (
+        <JournalEntriesScreen
+          journal={openJournalObj}
+          onBack={() => setFlow('journals')}
+          onOpenEntry={openEntry}
+          onNew={() => newEntry(openJournalObj.id)}
+          syncing={bootstrapping}
+        />
+      );
+    }
     return <JournalsScreen desk={desk} journals={journals} onOpen={openJournal} onNew={() => setModal(true)} onSearch={() => setSearchOpen(true)} syncing={bootstrapping} />;
   })();
 
@@ -298,11 +324,12 @@ export function App(): VNode {
   }
 
   // mobile
-  const showNav = flow === 'journals' || flow === 'calendar';
+  const showNav = flow === 'journals' || flow === 'journal' || flow === 'calendar';
   return (
     <div style={{ height: '100%', position: 'relative', background: 'var(--paper)' }}>
       {screen}
-      {showNav && <MobileNav flow={flow} setFlow={navTo} onCompose={() => newEntry()} onSettings={() => setSettingsOpen(true)} onSearch={() => setSearchOpen(true)} />}
+      {/* Inside a notebook the Journals tab stays lit and compose writes into it. */}
+      {showNav && <MobileNav flow={flow === 'journal' ? 'journals' : flow} setFlow={navTo} onCompose={() => newEntry(flow === 'journal' ? openJournalObj?.id : undefined)} onSettings={() => setSettingsOpen(true)} onSearch={() => setSearchOpen(true)} />}
       {searchSheet}
       {modal && <NewJournalSheet desk={false} templates={templates.filter((t) => !t.deleted)} onClose={() => setModal(false)} onCreate={onCreateJournal} />}
       {settingsOpen && <MobileSettingsSheet onClose={() => setSettingsOpen(false)} dark={dark} toggleDark={toggleDark} onRotate={() => setRotateOpen(true)} onTemplates={() => setTemplatesOpen(true)} />}

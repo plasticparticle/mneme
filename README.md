@@ -131,6 +131,15 @@ Want to watch the crypto + sync round-trip without a browser? With the relay run
 pnpm --filter client exec tsx scripts/integration.ts   # register → auth → encrypt → push → pull → decrypt
 ```
 
+If you're the one *hosting* the relay, there's an **admin dashboard** at
+**http://localhost:8080/admin** (dev token: `admin_dev`, set in `docker-compose.yml`) showing vault
+counts, storage per vault, and daily request/record/media counters. It shows health and growth,
+never people: the daily counters are stored without any owner column, vault ids are truncated
+pseudonymous key hashes, and the relay couldn't tell you what anyone wrote even if you asked
+nicely — that's the whole point. In production set `ADMIN_TOKEN` to a real secret (or leave it
+unset and the `/admin` routes simply don't exist). Details in [`docs/API.md`](./docs/API.md#admin)
+and [`server/README.md`](./server/README.md#admin-dashboard).
+
 Details, the API surface, and how to run the relay's own tests live in [`server/README.md`](./server/README.md).
 
 ---

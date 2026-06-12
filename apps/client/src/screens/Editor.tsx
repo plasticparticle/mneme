@@ -515,33 +515,55 @@ export function EditorScreen({
   onBack,
   onSelectEntry,
   onNew,
+  onDeleted,
 }: {
   desk: boolean;
   entryId: string | null;
   onBack: () => void;
   onSelectEntry: (id: string) => void;
   onNew: (journalId?: string) => void;
+  /** Mobile delete hand-off: navigate to the journal's entry list. */
+  onDeleted: (journalId: string | null) => void;
 }): VNode {
   const { entries } = useAppData();
   const entry = entries.find((e) => e.id === entryId) ?? null;
   const [editor, setEditor] = useState<Editor | null>(null);
   const [words, setWords] = useState(0);
-  const journal = entry ? findJournal(entry.journalId) : undefined;
+  // The journal stays the active context even while no entry is open (e.g.
+  // right after a delete) — the list, header, and "new entry" keep targeting it.
+  const lastJournalId = useRef<string | null>(null);
+  if (entry) lastJournalId.current = entry.journalId;
+  const journalId = entry?.journalId ?? lastJournalId.current;
+  const journal = journalId ? findJournal(journalId) : undefined;
+
+  // Deleting keeps you inside the journal: desktop opens its next entry (or
+  // its scoped empty editor when none remain); mobile returns to its list.
+  const handleDeleted = (): void => {
+    if (!desk) {
+      onDeleted(journalId);
+      return;
+    }
+    const next = entries
+      .filter((x) => !x.deleted && x.journalId === journalId && x.id !== entry?.id)
+      .sort((a, b) => b.updatedAt - a.updatedAt)[0];
+    if (next) onSelectEntry(next.id);
+  };
 
   const empty = (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 14, color: 'var(--ink-3)' }}>
       <Icon name="feather" size={30} color="var(--ink-3)" />
       <span style={{ fontFamily: 'var(--ui)', fontSize: 14 }}>Nothing open yet.</span>
-      <button onClick={() => onNew()} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '9px 14px', borderRadius: 10, border: '1px solid var(--line)', background: 'var(--surface)', cursor: 'pointer', color: 'var(--accent-ink)', fontFamily: 'var(--ui)', fontSize: 13.5, fontWeight: 600 }}>
+      <button onClick={() => onNew(journalId ?? undefined)} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '9px 14px', borderRadius: 10, border: '1px solid var(--line)', background: 'var(--surface)', cursor: 'pointer', color: 'var(--accent-ink)', fontFamily: 'var(--ui)', fontSize: 13.5, fontWeight: 600 }}>
         <Icon name="plus" size={16} color="var(--accent-ink)" /> New entry
       </button>
     </div>
   );
 
   if (desk) {
-    // The entry list is scoped to the open entry's journal; without one open
-    // (nothing selected yet) it falls back to the whole vault.
-    const scoped = entry ? entries.filter((x) => x.journalId === entry.journalId) : entries;
+    // The entry list is scoped to the active journal (the open entry's, or the
+    // last one open — survives a delete); only a fresh editor with no journal
+    // context yet falls back to the whole vault.
+    const scoped = journalId ? entries.filter((x) => x.journalId === journalId) : entries;
     const list = [...scoped].sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 12);
     return (
       <div style={{ height: '100%', display: 'flex', background: 'var(--paper)' }}>
@@ -555,7 +577,7 @@ export function EditorScreen({
                 <div style={{ fontFamily: 'var(--ui)', fontSize: 11.5, color: 'var(--ink-3)' }}>{scoped.length} {scoped.length === 1 ? 'entry' : 'entries'}</div>
               </div>
             </div>
-            <button title="New entry" onClick={() => onNew(entry?.journalId)} style={{ width: 34, height: 34, borderRadius: 10, border: '1px solid var(--line)', background: 'var(--surface)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}><Icon name="plus" size={18} color="var(--accent-ink)" /></button>
+            <button title="New entry" onClick={() => onNew(journalId ?? undefined)} style={{ width: 34, height: 34, borderRadius: 10, border: '1px solid var(--line)', background: 'var(--surface)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}><Icon name="plus" size={18} color="var(--accent-ink)" /></button>
           </div>
           <div style={{ flex: 1, overflow: 'auto', padding: '0 12px 14px', display: 'flex', flexDirection: 'column', gap: 4 }}>
             {list.map((x) => {
@@ -582,7 +604,7 @@ export function EditorScreen({
             <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
               <span style={{ fontFamily: 'var(--ui)', fontSize: 12.5, color: 'var(--ink-3)' }}>{words} words</span>
               <SyncBadge />
-              <EntryMenu desk entry={entry} onDeleted={() => undefined} />
+              <EntryMenu desk entry={entry} onDeleted={handleDeleted} />
             </div>
           </div>
           <div style={{ flex: 1, overflow: 'auto' }}>
@@ -615,7 +637,7 @@ export function EditorScreen({
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <ConnChip compact />
           <button title="New entry" onClick={() => onNew(entry?.journalId)} style={{ width: 36, height: 36, borderRadius: 999, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'transparent', border: 'none', cursor: 'pointer' }}><Icon name="plus" size={20} color="var(--accent-ink)" /></button>
-          <EntryMenu desk={false} entry={entry} onDeleted={onBack} />
+          <EntryMenu desk={false} entry={entry} onDeleted={handleDeleted} />
         </div>
       </div>
 

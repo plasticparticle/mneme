@@ -2,10 +2,9 @@
 // Built on TipTap's Suggestion utility. The ProseMirror plugin and the
 // Preact-rendered <SlashMenu> talk through a small mutable handle so neither
 // side owns the other's lifecycle (the editor mounts once, outside Preact).
-import { Extension, type Editor, type JSONContent, type Range } from '@tiptap/core';
+import { Extension, type Editor, type Range } from '@tiptap/core';
 import { Suggestion, exitSuggestion, type SuggestionProps } from '@tiptap/suggestion';
 import type { IconName } from '../ui/Icon';
-import type { TemplateRecord } from '../sync/engine';
 
 export interface SlashCommand {
   title: string;
@@ -44,7 +43,7 @@ export function buildSlashCommands(
     onAudio?: () => void;
     onImage?: () => void;
     onFile?: () => void;
-    templates?: TemplateRecord[];
+    onTemplate?: () => void;
   } = {},
 ): SlashCommand[] {
   const commands: SlashCommand[] = [
@@ -85,6 +84,17 @@ export function buildSlashCommands(
       run: (e, r) => e.chain().focus().deleteRange(r).setHorizontalRule().run(),
     },
   ];
+  if (opts.onTemplate) {
+    // One entry for all templates: opens the template picker, which inserts
+    // the chosen template at the cursor (the "/" range is removed first).
+    commands.push({
+      title: 'Template', hint: 'Insert an entry template', icon: 'copy', keywords: 'template prompt skeleton insert',
+      run: (e, r) => {
+        e.chain().focus().deleteRange(r).run();
+        opts.onTemplate?.();
+      },
+    });
+  }
   if (opts.onVideo) {
     commands.push({
       title: 'Video', hint: 'Record a video clip', icon: 'video', keywords: 'camera record clip media',
@@ -121,30 +131,10 @@ export function buildSlashCommands(
       },
     });
   }
-  // Entry templates: typing "/" then the template's name drops its blocks in
-  // at the cursor. Tombstoned or body-less templates never make it here.
-  for (const t of opts.templates ?? []) {
-    if (t.deleted) continue;
-    let doc: JSONContent | null = null;
-    try {
-      doc = t.bodyJson ? (JSON.parse(t.bodyJson) as JSONContent) : null;
-    } catch {
-      /* unreadable body — skip the command rather than insert garbage */
-    }
-    const content = doc?.content;
-    if (!content?.length) continue;
-    commands.push({
-      title: t.name || 'Untitled template', hint: 'Insert template', icon: 'copy', keywords: 'template insert',
-      run: (e, r) => e.chain().focus().deleteRange(r).insertContent(content).run(),
-    });
-  }
   return commands;
 }
 
-// `commands` is a getter so the palette always sees the current command list —
-// the editor mounts once, but templates can be created/renamed/deleted while
-// an entry stays open.
-export function slashExtension(handle: SlashHandle, commands: () => SlashCommand[]): Extension {
+export function slashExtension(handle: SlashHandle, commands: SlashCommand[]): Extension {
   return Extension.create({
     name: 'slashCommands',
     addProseMirrorPlugins() {
@@ -161,7 +151,7 @@ export function slashExtension(handle: SlashHandle, commands: () => SlashCommand
           command: ({ editor, range, props }) => props.run(editor, range),
           items: ({ query }) => {
             const q = query.trim().toLowerCase();
-            return commands().filter((c) => `${c.title} ${c.keywords}`.toLowerCase().includes(q));
+            return commands.filter((c) => `${c.title} ${c.keywords}`.toLowerCase().includes(q));
           },
           render: () => ({
             onStart: (p) => handle.listener?.show(toState(p)),

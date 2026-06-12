@@ -93,12 +93,14 @@ function TemplateEditorView({
 function TemplateActions({
   compact,
   armed,
+  useLabel,
   onUse,
   onEdit,
   onDelete,
 }: {
   compact: boolean;
   armed: boolean; // delete was tapped once; the next tap commits
+  useLabel: string;
   onUse: () => void;
   onEdit: () => void;
   onDelete: () => void;
@@ -130,7 +132,7 @@ function TemplateActions({
         onClick={handle(onUse)}
         style={{ ...UI_13, fontSize: compact ? 13 : 14, fontWeight: 600, color: 'var(--accent-ink)', background: 'var(--accent-soft)', border: '1px solid var(--accent)', borderRadius: compact ? 8 : 10, padding: compact ? '5px 12px' : '10px 0', cursor: 'pointer', flexShrink: 0, flex: compact ? undefined : 1, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
       >
-        <Icon name="feather" size={compact ? 13 : 15} color="var(--accent-ink)" /> Use
+        <Icon name="feather" size={compact ? 13 : 15} color="var(--accent-ink)" /> {useLabel}
       </button>
       {iconBtn('Edit template', 'feather', onEdit)}
       {iconBtn('Delete template', 'x', onDelete)}
@@ -150,10 +152,13 @@ function PreviewBody({ t, maxHeight }: { t: TemplateRecord; maxHeight?: string }
 
 export function TemplatesSheet({
   desk,
+  useLabel = 'Use',
   onClose,
   onUse,
 }: {
   desk: boolean;
+  /** Label of the primary action — "Use" in the manager, "Insert" as the editor's picker. */
+  useLabel?: string;
   onClose: () => void;
   onUse: (t: TemplateRecord) => void;
 }): VNode {
@@ -169,6 +174,7 @@ export function TemplatesSheet({
   const actionsFor = (t: TemplateRecord, compact: boolean): VNode => (
     <TemplateActions
       compact={compact}
+      useLabel={useLabel}
       armed={armedDelete === t.id}
       onUse={() => onUse(t)}
       onEdit={() => { setArmedDelete(null); setView(t); }}
@@ -306,7 +312,9 @@ export function TemplatesSheet({
   return (
     <div
       onClick={onClose}
-      style={{ position: 'absolute', inset: 0, zIndex: 60, background: 'rgba(30,22,16,.34)', backdropFilter: 'blur(2px)', display: 'flex', alignItems: desk ? 'center' : 'flex-end', justifyContent: 'center' }}
+      // fixed (not absolute): the sheet also mounts deep inside the editor as
+      // the "/" Template picker, where no positioned ancestor spans the screen.
+      style={{ position: 'fixed', inset: 0, zIndex: 70, background: 'rgba(30,22,16,.34)', backdropFilter: 'blur(2px)', display: 'flex', alignItems: desk ? 'center' : 'flex-end', justifyContent: 'center' }}
     >
       <div
         onClick={(e) => { e.stopPropagation(); setArmedDelete(null); }}

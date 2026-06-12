@@ -21,9 +21,8 @@ export function useRichEditor(opts: {
   placeholder: string;
   editable?: boolean;
   onChange?: (change: RichEditorChange) => void;
-  /** Enables the "/" command palette; the caller renders <SlashMenu handle={...}>.
-   * `commands` is a getter so the list can change while the editor stays mounted. */
-  slash?: { handle: SlashHandle; commands: () => SlashCommand[] };
+  /** Enables the "/" command palette; the caller renders <SlashMenu handle={...}>. */
+  slash?: { handle: SlashHandle; commands: SlashCommand[] };
   /** Enables inline media nodes (required to open docs containing them). */
   media?: MediaNodeHandlers;
   /** Files dropped on / pasted into the editor — the caller runs the upload flow. */

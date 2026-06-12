@@ -1,23 +1,24 @@
 import type { VNode } from 'preact';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks';
+import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { Editor, JSONContent } from '@tiptap/core';
 import { Icon } from '../ui/Icon';
 import { SyncBadge, Cover, ConnChip } from '../ui/primitives';
 import { LabelField } from '../ui/LabelField';
 import { findJournal, LABELS } from '../data/sample';
 import { useAppData } from '../state/data';
-import type { JournalEntry, MediaAttachment } from '../sync/engine';
+import type { JournalEntry, MediaAttachment, TemplateRecord } from '../sync/engine';
 import { useRichEditor } from '../editor/useRichEditor';
 import { insertMediaAttachment, insertImageGallery, docImages } from '../editor/media';
 import { EditorToolbar } from '../editor/Toolbar';
 import { parseBody, docMediaIds } from '../editor/doc';
 import { ConfirmDialog } from '../ui/ConfirmDialog';
-import { buildSlashCommands, createSlashHandle, type SlashCommand } from '../editor/slash';
+import { buildSlashCommands, createSlashHandle } from '../editor/slash';
 import { SlashMenu } from '../editor/SlashMenu';
 import { VideoCapture } from '../ui/VideoCapture';
 import { AudioCapture } from '../ui/AudioCapture';
 import { AttachmentList } from '../ui/Attachments';
 import { Lightbox } from '../ui/Lightbox';
+import { TemplatesSheet } from '../ui/Templates';
 import { EntryDateTime } from '../ui/EntryDateTime';
 import '../editor/editor.css';
 
@@ -62,8 +63,10 @@ function EntryEditor({
   onEditorReady: (e: Editor | null) => void;
   onWords: (n: number) => void;
 }): VNode {
-  const { entries, templates, updateEntry, addMedia, removeMedia, mediaBlob } = useAppData();
+  const { entries, updateEntry, addMedia, removeMedia, mediaBlob } = useAppData();
   const [capturing, setCapturing] = useState<'video' | 'audio' | null>(null);
+  // The template picker behind the "/" Template command.
+  const [pickingTemplate, setPickingTemplate] = useState(false);
   // Computed once per mount; this component is keyed by entry.id so a different
   // entry remounts it with fresh initial content.
   const initial = useMemo(() => parseBody(entry.bodyJson, entry.bodyText), [entry.id]);
@@ -91,21 +94,17 @@ function EntryEditor({
 
   // Stable for the lifetime of this mount (the editor mounts once; keyed by entry.id).
   const slashHandle = useMemo(createSlashHandle, []);
-  // Commands rebuild when templates change, but the editor reads them through a
-  // stable getter — the "/" palette stays current without remounting the editor.
-  const slashCommands = useRef<SlashCommand[]>([]);
-  slashCommands.current = useMemo(
+  const slashCommands = useMemo(
     () =>
       buildSlashCommands({
         onVideo: () => setCapturing('video'),
         onAudio: () => setCapturing('audio'),
         onImage: () => imageInput.current?.click(),
         onFile: () => fileInput.current?.click(),
-        templates,
+        onTemplate: () => setPickingTemplate(true),
       }),
-    [templates],
+    [],
   );
-  const getSlashCommands = useCallback(() => slashCommands.current, []);
 
   // Maximized image view: every image of the entry in document order, so ←/→
   // steps through the whole entry. Opened through a ref because the (stable)
@@ -147,7 +146,7 @@ function EntryEditor({
   const { editor, mountRef } = useRichEditor({
     initial,
     placeholder: 'Begin where you are…',
-    slash: { handle: slashHandle, commands: getSlashCommands },
+    slash: { handle: slashHandle, commands: slashCommands },
     media: mediaHandlers,
     onFiles: (files) => void uploadFiles(files),
     onChange: (c) => {
@@ -167,6 +166,20 @@ function EntryEditor({
   const attach = async (kind: MediaAttachment['kind'], blob: Blob, durationMs: number): Promise<void> => {
     const att = await addMedia(entry.id, kind, blob, { durationMs });
     if (att && editor) insertMediaAttachment(editor, att);
+  };
+
+  // Drop the chosen template's blocks in at the cursor (the "/" Template
+  // command already removed the slash range before opening the picker).
+  const insertTemplate = (t: TemplateRecord): void => {
+    setPickingTemplate(false);
+    const ed = editorRef.current;
+    if (!ed) return;
+    try {
+      const doc = t.bodyJson ? (JSON.parse(t.bodyJson) as JSONContent) : null;
+      if (doc?.content?.length) ed.chain().focus().insertContent(doc.content).run();
+    } catch {
+      /* unreadable body — insert nothing rather than garbage */
+    }
   };
 
   // Pickers re-fire change even for the same selection (value reset below).
@@ -273,6 +286,15 @@ function EntryEditor({
           desk={desk}
           onClose={() => setCapturing(null)}
           onCapture={(blob, durationMs) => void attach('audio', blob, durationMs)}
+        />
+      )}
+
+      {pickingTemplate && (
+        <TemplatesSheet
+          desk={desk}
+          useLabel="Insert"
+          onClose={() => setPickingTemplate(false)}
+          onUse={insertTemplate}
         />
       )}
 

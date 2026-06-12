@@ -30,6 +30,9 @@ the auth model.
 | GET | `/v1/media/{id}/chunks/{n}` | ✅ | download one encrypted media chunk |
 | DELETE | `/v1/media/{id}` | ✅ | delete one media object (index + chunks) |
 | DELETE | `/v1/account` | ✅ | wipe the owner entirely (phrase rotation) |
+| GET | `/admin` | – | admin dashboard page (404 unless `ADMIN_TOKEN` is set) |
+| GET | `/admin/stats` | 🔑 | aggregate stats JSON (`Bearer <ADMIN_TOKEN>`) |
+| DELETE | `/admin/vaults/{id}` | 🔑 | operator vault wipe (requires `{"confirm":"delete"}` body) |
 
 Errors are `{ "error": "message" }` with an appropriate status (400/401/404/500). CORS preflight
 (`OPTIONS`) is answered for configured origins (`CORS_ORIGINS`).
@@ -161,6 +164,70 @@ This is the server half of **recovery-phrase rotation** (`apps/client/src/sync/r
 client derives a fresh identity from a new phrase, re-encrypts and re-pushes the whole vault as a
 brand-new owner, and only then calls this endpoint with the *old* session token. Afterwards the old
 phrase still passes TOFU registration (it's just a keypair) but opens an empty vault.
+
+---
+
+## Admin
+
+Disabled by default: every `/admin` path is a plain 404 until the `ADMIN_TOKEN` environment variable
+is set. The admin surface is for the **operator** and shows **aggregates and storage metadata only** —
+exactly what the relay already stores as accepted metadata (see SECURITY.md). It cannot show content
+or identities, because the data to do so does not exist server-side.
+
+### `GET /admin`
+
+The dashboard page (self-contained HTML, no external assets). The page asks for the admin token in
+the browser and calls `/admin/stats` with it; the token is kept in `sessionStorage` only.
+
+### `GET /admin/stats` → `200`
+
+Requires `Authorization: Bearer <ADMIN_TOKEN>` (constant-time compared; wrong token → 401).
+
+```json
+{
+  "totals":  { "vaults": 4, "devices": 6, "records": 120, "record_bytes": 51234,
+               "media_objects": 9, "media_bytes": 20801466 },
+  "vaults":  [ { "vault": "GGnnHixG…", "created_at": "…", "devices": 1,
+                 "records": 4, "record_bytes": 6798,
+                 "media_objects": 6, "media_bytes": 16599319, "last_activity": "…" } ],
+  "daily":   [ { "day": "2026-06-12", "counts": { "requests": 23, "requests_failed": 2,
+                 "records_created": 2, "media_uploaded": 1, "media_bytes": 1048576,
+                 "vaults_created": 3, "vaults_deleted": 1 } } ],
+  "runtime": { "started_at": "…", "uptime_seconds": 45, "requests": 23,
+               "failed_4xx": 1, "failed_5xx": 1, "avg_latency_ms": 2.3, "max_latency_ms": 10.1 }
+}
+```
+
+- `vaults` — per-vault storage footprint from the existing bookkeeping tables. `vault` is a
+  *truncated* opaque pubkey hash (pseudonymous by construction, never an identity).
+- `daily` — the last 30 days from the `usage_daily` table, which has **no owner column by design**:
+  daily activity can never be attributed to a vault. Counters are buffered in memory and flushed
+  every 30 s (plus once on graceful shutdown), so up to 30 s of counts can be lost on a crash.
+  Only `/v1/*` traffic counts as a request — health probes and admin polling are excluded.
+- `runtime` — since-process-start health figures (kept in memory, reset on restart).
+
+Honest limits of an E2EE relay: "records" are encrypted oplog rows — entries, templates and journal
+metadata are **indistinguishable** on purpose. "Journals created" is not measurable at all (a journal
+is a client-side grouping inside the ciphertext), and media kinds (video/audio/image/file) are
+unknowable — the mime type never reaches the relay.
+
+### `DELETE /admin/vaults/{id}` → `204 No Content`
+
+Operator-initiated vault wipe (e.g. reclaiming storage from an abandoned vault). `{id}` is the full
+`owner_id` from `/admin/stats`. The body **must** be `{"confirm":"delete"}` — the typed confirmation
+is enforced server-side (400 without it), not just in the dashboard UI, so a stray request with a
+valid admin token cannot destroy a vault. 404 when the vault doesn't exist (or is already gone).
+
+Destroys exactly what self-service `DELETE /v1/account` destroys: entry blobs, the media index and
+its S3 chunks, reminders, push subscriptions, devices, and sessions. It does **not** reach into any
+device's local copy — the relay has no access to clients, by design — and the same recovery phrase
+can re-register afterwards as an empty vault (TOFU). The dashboard exposes this per vault row behind
+a type-"delete" modal.
+
+Authorization note: vault deletion is two strictly separated capabilities. A **user session** can
+only ever delete its own vault — `DELETE /v1/account` takes no vault id; the owner comes from the
+authenticated session. The **admin token** is required to delete by id; without it, `/admin/vaults/*`
+answers 401 (or 404 when the admin surface is disabled) before any lookup happens.
 
 ---
 

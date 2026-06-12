@@ -40,24 +40,28 @@ func (s *Store) Migrate(ctx context.Context) error { return Migrate(ctx, s.pool)
 
 // RegisterOwnerDevice creates the owner if absent (trust-on-first-use) and binds
 // the device to it. Idempotent: re-registering the same keys is a no-op.
-func (s *Store) RegisterOwnerDevice(ctx context.Context, ownerID string, ownerPub []byte, deviceID string, devicePub []byte) error {
+// ownerCreated reports whether this call created a brand-new owner (vault), so
+// the caller can count vault creations without storing who created what.
+func (s *Store) RegisterOwnerDevice(ctx context.Context, ownerID string, ownerPub []byte, deviceID string, devicePub []byte) (ownerCreated bool, err error) {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
-		return err
+		return false, err
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck // rollback after commit is a no-op
 
-	if _, err := tx.Exec(ctx,
+	tag, err := tx.Exec(ctx,
 		`INSERT INTO owners (owner_id, owner_pubkey) VALUES ($1, $2) ON CONFLICT (owner_id) DO NOTHING`,
-		ownerID, ownerPub); err != nil {
-		return err
+		ownerID, ownerPub)
+	if err != nil {
+		return false, err
 	}
+	ownerCreated = tag.RowsAffected() == 1
 	if _, err := tx.Exec(ctx,
 		`INSERT INTO devices (device_id, owner_id, device_pubkey) VALUES ($1, $2, $3) ON CONFLICT (device_id) DO NOTHING`,
 		deviceID, ownerID, devicePub); err != nil {
-		return err
+		return false, err
 	}
-	return tx.Commit(ctx)
+	return ownerCreated, tx.Commit(ctx)
 }
 
 var ErrNotFound = errors.New("not found")
@@ -139,10 +143,14 @@ func (s *Store) ListOwnerMedia(ctx context.Context, ownerID string) ([]MediaBlob
 // challenges, entry_blobs, media_blobs, reminders, push_subs) cascades from it.
 // This is the server half of mnemonic rotation: after the client has re-pushed
 // everything under a fresh owner, the old owner's data must stop existing — the
-// leaked phrase keeps authenticating otherwise.
-func (s *Store) DeleteOwner(ctx context.Context, ownerID string) error {
-	_, err := s.pool.Exec(ctx, `DELETE FROM owners WHERE owner_id = $1`, ownerID)
-	return err
+// leaked phrase keeps authenticating otherwise. found=false when no such owner
+// existed (already idempotently gone).
+func (s *Store) DeleteOwner(ctx context.Context, ownerID string) (found bool, err error) {
+	tag, err := s.pool.Exec(ctx, `DELETE FROM owners WHERE owner_id = $1`, ownerID)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() == 1, nil
 }
 
 // PurgeExpired removes stale challenges and sessions. Safe to call periodically.
@@ -165,9 +173,11 @@ type EntryBlob struct {
 }
 
 // PushEntry applies a single entry using last-write-wins on lww_clock. Returns
-// applied=false when the incoming clock is not strictly newer than what's stored.
-// The server never inspects ciphertext — only the clock decides.
-func (s *Store) PushEntry(ctx context.Context, ownerID string, e EntryBlob) (applied bool, err error) {
+// applied=false when the incoming clock is not strictly newer than what's stored,
+// and created=true when the row is brand new (an insert, not an LWW update) —
+// xmax = 0 only holds for freshly inserted rows. The server never inspects
+// ciphertext — only the clock decides.
+func (s *Store) PushEntry(ctx context.Context, ownerID string, e EntryBlob) (applied, created bool, err error) {
 	var seq int64
 	err = s.pool.QueryRow(ctx, `
 		INSERT INTO entry_blobs (owner_id, entry_id, lww_clock, ciphertext, deleted, seq, updated_at)
@@ -179,15 +189,15 @@ func (s *Store) PushEntry(ctx context.Context, ownerID string, e EntryBlob) (app
 			    seq        = nextval('entry_seq'),
 			    updated_at = now()
 			WHERE EXCLUDED.lww_clock > entry_blobs.lww_clock
-		RETURNING seq`,
-		ownerID, e.EntryID, e.LWWClock, e.Ciphertext, e.Deleted).Scan(&seq)
+		RETURNING seq, (xmax = 0)`,
+		ownerID, e.EntryID, e.LWWClock, e.Ciphertext, e.Deleted).Scan(&seq, &created)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return false, nil // conflict, and incoming clock was not newer
+		return false, false, nil // conflict, and incoming clock was not newer
 	}
 	if err != nil {
-		return false, err
+		return false, false, err
 	}
-	return true, nil
+	return true, created, nil
 }
 
 // PullEntries returns entries for an owner with seq strictly greater than `since`,
@@ -229,15 +239,17 @@ type MediaBlob struct {
 }
 
 // FinalizeMedia records a fully-uploaded media object. Idempotent re-uploads of
-// the same media id simply refresh the index row.
-func (s *Store) FinalizeMedia(ctx context.Context, ownerID string, m MediaBlob) error {
-	_, err := s.pool.Exec(ctx, `
+// the same media id simply refresh the index row. created=true only for a brand
+// new object (xmax = 0 holds only for inserts), so retries don't double-count.
+func (s *Store) FinalizeMedia(ctx context.Context, ownerID string, m MediaBlob) (created bool, err error) {
+	err = s.pool.QueryRow(ctx, `
 		INSERT INTO media_blobs (owner_id, media_id, s3_key, bytes, chunks)
 		VALUES ($1, $2, $3, $4, $5)
 		ON CONFLICT (owner_id, media_id) DO UPDATE
-			SET s3_key = EXCLUDED.s3_key, bytes = EXCLUDED.bytes, chunks = EXCLUDED.chunks`,
-		ownerID, m.MediaID, m.S3Key, m.Bytes, m.Chunks)
-	return err
+			SET s3_key = EXCLUDED.s3_key, bytes = EXCLUDED.bytes, chunks = EXCLUDED.chunks
+		RETURNING (xmax = 0)`,
+		ownerID, m.MediaID, m.S3Key, m.Bytes, m.Chunks).Scan(&created)
+	return created, err
 }
 
 // GetMedia returns the index row for a finalized media object.

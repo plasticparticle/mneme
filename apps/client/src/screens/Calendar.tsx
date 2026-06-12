@@ -1,10 +1,11 @@
 import type { VNode, ComponentChildren } from 'preact';
-import { useState } from 'preact/hooks';
+import { useMemo, useState } from 'preact/hooks';
 import { Icon, type IconName } from '../ui/Icon';
 import { Btn, LabelChip, ConnChip } from '../ui/primitives';
 import { hexA } from '../ui/color';
 import { findJournal } from '../data/sample';
 import { useAppData } from '../state/data';
+import { compactCount, dailyCounts, dayStreak, monthWords, onThisDay } from '../state/stats';
 import type { JournalEntry } from '../sync/engine';
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
@@ -65,12 +66,8 @@ function EntryRow({ e, onOpen, compact }: { e: CalEntry; onOpen: (id: string) =>
   );
 }
 
-function Heatmap({ weeks = 17 }: { weeks?: number }): VNode {
-  const cells: number[] = [];
-  for (let i = 0; i < weeks * 7; i++) {
-    const seed = (i * 73 + 13) % 11;
-    cells.push(seed > 8 ? 3 : seed > 6 ? 2 : seed > 3 ? 1 : 0);
-  }
+function Heatmap({ counts }: { counts: number[] }): VNode {
+  const cells = counts.map((n) => Math.min(n, 3));
   const col = ['var(--line)', 'var(--accent-soft)', hexA('#B0563A', 0.45), 'var(--accent)'];
   return (
     <div>
@@ -78,7 +75,7 @@ function Heatmap({ weeks = 17 }: { weeks?: number }): VNode {
         {cells.map((l, i) => <div key={i} style={{ aspectRatio: '1', borderRadius: 3, background: l === 0 ? col[0] : col[l] }} />)}
       </div>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 8 }}>
-        <span style={{ fontFamily: 'var(--ui)', fontSize: 11, color: 'var(--ink-3)' }}>17 weeks</span>
+        <span style={{ fontFamily: 'var(--ui)', fontSize: 11, color: 'var(--ink-3)' }}>{counts.length / 7} weeks</span>
         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
           <span style={{ fontFamily: 'var(--ui)', fontSize: 11, color: 'var(--ink-3)' }}>less</span>
           {col.map((c, i) => <span key={i} style={{ width: 9, height: 9, borderRadius: 2.5, background: c }} />)}
@@ -160,6 +157,11 @@ export function CalendarScreen({ desk, onOpenEntry }: { desk: boolean; onOpenEnt
   const monthCount = [...byDay.values()].reduce((n, list) => n + list.length, 0);
   const dayEntries = byDay.get(selected) ?? [];
 
+  const streak = useMemo(() => dayStreak(entries, Date.now()), [entries]);
+  const words = useMemo(() => monthWords(entries, year, month), [entries, year, month]);
+  const memories = useMemo(() => onThisDay(entries, month, selected, year), [entries, month, selected, year]);
+  const heat = useMemo(() => dailyCounts(entries, Date.now(), 17), [entries]);
+
   const Grid = ({ big }: { big?: boolean }): VNode => (
     <div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: big ? 6 : 2, marginBottom: 6 }}>
@@ -194,9 +196,9 @@ export function CalendarScreen({ desk, onOpenEntry }: { desk: boolean; onOpenEnt
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: '24px 28px', minWidth: 0 }}>
           <div style={{ marginBottom: 18 }}><MonthNav big /></div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 18, marginBottom: 18 }}>
-            <Stat n="12" label="day streak" />
+            <Stat n={String(streak)} label="day streak" />
             <Stat n={String(monthCount)} label="entries" />
-            <Stat n="1.4k" label="words" />
+            <Stat n={compactCount(words)} label="words" />
             <div style={{ flex: 1 }} />
             <div style={{ display: 'flex', gap: 2, padding: 3, borderRadius: 10, background: 'var(--surface)', border: '1px solid var(--line)' }}>
               <ViewTab active icon="cal">Month</ViewTab>
@@ -214,10 +216,11 @@ export function CalendarScreen({ desk, onOpenEntry }: { desk: boolean; onOpenEnt
           </div>
           <div style={{ flex: 1, overflow: 'auto', padding: '0 18px 18px', display: 'flex', flexDirection: 'column', gap: 10 }}>
             {dayEntries.length ? dayEntries.map((e) => <EntryRow key={e.id} e={e} onOpen={onOpenEntry} compact />) : <EmptyDay onNew={() => onOpenEntry('')} />}
+            <OnThisDay matches={memories} onOpen={onOpenEntry} />
           </div>
           <div style={{ padding: '16px 20px', borderTop: '1px solid var(--line)' }}>
             <div style={{ fontFamily: 'var(--ui)', fontSize: 11.5, fontWeight: 700, letterSpacing: 0.6, textTransform: 'uppercase', color: 'var(--ink-3)', marginBottom: 10 }}>This season</div>
-            <Heatmap />
+            <Heatmap counts={heat} />
           </div>
         </div>
       </div>
@@ -233,9 +236,9 @@ export function CalendarScreen({ desk, onOpenEntry }: { desk: boolean; onOpenEnt
         </div>
         <MonthNav />
         <div style={{ display: 'flex', gap: 10, margin: '16px 0 14px' }}>
-          <Stat n="12" label="day streak" boxed />
+          <Stat n={String(streak)} label="day streak" boxed />
           <Stat n={String(monthCount)} label="entries" boxed />
-          <Stat n="1.4k" label="words" boxed />
+          <Stat n={compactCount(words)} label="words" boxed />
         </div>
         <div style={{ padding: 14, borderRadius: 18, background: 'var(--surface)', border: '1px solid var(--line)' }}>
           <Grid />
@@ -247,6 +250,7 @@ export function CalendarScreen({ desk, onOpenEntry }: { desk: boolean; onOpenEnt
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {dayEntries.length ? dayEntries.map((e) => <EntryRow key={e.id} e={e} onOpen={onOpenEntry} />) : <EmptyDay onNew={() => onOpenEntry('')} />}
+          <OnThisDay matches={memories} onOpen={onOpenEntry} />
         </div>
       </div>
     </div>
@@ -275,6 +279,30 @@ function ViewTab({ children, active, icon }: { children: ComponentChildren; acti
     <button style={{ display: 'flex', alignItems: 'center', gap: 6, fontFamily: 'var(--ui)', fontSize: 13, fontWeight: 600, padding: '6px 12px', borderRadius: 8, cursor: 'pointer', border: 'none', background: active ? 'var(--paper)' : 'transparent', color: active ? 'var(--ink)' : 'var(--ink-3)', boxShadow: active ? '0 1px 2px rgba(0,0,0,.06)' : 'none' }}>
       <Icon name={icon} size={15} /> {children}
     </button>
+  );
+}
+
+function OnThisDay({ matches, onOpen }: { matches: JournalEntry[]; onOpen: (id: string) => void }): VNode | null {
+  if (!matches.length) return null;
+  return (
+    <div style={{ padding: '13px 14px', borderRadius: 14, background: 'var(--surface)', border: '1px solid var(--line)' }}>
+      <div style={{ fontFamily: 'var(--ui)', fontSize: 11.5, fontWeight: 700, letterSpacing: 0.6, textTransform: 'uppercase', color: 'var(--ink-3)', marginBottom: 8 }}>On this day</div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {matches.slice(0, 3).map((e) => (
+          <button
+            key={e.id}
+            onClick={() => onOpen(e.id)}
+            style={{ display: 'flex', gap: 12, width: '100%', textAlign: 'left', cursor: 'pointer', alignItems: 'baseline', background: 'transparent', border: 'none', padding: 0 }}
+          >
+            <span style={{ fontFamily: 'var(--mono)', fontSize: 12, color: 'var(--ink-2)', fontWeight: 500, minWidth: 42 }}>{new Date(e.createdAt).getUTCFullYear()}</span>
+            <span style={{ flex: 1, minWidth: 0 }}>
+              <span style={{ fontFamily: 'var(--serif)', fontSize: 15, fontWeight: 500, color: 'var(--ink)' }}>{e.title}</span>
+              <span style={{ display: '-webkit-box', fontFamily: 'var(--ui)', fontSize: 12.5, color: 'var(--ink-2)', margin: '2px 0 0', lineHeight: 1.5, overflow: 'hidden', WebkitLineClamp: 1, WebkitBoxOrient: 'vertical' }}>{e.bodyText}</span>
+            </span>
+          </button>
+        ))}
+      </div>
+    </div>
   );
 }
 

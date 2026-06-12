@@ -1,0 +1,335 @@
+<!doctype html>
+<!-- Mneme relay admin dashboard. Fully self-contained: no external fonts, scripts
+     or styles (the relay must work air-gapped). Shows aggregates only — the relay
+     stores no data that could attribute activity to a person. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Mneme · relay admin</title>
+<style>
+  :root {
+    --paper: #faf6ee; --card: #fffdf8; --ink: #2c2620; --ink-soft: #7a6f63;
+    --line: #e7ddcd; --accent: #c05b3c; --accent-soft: #e8c9bd; --ok: #5e7d5a;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper: #211d18; --card: #2a251f; --ink: #ece4d6; --ink-soft: #a3978a;
+      --line: #3b342b; --accent: #d57452; --accent-soft: #6e4434; --ok: #8aa886;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--paper); color: var(--ink);
+    font: 15px/1.5 "Hanken Grotesk", system-ui, sans-serif;
+  }
+  main { max-width: 960px; margin: 0 auto; padding: 32px 20px 64px; }
+  h1 { font-family: Georgia, "Newsreader", serif; font-weight: 500; font-size: 26px; margin: 0; }
+  h1 small { color: var(--ink-soft); font-size: 14px; font-family: inherit; }
+  h2 {
+    font-family: Georgia, "Newsreader", serif; font-weight: 500; font-size: 18px;
+    margin: 36px 0 12px; color: var(--ink);
+  }
+  .mono { font-family: "Spline Sans Mono", ui-monospace, monospace; }
+  header { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+  #status { color: var(--ink-soft); font-size: 13px; }
+  #status.err { color: var(--accent); }
+
+  /* token gate */
+  #gate { margin-top: 18vh; text-align: center; }
+  #gate input {
+    font: inherit; padding: 10px 14px; width: min(360px, 80vw);
+    border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--ink);
+  }
+  #gate button {
+    font: inherit; padding: 10px 18px; margin-left: 8px; border: 0; border-radius: 8px;
+    background: var(--accent); color: #fff; cursor: pointer;
+  }
+  #gate p { color: var(--ink-soft); font-size: 13px; }
+
+  .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; margin-top: 24px; }
+  .card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px;
+  }
+  .card .v { font-size: 22px; font-weight: 600; }
+  .card .k { color: var(--ink-soft); font-size: 12px; text-transform: uppercase; letter-spacing: .06em; }
+
+  /* bar chart */
+  .chartbar { display: flex; align-items: flex-end; gap: 2px; height: 120px; padding: 8px 0 0; }
+  .chartbar div { flex: 1; background: var(--accent); border-radius: 2px 2px 0 0; min-height: 1px; opacity: .85; }
+  .chartbar div:hover { opacity: 1; }
+  .chart-meta { display: flex; justify-content: space-between; color: var(--ink-soft); font-size: 12px; }
+  select {
+    font: inherit; font-size: 13px; padding: 4px 8px; border: 1px solid var(--line);
+    border-radius: 6px; background: var(--card); color: var(--ink);
+  }
+
+  table { width: 100%; border-collapse: collapse; background: var(--card); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+  th, td { text-align: right; padding: 8px 12px; border-bottom: 1px solid var(--line); font-size: 13px; }
+  th:first-child, td:first-child { text-align: left; }
+  th { color: var(--ink-soft); font-weight: 500; text-transform: uppercase; letter-spacing: .05em; font-size: 11px; }
+  tr:last-child td { border-bottom: 0; }
+
+  footer { margin-top: 40px; color: var(--ink-soft); font-size: 12.5px; border-top: 1px solid var(--line); padding-top: 14px; }
+  .hidden { display: none; }
+
+  .rowdel {
+    font: inherit; font-size: 12px; padding: 3px 9px; border-radius: 6px; cursor: pointer;
+    border: 1px solid var(--line); background: transparent; color: var(--ink-soft);
+  }
+  .rowdel:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* delete-confirmation modal */
+  #modalWrap {
+    position: fixed; inset: 0; background: rgba(30, 22, 16, .4); backdrop-filter: blur(2px);
+    display: flex; align-items: center; justify-content: center; z-index: 10;
+  }
+  #modal {
+    background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+    padding: 22px 24px; width: min(420px, 88vw);
+  }
+  #modal h3 { font-family: Georgia, "Newsreader", serif; font-weight: 500; margin: 0 0 10px; }
+  #modal p { color: var(--ink-soft); font-size: 13.5px; margin: 0 0 8px; }
+  #modal input {
+    font: inherit; width: 100%; box-sizing: border-box; padding: 9px 12px; margin: 10px 0 4px;
+    border: 1px solid var(--line); border-radius: 8px; background: var(--paper); color: var(--ink);
+  }
+  #modal .actions { display: flex; gap: 10px; margin-top: 14px; }
+  #modal button {
+    font: inherit; padding: 9px 16px; border-radius: 8px; cursor: pointer; border: 1px solid var(--line);
+    background: transparent; color: var(--ink); flex: 1;
+  }
+  #modalGo { background: var(--accent); border-color: var(--accent); color: #fff; flex: 2; }
+  #modalGo:disabled { opacity: .45; cursor: not-allowed; }
+  #modalErr { color: var(--accent); font-size: 13px; min-height: 1.2em; margin: 6px 0 0; }
+</style>
+</head>
+<body>
+<main>
+  <div id="gate">
+    <h1>Mneme relay</h1>
+    <p>Enter the admin token (<span class="mono">ADMIN_TOKEN</span>) to view aggregate stats.</p>
+    <form id="gateForm">
+      <input id="tokenInput" type="password" autocomplete="off" placeholder="admin token" autofocus>
+      <button type="submit">Unlock</button>
+    </form>
+    <p id="gateErr" class="hidden" style="color:var(--accent)">That token was not accepted.</p>
+  </div>
+
+  <div id="dash" class="hidden">
+    <header>
+      <h1>Mneme relay <small>· admin</small></h1>
+      <span id="status"></span>
+    </header>
+
+    <div class="cards" id="cards"></div>
+
+    <h2>Last 30 days · <select id="metricSel"></select></h2>
+    <div class="chartbar" id="chart"></div>
+    <div class="chart-meta"><span id="chartFrom"></span><span id="chartPeak"></span><span id="chartTo"></span></div>
+
+    <h2>Vaults &amp; storage</h2>
+    <table>
+      <thead><tr>
+        <th>Vault</th><th>Created</th><th>Devices</th><th>Records</th>
+        <th>Record data</th><th>Media</th><th>Media data</th><th>Last activity</th><th></th>
+      </tr></thead>
+      <tbody id="vaultRows"></tbody>
+    </table>
+
+    <div id="modalWrap" class="hidden">
+      <div id="modal">
+        <h3>Delete vault <span id="modalVault" class="mono"></span>?</h3>
+        <p>This permanently wipes every encrypted record, media object, reminder, device and
+           session this vault has on the relay. There is no undo and no backup.</p>
+        <p>It does <strong>not</strong> reach into anyone's devices — local copies stay where
+           they are, and the same recovery phrase can register again as an empty vault.</p>
+        <p>Type <strong class="mono">delete</strong> to confirm:</p>
+        <input id="modalInput" type="text" autocomplete="off" spellcheck="false" placeholder="delete">
+        <div id="modalErr"></div>
+        <div class="actions">
+          <button id="modalCancel" type="button">Cancel</button>
+          <button id="modalGo" type="button" disabled>Delete vault</button>
+        </div>
+      </div>
+    </div>
+
+    <footer>
+      Aggregates and storage metadata only. The relay holds opaque ciphertext — it cannot read
+      content, distinguish journals, entries or templates, tell media kinds apart, or attribute
+      the daily counters above to any vault. Vault ids are truncated pseudonymous key hashes.
+    </footer>
+  </div>
+</main>
+
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const KEY = 'mneme-admin-token';
+  const METRICS = [
+    ['requests', 'Requests'],
+    ['requests_failed', 'Failed requests'],
+    ['records_created', 'Records created'],
+    ['records_updated', 'Records updated'],
+    ['records_deleted', 'Records deleted'],
+    ['media_uploaded', 'Media uploaded'],
+    ['media_bytes', 'Media bytes uploaded'],
+    ['vaults_created', 'Vaults created'],
+    ['vaults_deleted', 'Vaults deleted'],
+  ];
+  let daily = [];
+
+  const fmtBytes = n => {
+    if (n < 1024) return n + ' B';
+    const u = ['KiB', 'MiB', 'GiB', 'TiB'];
+    let i = -1;
+    do { n /= 1024; i++; } while (n >= 1024 && i < u.length - 1);
+    return n.toFixed(n >= 100 ? 0 : 1) + ' ' + u[i];
+  };
+  const fmtNum = n => n.toLocaleString('en');
+  const fmtDate = s => s ? new Date(s).toISOString().slice(0, 10) : '—';
+  const fmtUptime = s => {
+    if (s >= 172800) return Math.floor(s / 86400) + ' d';
+    if (s >= 3600) return Math.floor(s / 3600) + ' h';
+    return Math.max(1, Math.floor(s / 60)) + ' min';
+  };
+
+  function card(k, v) {
+    return `<div class="card"><div class="v mono">${v}</div><div class="k">${k}</div></div>`;
+  }
+
+  function render(d) {
+    const t = d.totals, rt = d.runtime;
+    const today = (d.daily.find(x => x.day === new Date().toISOString().slice(0, 10)) || {}).counts || {};
+    $('cards').innerHTML = [
+      card('Vaults', fmtNum(t.vaults)),
+      card('Devices', fmtNum(t.devices)),
+      card('Records', fmtNum(t.records)),
+      card('Media objects', fmtNum(t.media_objects)),
+      card('Storage used', fmtBytes(t.record_bytes + t.media_bytes)),
+      card('Requests today', fmtNum(today.requests || 0)),
+      card('Failed today', fmtNum(today.requests_failed || 0)),
+      card('Uptime', fmtUptime(rt.uptime_seconds)),
+      card('Avg latency', rt.avg_latency_ms.toFixed(1) + ' ms'),
+    ].join('');
+
+    daily = d.daily;
+    chart();
+
+    $('vaultRows').innerHTML = d.vaults.map(v => `<tr>
+      <td class="mono">${v.vault}</td>
+      <td>${fmtDate(v.created_at)}</td>
+      <td class="mono">${fmtNum(v.devices)}</td>
+      <td class="mono">${fmtNum(v.records)}</td>
+      <td class="mono">${fmtBytes(v.record_bytes)}</td>
+      <td class="mono">${fmtNum(v.media_objects)}</td>
+      <td class="mono">${fmtBytes(v.media_bytes)}</td>
+      <td>${fmtDate(v.last_activity)}</td>
+      <td><button class="rowdel" data-owner="${v.owner_id}" data-label="${v.vault}">Delete</button></td>
+    </tr>`).join('') || '<tr><td colspan="9">No vaults yet.</td></tr>';
+  }
+
+  // ── vault deletion (typed confirmation, enforced again server-side) ──
+  let delOwner = null;
+  function openDelete(owner, label) {
+    delOwner = owner;
+    $('modalVault').textContent = label;
+    $('modalInput').value = '';
+    $('modalErr').textContent = '';
+    $('modalGo').disabled = true;
+    $('modalWrap').classList.remove('hidden');
+    $('modalInput').focus();
+  }
+  function closeDelete() {
+    delOwner = null;
+    $('modalWrap').classList.add('hidden');
+  }
+  async function confirmDelete() {
+    if ($('modalInput').value.trim() !== 'delete' || !delOwner) return;
+    $('modalGo').disabled = true;
+    try {
+      const res = await fetch('/admin/vaults/' + encodeURIComponent(delOwner), {
+        method: 'DELETE',
+        headers: { Authorization: 'Bearer ' + sessionStorage.getItem(KEY), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ confirm: 'delete' }),
+      });
+      if (!res.ok && res.status !== 404) throw new Error('HTTP ' + res.status); // 404 = already gone
+      closeDelete();
+      load();
+    } catch (e) {
+      $('modalErr').textContent = 'deletion failed: ' + e.message;
+      $('modalGo').disabled = false;
+    }
+  }
+  $('vaultRows').addEventListener('click', e => {
+    const btn = e.target.closest('.rowdel');
+    if (btn) openDelete(btn.dataset.owner, btn.dataset.label);
+  });
+  $('modalInput').addEventListener('input', () => {
+    $('modalGo').disabled = $('modalInput').value.trim() !== 'delete';
+  });
+  $('modalInput').addEventListener('keydown', e => { if (e.key === 'Enter') confirmDelete(); });
+  $('modalGo').addEventListener('click', confirmDelete);
+  $('modalCancel').addEventListener('click', closeDelete);
+  $('modalWrap').addEventListener('click', e => { if (e.target === $('modalWrap')) closeDelete(); });
+
+  function chart() {
+    const metric = $('metricSel').value;
+    const byDay = new Map(daily.map(d => [d.day, d.counts[metric] || 0]));
+    const days = [];
+    for (let i = 29; i >= 0; i--) {
+      const d = new Date(Date.now() - i * 86400000).toISOString().slice(0, 10);
+      days.push([d, byDay.get(d) || 0]);
+    }
+    const peak = Math.max(1, ...days.map(d => d[1]));
+    const isBytes = metric === 'media_bytes';
+    $('chart').innerHTML = days.map(([d, v]) =>
+      `<div style="height:${Math.round(v / peak * 100)}%" title="${d}: ${isBytes ? fmtBytes(v) : fmtNum(v)}"></div>`
+    ).join('');
+    $('chartFrom').textContent = days[0][0];
+    $('chartTo').textContent = days[days.length - 1][0];
+    $('chartPeak').textContent = 'peak ' + (isBytes ? fmtBytes(peak) : fmtNum(peak));
+  }
+
+  async function load() {
+    const token = sessionStorage.getItem(KEY);
+    if (!token) return gate();
+    try {
+      const res = await fetch('/admin/stats', { headers: { Authorization: 'Bearer ' + token } });
+      if (res.status === 401) { sessionStorage.removeItem(KEY); return gate(true); }
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      render(await res.json());
+      $('gate').classList.add('hidden');
+      $('dash').classList.remove('hidden');
+      $('status').className = '';
+      $('status').textContent = 'updated ' + new Date().toLocaleTimeString();
+    } catch (e) {
+      $('status').className = 'err';
+      $('status').textContent = 'fetch failed: ' + e.message;
+    }
+  }
+
+  function gate(rejected) {
+    $('dash').classList.add('hidden');
+    $('gate').classList.remove('hidden');
+    $('gateErr').classList.toggle('hidden', !rejected);
+  }
+
+  $('metricSel').innerHTML = METRICS.map(([k, label]) => `<option value="${k}">${label}</option>`).join('');
+  $('metricSel').addEventListener('change', chart);
+  $('gateForm').addEventListener('submit', e => {
+    e.preventDefault();
+    const v = $('tokenInput').value.trim();
+    if (!v) return;
+    sessionStorage.setItem(KEY, v);
+    $('tokenInput').value = '';
+    load();
+  });
+
+  load();
+  setInterval(load, 60000);
+})();
+</script>
+</body>
+</html>

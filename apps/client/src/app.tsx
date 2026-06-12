@@ -14,6 +14,7 @@ import { JournalEntriesScreen } from './screens/JournalEntries';
 import { CalendarScreen } from './screens/Calendar';
 import { EditorScreen } from './screens/Editor';
 import { RotatePhraseSheet } from './ui/RotatePhrase';
+import { DeleteVaultSheet } from './ui/DeleteVault';
 import { TemplatesSheet } from './ui/Templates';
 import { SearchSheet } from './ui/Search';
 
@@ -21,7 +22,7 @@ import { SearchSheet } from './ui/Search';
 type Flow = 'journals' | 'journal' | 'calendar' | 'editor';
 
 // ── DESKTOP sidebar ─────────────────────────────────────────
-function Sidebar({ flow, setFlow, journals, onOpenJournal, dark, toggleDark, status, onRotate, onTemplates, onSearch, onLock }: {
+function Sidebar({ flow, setFlow, journals, onOpenJournal, dark, toggleDark, status, ownerId, onRotate, onDeleteVault, onTemplates, onSearch, onLock }: {
   flow: Flow;
   setFlow: (f: Flow) => void;
   journals: Journal[];
@@ -29,7 +30,9 @@ function Sidebar({ flow, setFlow, journals, onOpenJournal, dark, toggleDark, sta
   dark: boolean;
   toggleDark: () => void;
   status: SyncStatus;
+  ownerId: string | null;
   onRotate: () => void;
+  onDeleteVault: () => void;
   onTemplates: () => void;
   onSearch: () => void;
   onLock: () => void;
@@ -95,21 +98,43 @@ function Sidebar({ flow, setFlow, journals, onOpenJournal, dark, toggleDark, sta
         ))}
       </div>
 
-      <div style={{ borderTop: '1px solid var(--line)', paddingTop: 12, marginTop: 8, display: 'flex', alignItems: 'center', gap: 10 }}>
-        <div style={{ width: 32, height: 32, borderRadius: 999, background: 'linear-gradient(145deg, var(--accent), #7b3a1e)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontFamily: 'var(--serif)', fontSize: 15, fontWeight: 600 }}>V</div>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontFamily: 'var(--ui)', fontSize: 13, fontWeight: 600, color: 'var(--ink)' }}>Your vault</div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-            <ConnectionDot status={status} size={7} />
-            <span style={{ fontFamily: 'var(--mono)', fontSize: 10.5, color: 'var(--ink-3)' }}>{connLabel(status).toLowerCase()}</span>
+      {/* Identity on its own line, actions below: four 30px buttons no longer
+          fit beside the avatar + status + vault id in a 238px sidebar. */}
+      <div style={{ borderTop: '1px solid var(--line)', paddingTop: 12, marginTop: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ width: 32, height: 32, borderRadius: 999, background: 'linear-gradient(145deg, var(--accent), #7b3a1e)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontFamily: 'var(--serif)', fontSize: 15, fontWeight: 600 }}>V</div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            {/* The vault id is the title: truncated like the admin dashboard's
+                vault label, so a self-hoster can match this vault there; hover
+                for the full id. */}
+            <div title={ownerId ? `Vault ID: ${ownerId}` : undefined} style={{ display: 'flex', alignItems: 'baseline', gap: 6, minWidth: 0 }}>
+              <span style={{ fontFamily: 'var(--mono)', fontSize: 12.5, fontWeight: 600, color: 'var(--ink)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {ownerId ? `${ownerId.slice(0, 8)}…` : 'Your vault'}
+              </span>
+              {ownerId && (
+                <span style={{ fontFamily: 'var(--ui)', fontSize: 9.5, fontWeight: 700, letterSpacing: 0.6, textTransform: 'uppercase', color: 'var(--ink-3)', flexShrink: 0 }}>vault id</span>
+              )}
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+              <ConnectionDot status={status} size={7} />
+              <span style={{ fontFamily: 'var(--mono)', fontSize: 10.5, color: 'var(--ink-3)' }}>{connLabel(status).toLowerCase()}</span>
+            </div>
           </div>
         </div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 4, marginTop: 8 }}>
         <button
           title="Replace recovery phrase"
           onClick={onRotate}
           style={{ width: 30, height: 30, borderRadius: 8, border: 'none', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
         >
           <Icon name="shield" size={17} color="var(--ink-3)" />
+        </button>
+        <button
+          title="Delete vault"
+          onClick={onDeleteVault}
+          style={{ width: 30, height: 30, borderRadius: 8, border: 'none', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+        >
+          <Icon name="trash" size={17} color="var(--ink-3)" />
         </button>
         <button
           title="Lock journal"
@@ -125,6 +150,7 @@ function Sidebar({ flow, setFlow, journals, onOpenJournal, dark, toggleDark, sta
         >
           <Icon name={dark ? 'sun' : 'moon'} size={17} color="var(--ink-3)" />
         </button>
+        </div>
       </div>
     </div>
   );
@@ -132,11 +158,13 @@ function Sidebar({ flow, setFlow, journals, onOpenJournal, dark, toggleDark, sta
 
 // Compact mobile settings: appearance + the replace-recovery-phrase entry point
 // (the bottom-nav settings button used to just toggle the theme).
-function MobileSettingsSheet({ onClose, dark, toggleDark, onRotate, onTemplates, onLock }: {
+function MobileSettingsSheet({ onClose, dark, toggleDark, ownerId, onRotate, onDeleteVault, onTemplates, onLock }: {
   onClose: () => void;
   dark: boolean;
   toggleDark: () => void;
+  ownerId: string | null;
   onRotate: () => void;
+  onDeleteVault: () => void;
   onTemplates: () => void;
   onLock: () => void;
 }): VNode {
@@ -167,7 +195,19 @@ function MobileSettingsSheet({ onClose, dark, toggleDark, onRotate, onTemplates,
             <span style={{ flex: 1 }}>Lock journal</span>
             <Icon name="right" size={16} color="var(--ink-3)" />
           </button>
+          <button onClick={() => { onClose(); onDeleteVault(); }} style={row}>
+            <Icon name="trash" size={18} color="var(--accent)" />
+            <span style={{ flex: 1, color: 'var(--accent-ink)' }}>Delete vault</span>
+            <Icon name="right" size={16} color="var(--ink-3)" />
+          </button>
         </div>
+        {/* Truncated like the admin dashboard's vault label, so a self-hoster
+            can match this vault there (the desktop sidebar footer shows the same). */}
+        {ownerId && (
+          <div title={`Vault ID: ${ownerId}`} style={{ textAlign: 'center', fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--ink-3)', paddingTop: 16 }}>
+            vault id {ownerId.slice(0, 8)}…
+          </div>
+        )}
       </div>
     </div>
   );
@@ -208,10 +248,11 @@ function MobileNav({ flow, setFlow, onCompose, onSettings, onSearch }: {
 export function App(): VNode {
   const desk = useIsDesktop();
   const { dark, toggleDark } = useTheme();
-  const { status, hasVault, bootstrapping, entries, journals, templates, newJournal, signIn, unlock, lock, createEntry, rotatePhrase } = useAppData();
+  const { status, hasVault, ownerId, bootstrapping, entries, journals, templates, newJournal, signIn, unlock, lock, createEntry, rotatePhrase, deleteVault } = useAppData();
   const [flow, setFlowRaw] = useState<Flow>('journals');
   const [modal, setModal] = useState(false);
   const [rotateOpen, setRotateOpen] = useState(false);
+  const [deleteVaultOpen, setDeleteVaultOpen] = useState(false);
   const [templatesOpen, setTemplatesOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -330,12 +371,13 @@ export function App(): VNode {
   if (desk) {
     return (
       <div style={{ height: '100%', display: 'flex', background: 'var(--paper)', position: 'relative' }}>
-        <Sidebar flow={flow} setFlow={navTo} journals={journals} onOpenJournal={openJournal} dark={dark} toggleDark={toggleDark} status={status} onRotate={() => setRotateOpen(true)} onTemplates={() => setTemplatesOpen(true)} onSearch={() => setSearchOpen(true)} onLock={lock} />
+        <Sidebar flow={flow} setFlow={navTo} journals={journals} onOpenJournal={openJournal} dark={dark} toggleDark={toggleDark} status={status} ownerId={ownerId} onRotate={() => setRotateOpen(true)} onDeleteVault={() => setDeleteVaultOpen(true)} onTemplates={() => setTemplatesOpen(true)} onSearch={() => setSearchOpen(true)} onLock={lock} />
         <div style={{ flex: 1, minWidth: 0 }}>{screen}</div>
         {searchSheet}
         {modal && <NewJournalSheet desk templates={templates.filter((t) => !t.deleted)} onClose={() => setModal(false)} onCreate={onCreateJournal} />}
         {templatesOpen && <TemplatesSheet desk onClose={() => setTemplatesOpen(false)} onUse={(t) => { setTemplatesOpen(false); newEntryFromTemplate(t); }} />}
         {rotateOpen && <RotatePhraseSheet desk onClose={() => setRotateOpen(false)} rotate={rotatePhrase} />}
+        {deleteVaultOpen && <DeleteVaultSheet desk onClose={() => setDeleteVaultOpen(false)} deleteVault={deleteVault} />}
       </div>
     );
   }
@@ -349,9 +391,10 @@ export function App(): VNode {
       {showNav && <MobileNav flow={flow === 'journal' ? 'journals' : flow} setFlow={navTo} onCompose={() => newEntry(flow === 'journal' ? openJournalObj?.id : undefined)} onSettings={() => setSettingsOpen(true)} onSearch={() => setSearchOpen(true)} />}
       {searchSheet}
       {modal && <NewJournalSheet desk={false} templates={templates.filter((t) => !t.deleted)} onClose={() => setModal(false)} onCreate={onCreateJournal} />}
-      {settingsOpen && <MobileSettingsSheet onClose={() => setSettingsOpen(false)} dark={dark} toggleDark={toggleDark} onRotate={() => setRotateOpen(true)} onTemplates={() => setTemplatesOpen(true)} onLock={lock} />}
+      {settingsOpen && <MobileSettingsSheet onClose={() => setSettingsOpen(false)} dark={dark} toggleDark={toggleDark} ownerId={ownerId} onRotate={() => setRotateOpen(true)} onDeleteVault={() => setDeleteVaultOpen(true)} onTemplates={() => setTemplatesOpen(true)} onLock={lock} />}
       {templatesOpen && <TemplatesSheet desk={false} onClose={() => setTemplatesOpen(false)} onUse={(t) => { setTemplatesOpen(false); newEntryFromTemplate(t); }} />}
       {rotateOpen && <RotatePhraseSheet desk={false} onClose={() => setRotateOpen(false)} rotate={rotatePhrase} />}
+      {deleteVaultOpen && <DeleteVaultSheet desk={false} onClose={() => setDeleteVaultOpen(false)} deleteVault={deleteVault} />}
     </div>
   );
 }

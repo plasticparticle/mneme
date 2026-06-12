@@ -53,13 +53,20 @@ func run() error {
 		log.Printf("media storage disabled (S3_ENDPOINT not set)")
 	}
 
+	apiSrv := api.New(st, bl, cfg)
+
 	// Background workers.
 	go reminders.NewScheduler(st, reminders.LogDispatcher{}, time.Minute).Run(ctx)
 	go purgeLoop(ctx, st)
+	go apiSrv.RunUsageFlusher(ctx, 30*time.Second)
+
+	if cfg.AdminToken != "" {
+		log.Printf("admin dashboard enabled at /admin")
+	}
 
 	srv := &http.Server{
 		Addr:              cfg.ListenAddr,
-		Handler:           api.New(st, bl, cfg).Routes(),
+		Handler:           apiSrv.Routes(),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 

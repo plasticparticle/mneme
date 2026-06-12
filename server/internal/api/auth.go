@@ -58,9 +58,13 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 
 	ownerID := deriveID(ownerPub)
 	deviceID := deriveID(devicePub)
-	if err := s.store.RegisterOwnerDevice(r.Context(), ownerID, ownerPub, deviceID, devicePub); err != nil {
+	ownerCreated, err := s.store.RegisterOwnerDevice(r.Context(), ownerID, ownerPub, deviceID, devicePub)
+	if err != nil {
 		writeError(w, http.StatusInternalServerError, "registration failed")
 		return
+	}
+	if ownerCreated {
+		s.metrics.bump(metricVaultsCreated, 1)
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"owner_id": ownerID, "device_id": deviceID})
 }

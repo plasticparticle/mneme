@@ -54,10 +54,32 @@ Binary fields are standard base64. Authenticated routes need
 | GET  | `/v1/media/{id}/chunks/{n}` | ✅ | download one encrypted media chunk |
 | DELETE | `/v1/media/{id}` | ✅ | delete one media object (idempotent) |
 | DELETE | `/v1/account` | ✅ | wipe the owner entirely (recovery-phrase rotation) |
+| GET  | `/admin` | – | admin dashboard page (404 unless `ADMIN_TOKEN` is set) |
+| GET  | `/admin/stats` | 🔑 | aggregate stats JSON (`Bearer <ADMIN_TOKEN>`) |
+| DELETE | `/admin/vaults/{id}` | 🔑 | operator vault wipe (`{"confirm":"delete"}` body required) |
 
 The full request/response shapes live in [`../docs/API.md`](../docs/API.md). Media endpoints
 answer `503` when `S3_ENDPOINT` is unset; with it set, chunks stream to S3/MinIO (the bucket is
 auto-provisioned) and Postgres keeps only the index row.
+
+### Admin dashboard
+
+For the operator: vault counts, per-vault storage footprints, and owner-less daily usage
+counters (requests, records, media, vaults) — health and growth, never *who did what*; the
+data for attribution deliberately does not exist server-side (see `../docs/API.md` "Admin").
+
+The token is configured via the `ADMIN_TOKEN` environment variable; when it is unset the
+admin surface does not exist (every `/admin` path is a 404). Where to set it:
+
+- **Dev, via compose** — `docker-compose.yml` already sets `ADMIN_TOKEN: admin_dev`.
+- **Dev, `go run`** — put it in `server/.env` (gitignored; `.env.example` has the dev default).
+- **Production** — inject it as a secret env var on the `journald` process (a root-level
+  `.env` file next to your compose file, a systemd `Environment=`/`EnvironmentFile=` drop-in,
+  or your orchestrator's secret store). Generate one with `openssl rand -base64 32` and never
+  commit it (§11). Omit the variable on deployments that shouldn't expose `/admin` at all.
+
+Then open `http://<relay>/admin` and paste the token (kept in `sessionStorage` only), or
+`curl -H "Authorization: Bearer $ADMIN_TOKEN" http://<relay>/admin/stats`.
 
 ### Auth model
 

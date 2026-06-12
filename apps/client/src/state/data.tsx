@@ -31,6 +31,10 @@ interface AppData {
   // screen offers passphrase unlock; null → the keystore check hasn't resolved
   // yet (don't render onboarding until it has, or the unlock view flashes).
   hasVault: boolean | null;
+  // The vault's opaque owner id while unlocked (base64url(sha256(ownerPub)) —
+  // already cleartext on the relay, so showing it leaks nothing). Its first 8
+  // chars match the truncated vault label in the operator admin dashboard.
+  ownerId: string | null;
   // How many local entries still wait to be pushed to the relay (the outbox depth).
   pendingCount: number;
   // True while a push to the relay is in flight.
@@ -92,6 +96,16 @@ interface AppData {
    * (with the old account fully intact) if anything fails before the wipe.
    */
   rotatePhrase(newMnemonic: string, onProgress?: (p: RotationProgress) => void): Promise<void>;
+  /**
+   * Permanently delete the vault. Wipes the account from the relay (entries,
+   * media, reminders, devices, sessions — the §5b cascade), then erases this
+   * device: the plaintext OPFS DB and any at-rest seal. Ends back at onboarding.
+   * Other devices keep their local copies but stop syncing; the same phrase
+   * re-registers as an empty vault (TOFU). Throws — with everything intact —
+   * when the relay can't be reached: deleting needs an explicit online "yes",
+   * never an offline queue.
+   */
+  deleteVault(): Promise<void>;
 }
 
 const Ctx = createContext<AppData | null>(null);
@@ -184,6 +198,7 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
   const db = useMemo(() => new LocalDb(), []);
   const [status, setStatus] = useState<SyncStatus>('locked');
   const [hasVault, setHasVault] = useState<boolean | null>(null);
+  const [ownerId, setOwnerId] = useState<string | null>(null);
   const [pendingCount, setPendingCount] = useState(0);
   const [saving, setSaving] = useState(false);
   const [bootstrapping, setBootstrapping] = useState(false);
@@ -361,6 +376,7 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
     async (seed: Uint8Array) => {
       const id = deriveIdentity(seed); // local, synchronous
       identity.current = id;
+      setOwnerId(id.ownerId);
       // Leave the lock screen immediately: loading the SQLite wasm and the
       // first relay sync take visible time — the app shell shows "connecting"
       // + the first-sync notice instead of freezing.
@@ -459,6 +475,7 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
     session.current = null;
     identity.current = null;
     wrap.current = null;
+    setOwnerId(null);
     cursor.current = 0;
     pending.current.clear();
     pendingTemplates.current.clear();
@@ -753,6 +770,7 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
         // The vault now lives under the new owner: swap the in-memory identity.
         identity.current = result.session.identity;
         session.current = result.session;
+        setOwnerId(result.session.ownerId);
         cursor.current = 0;
         pending.current.clear();
         pendingTemplates.current.clear();
@@ -816,6 +834,34 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
     [relay, db, entries, templates, syncPendingCount],
   );
 
+  // Permanently delete the vault. Relay first — only after the server confirms
+  // does this device erase itself, so a failed request leaves everything intact.
+  const deleteVault: AppData['deleteVault'] = useCallback(async () => {
+    const s = session.current;
+    if (!s) throw new Error('not signed in');
+    // Tear down the background loop so no flush/pull races the wipe.
+    setStatus('connecting');
+    try {
+      await relay.deleteAccount(s.token);
+    } catch (e) {
+      // Account intact — drop to offline so the reconnect loop resumes normally.
+      setStatus('offline');
+      throw e;
+    }
+    // Point of no return: the relay copy is gone. Erase this device too — the
+    // plaintext per-owner DB and any sealed seed (a seal that "unlocks" into a
+    // deleted account would be a lying vault).
+    if (dbReady.current) {
+      db.close();
+      dbReady.current = false;
+    }
+    void destroyOwnerDb(s.ownerId);
+    wrap.current = null;
+    void clearSealedSeed();
+    setHasVault(false);
+    lock(); // drops the in-memory identity and lands on onboarding
+  }, [relay, db, lock]);
+
   // Background loop. While online: periodic flush + pull. While offline: retry the
   // relay handshake until it comes back, then resume syncing automatically.
   useEffect(() => {
@@ -858,6 +904,6 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
   // and the outbox can push them) but every consumer sees only live entries.
   const liveEntries = useMemo(() => entries.filter((e) => !e.deleted), [entries]);
 
-  const value: AppData = { status, hasVault, pendingCount, saving, bootstrapping, entries: liveEntries, journals: journalsWithCounts, templates, signIn, unlock, lock, createEntry, updateEntry, deleteEntry, newJournal, createTemplate, updateTemplate, deleteTemplate, addMedia, removeMedia, mediaBlob, rotatePhrase };
+  const value: AppData = { status, hasVault, ownerId, pendingCount, saving, bootstrapping, entries: liveEntries, journals: journalsWithCounts, templates, signIn, unlock, lock, createEntry, updateEntry, deleteEntry, newJournal, createTemplate, updateTemplate, deleteTemplate, addMedia, removeMedia, mediaBlob, rotatePhrase, deleteVault };
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

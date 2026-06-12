@@ -109,7 +109,7 @@ func (s *Server) handleCompleteMedia(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid chunks/bytes")
 		return
 	}
-	err := s.store.FinalizeMedia(r.Context(), owner, store.MediaBlob{
+	created, err := s.store.FinalizeMedia(r.Context(), owner, store.MediaBlob{
 		MediaID: mediaID,
 		S3Key:   mediaKeyPrefix(owner, mediaID),
 		Bytes:   req.Bytes,
@@ -118,6 +118,12 @@ func (s *Server) handleCompleteMedia(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "finalize failed")
 		return
+	}
+	if created {
+		// "An encrypted media object of N bytes" is all the relay can know — the
+		// kind (video/audio/image/file) lives inside the ciphertext.
+		s.metrics.bump(metricMediaUploaded, 1)
+		s.metrics.bump(metricMediaBytes, req.Bytes)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"media_id": mediaID})
 }

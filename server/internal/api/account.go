@@ -30,6 +30,7 @@ func (s *Server) handleDeleteAccount(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "account deletion failed")
 		return
 	}
+	s.metrics.bump(metricVaultsDeleted, 1)
 
 	// Best-effort chunk cleanup after the point of no return. A failure here only
 	// orphans opaque ciphertext whose index (and key) no longer exist.

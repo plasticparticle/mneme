@@ -31,6 +31,7 @@ func (s *Server) handlePush(w http.ResponseWriter, r *http.Request) {
 		Applied bool   `json:"applied"`
 	}
 	results := make([]result, 0, len(req.Entries))
+	var created, updated, deleted int64
 
 	for _, e := range req.Entries {
 		if e.EntryID == "" {
@@ -47,7 +48,7 @@ func (s *Server) handlePush(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusBadRequest, "ciphertext is empty")
 			return
 		}
-		applied, err := s.store.PushEntry(r.Context(), owner, store.EntryBlob{
+		applied, isNew, err := s.store.PushEntry(r.Context(), owner, store.EntryBlob{
 			EntryID:    e.EntryID,
 			LWWClock:   e.LWWClock,
 			Ciphertext: ct,
@@ -57,8 +58,21 @@ func (s *Server) handlePush(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusInternalServerError, "push failed")
 			return
 		}
+		switch {
+		case applied && e.Deleted:
+			deleted++
+		case applied && isNew:
+			created++
+		case applied:
+			updated++
+		}
 		results = append(results, result{EntryID: e.EntryID, Applied: applied})
 	}
+
+	// Aggregate counters only — never tied to the owner (see internal/store/stats.go).
+	s.metrics.bump(metricRecordsCreated, created)
+	s.metrics.bump(metricRecordsUpdated, updated)
+	s.metrics.bump(metricRecordsDeleted, deleted)
 
 	writeJSON(w, http.StatusOK, map[string]any{"results": results})
 }

@@ -15,16 +15,17 @@ import (
 )
 
 type Server struct {
-	store *store.Store
-	blobs blobs.Store
-	cfg   config.Config
+	store   *store.Store
+	blobs   blobs.Store
+	cfg     config.Config
+	metrics *metrics
 }
 
 func New(st *store.Store, bl blobs.Store, cfg config.Config) *Server {
 	if bl == nil {
 		bl = blobs.Disabled{}
 	}
-	return &Server{store: st, blobs: bl, cfg: cfg}
+	return &Server{store: st, blobs: bl, cfg: cfg, metrics: newMetrics()}
 }
 
 // Routes builds the HTTP handler. Uses Go 1.22 method+pattern routing — no router dep.
@@ -51,7 +52,12 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("DELETE /v1/media/{id}", s.auth(http.HandlerFunc(s.handleDeleteMedia)))
 	mux.Handle("DELETE /v1/account", s.auth(http.HandlerFunc(s.handleDeleteAccount)))
 
-	return s.cors(logging(mux))
+	// Admin (aggregate stats only; every path is a 404 unless ADMIN_TOKEN is set)
+	mux.HandleFunc("GET /admin", s.handleAdminPage)
+	mux.HandleFunc("GET /admin/{$}", s.handleAdminPage)
+	mux.Handle("GET /admin/stats", s.adminAuth(http.HandlerFunc(s.handleAdminStats)))
+
+	return s.cors(s.logging(mux))
 }
 
 // ── auth context ────────────────────────────────────────────────────────────
@@ -108,12 +114,18 @@ func deriveID(pub []byte) string {
 	return base64.RawURLEncoding.EncodeToString(sum[:])
 }
 
-func logging(next http.Handler) http.Handler {
+func (s *Server) logging(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		sw := &statusWriter{ResponseWriter: w, status: http.StatusOK}
 		next.ServeHTTP(sw, r)
-		log.Printf("%s %s -> %d (%s)", r.Method, r.URL.Path, sw.status, time.Since(start).Round(time.Millisecond))
+		elapsed := time.Since(start)
+		// Only client API traffic counts as a "request" — health probes and the
+		// admin's own polling would otherwise drown the dashboard's numbers.
+		if strings.HasPrefix(r.URL.Path, "/v1/") {
+			s.metrics.observe(sw.status, elapsed)
+		}
+		log.Printf("%s %s -> %d (%s)", r.Method, r.URL.Path, sw.status, elapsed.Round(time.Millisecond))
 	})
 }
 

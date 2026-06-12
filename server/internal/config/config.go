@@ -11,6 +11,7 @@ type Config struct {
 	ListenAddr  string
 	SessionTTL  time.Duration
 	CORSOrigins string // comma-separated allowed origins, or "*" to reflect any
+	AdminToken  string // bearer token for /admin; empty disables the admin surface entirely
 	S3          S3Config
 }
 
@@ -29,6 +30,7 @@ func Load() Config {
 		ListenAddr:  env("LISTEN_ADDR", ":8080"),
 		SessionTTL:  envDuration("SESSION_TTL", 24*time.Hour),
 		CORSOrigins: env("CORS_ORIGINS", "*"),
+		AdminToken:  env("ADMIN_TOKEN", ""),
 		S3: S3Config{
 			Endpoint:  env("S3_ENDPOINT", ""),
 			AccessKey: env("S3_ACCESS_KEY", ""),

@@ -1,0 +1,117 @@
+package api
+
+import (
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+	"time"
+)
+
+func adminConfig(token string) Server {
+	cfg := testConfig()
+	cfg.AdminToken = token
+	return Server{cfg: cfg, metrics: newMetrics()}
+}
+
+func get(t *testing.T, srv *Server, path string, headers map[string]string) *httptest.ResponseRecorder {
+	t.Helper()
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, path, nil)
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
+	srv.Routes().ServeHTTP(rec, req)
+	return rec
+}
+
+func TestAdminDisabledWithoutToken(t *testing.T) {
+	srv := New(nil, nil, testConfig()) // no ADMIN_TOKEN
+	for _, path := range []string{"/admin", "/admin/", "/admin/stats"} {
+		if rec := get(t, srv, path, nil); rec.Code != http.StatusNotFound {
+			t.Errorf("GET %s = %d, want 404 (admin surface must not exist when unconfigured)", path, rec.Code)
+		}
+	}
+}
+
+func TestAdminStatsRejectsBadToken(t *testing.T) {
+	srv := adminConfig("s3cret")
+	if rec := get(t, &srv, "/admin/stats", nil); rec.Code != http.StatusUnauthorized {
+		t.Errorf("no token = %d, want 401", rec.Code)
+	}
+	if rec := get(t, &srv, "/admin/stats", map[string]string{"Authorization": "Bearer wrong"}); rec.Code != http.StatusUnauthorized {
+		t.Errorf("wrong token = %d, want 401", rec.Code)
+	}
+}
+
+func TestAdminPageServedWhenEnabled(t *testing.T) {
+	srv := adminConfig("s3cret")
+	rec := get(t, &srv, "/admin", nil)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("GET /admin = %d, want 200", rec.Code)
+	}
+	if ct := rec.Header().Get("Content-Type"); !strings.HasPrefix(ct, "text/html") {
+		t.Fatalf("Content-Type = %q, want text/html", ct)
+	}
+	if !strings.Contains(rec.Body.String(), "Mneme relay") {
+		t.Fatal("dashboard HTML not served")
+	}
+}
+
+func TestMetricsBufferDrainAndRestore(t *testing.T) {
+	m := newMetrics()
+	m.bump(metricRecordsCreated, 3)
+	m.bump(metricRecordsCreated, 2)
+	m.observe(http.StatusOK, 5*time.Millisecond)
+	m.observe(http.StatusBadRequest, 15*time.Millisecond)
+
+	counts := m.drain()
+	if counts[metricRecordsCreated] != 5 {
+		t.Errorf("records_created = %d, want 5", counts[metricRecordsCreated])
+	}
+	if counts[metricRequests] != 2 || counts[metricRequestsFailed] != 1 {
+		t.Errorf("requests = %d/%d failed, want 2/1", counts[metricRequests], counts[metricRequestsFailed])
+	}
+	if again := m.drain(); again != nil {
+		t.Errorf("second drain = %v, want nil", again)
+	}
+
+	// A failed flush must not lose counts.
+	m.restore(counts)
+	if c := m.drain(); c[metricRecordsCreated] != 5 {
+		t.Errorf("after restore records_created = %d, want 5", c[metricRecordsCreated])
+	}
+
+	rt := m.runtime()
+	if rt.Requests != 2 || rt.Failed4xx != 1 || rt.Failed5xx != 0 {
+		t.Errorf("runtime = %+v, want 2 requests / 1 4xx / 0 5xx", rt)
+	}
+	if rt.AvgLatencyMs < 9 || rt.AvgLatencyMs > 11 || rt.MaxLatencyMs != 15 {
+		t.Errorf("latency avg=%v max=%v, want ~10/15", rt.AvgLatencyMs, rt.MaxLatencyMs)
+	}
+}
+
+func TestVaultLabelTruncates(t *testing.T) {
+	if got := vaultLabel("abcdefghijklmnop"); got != "abcdefgh…" {
+		t.Errorf("vaultLabel = %q", got)
+	}
+	if got := vaultLabel("short"); got != "short" {
+		t.Errorf("vaultLabel(short) = %q", got)
+	}
+}
+
+func TestRequestMetricsCountOnlyV1(t *testing.T) {
+	srv := adminConfig("s3cret")
+	get(t, &srv, "/healthz", nil)
+	get(t, &srv, "/admin", nil)
+	if rt := srv.metrics.runtime(); rt.Requests != 0 {
+		t.Fatalf("non-/v1 traffic counted: %d requests", rt.Requests)
+	}
+	// 401 from the auth middleware — still a /v1 request, observed before any store access.
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/v1/sync/pull", nil)
+	srv.Routes().ServeHTTP(rec, req)
+	if rt := srv.metrics.runtime(); rt.Requests != 1 || rt.Failed4xx != 1 {
+		t.Fatalf("runtime = %+v, want 1 request / 1 4xx", rt)
+	}
+}

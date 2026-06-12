@@ -34,7 +34,12 @@ project. Scaffolded so far:
   opaque blobs only. Reminders CRUD + scheduler (logs, no push transport yet). Media is **implemented
   server-relayed** (§12 resolved): `internal/blobs` streams client-encrypted ~1 MiB chunks to S3/MinIO
   (minio-go, bucket auto-provisioned) under `/v1/media/*`; `503` when `S3_ENDPOINT` is unset. Push
-  delivery is still a stub.
+  delivery is still a stub. **Operator admin surface** (`/admin`, only when `ADMIN_TOKEN` is set,
+  otherwise 404): embedded HTML dashboard + `GET /admin/stats` — per-vault storage footprints
+  (truncated pseudonymous owner ids) and owner-less daily counters (`usage_daily`, migration 0002,
+  deliberately no owner column; request/record/media/vault metrics buffered in-memory, flushed every
+  30 s). It cannot count journals or tell media kinds apart — that data never reaches the relay
+  (docs/API.md "Admin", docs/SECURITY.md §2).
 - **Infra** — `docker-compose.yml` (Postgres + MinIO + server), `server/Dockerfile`, `.devcontainer/`.
 
 Media (§10 step 5) is in for **video, audio, images, and file attachments**: video/audio record via

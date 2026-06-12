@@ -60,6 +60,12 @@ This is a deliberate availability tradeoff in exchange for confidentiality.
 **E2EE protects content, not shape.** The server learns *that* you wrote, roughly *how often*, and
 *how big* — never *what*.
 
+The operator's **admin dashboard** (`/admin`, enabled only by `ADMIN_TOKEN`; see
+[API.md](./API.md#admin)) surfaces strictly a subset of the right-hand column: per-vault storage
+footprints (pseudonymous truncated owner ids) and owner-less daily aggregates (`usage_daily` has no
+owner column by design). It adds **no new observation capability** — everything it shows, an admin
+with database access could already query.
+
 ---
 
 ## 3. Cryptographic building blocks

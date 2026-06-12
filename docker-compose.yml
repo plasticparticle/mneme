@@ -48,6 +48,7 @@ services:
       S3_SECRET_KEY: minioadmin_dev
       S3_BUCKET: journal-media
       LISTEN_ADDR: ":8080"
+      ADMIN_TOKEN: admin_dev # local dev only — set a real secret (or leave unset to disable /admin) in prod
     depends_on:
       postgres: { condition: service_healthy }
       minio: { condition: service_started }

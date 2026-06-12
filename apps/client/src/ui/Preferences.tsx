@@ -1,11 +1,13 @@
-// Preferences overlay: appearance mode (light/dark/system), accent theme, and
-// a few stats over the decrypted in-memory entries. Everything here is
-// device-local presentation state — mode and palette persist in localStorage
-// and never sync (appearance is not content; the relay sees nothing).
+// Preferences overlay — the one settings surface: appearance mode
+// (light/dark/system), theme skin + accent, writing stats, the assistant
+// entry points, and the vault (identity, lock, phrase rotation, deletion).
+// Appearance state is device-local localStorage and never syncs; the vault
+// rows just hand off to their existing sheets (RotatePhrase, DeleteVault…).
 import type { VNode } from 'preact';
 import { useMemo } from 'preact/hooks';
 import { Icon, type IconName } from './Icon';
-import { useAppData } from '../state/data';
+import { ConnectionDot, connLabel } from './primitives';
+import { useAppData, type SyncStatus } from '../state/data';
 import { PALETTES, SKINS, type ThemeControls, type ThemeMode } from '../hooks/useTheme';
 import { compactCount, dayStreak, journaledDays, longestStreak, monthWords, totalWords } from '../state/stats';
 import { hexA } from './color';
@@ -33,12 +35,50 @@ function StatTile({ value, label }: { value: string; label: string }): VNode {
   );
 }
 
-export function PreferencesSheet({ desk, theme, onClose }: {
+/** Action row in the mobile-settings style; `danger` tints label + icon. */
+function Row({ icon, label, value, danger, onClick }: {
+  icon: IconName;
+  label: string;
+  value?: string;
+  danger?: boolean;
+  onClick: () => void;
+}): VNode {
+  return (
+    <button
+      onClick={onClick}
+      style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', textAlign: 'left', cursor: 'pointer', padding: '12px 14px', borderRadius: 12, border: '1px solid var(--line)', background: 'var(--paper)', fontFamily: 'var(--ui)', fontSize: 13.5, fontWeight: 600, color: danger ? 'var(--accent-ink)' : 'var(--ink)' }}
+      onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--accent-line)'; }}
+      onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--line)'; }}
+    >
+      <Icon name={icon} size={17} color={danger ? 'var(--accent)' : 'var(--ink-2)'} />
+      <span style={{ flex: 1 }}>{label}</span>
+      {value && <span style={{ fontFamily: 'var(--mono)', fontSize: 11.5, color: 'var(--ink-3)' }}>{value}</span>}
+      <Icon name="right" size={15} color="var(--ink-3)" />
+    </button>
+  );
+}
+
+export function PreferencesSheet({ desk, theme, onClose, ownerId, status, onLock, onRotate, onDeleteVault, onAiSettings, onTemplates, onAsk }: {
   desk: boolean;
   theme: ThemeControls;
   onClose: () => void;
+  ownerId: string | null;
+  status: SyncStatus;
+  onLock: () => void;
+  onRotate: () => void;
+  onDeleteVault: () => void;
+  onAiSettings: () => void;
+  /** Mobile-only journal entry points (desktop reaches these from the sidebar). */
+  onTemplates?: () => void;
+  /** null hides the row (assistant disabled); undefined = desktop, sidebar has it. */
+  onAsk?: (() => void) | null;
 }): VNode {
   const { entries } = useAppData();
+  // Vault rows hand off to full-screen sheets — close this overlay first.
+  const handOff = (fn: () => void) => () => {
+    onClose();
+    fn();
+  };
 
   // Stats run over live (non-tombstoned) entries; day math is UTC like the
   // calendar grid, so streaks here and there always agree.
@@ -157,6 +197,37 @@ export function PreferencesSheet({ desk, theme, onClose }: {
       <p style={{ fontFamily: 'var(--ui)', fontSize: 11.5, color: 'var(--ink-3)', margin: '10px 2px 0', lineHeight: 1.5 }}>
         Counted locally from your decrypted entries — the server never sees any of this.
       </p>
+
+      <SectionLabel>Assistant & journal</SectionLabel>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {onTemplates && <Row icon="copy" label="Templates" onClick={handOff(onTemplates)} />}
+        {onAsk && <Row icon="feather" label="Ask my journal" onClick={handOff(onAsk)} />}
+        <Row icon="feather" label="AI assistant" onClick={handOff(onAiSettings)} />
+      </div>
+
+      <SectionLabel>Vault</SectionLabel>
+      <div title={ownerId ? `Vault ID: ${ownerId}` : undefined} style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '11px 13px', borderRadius: 12, border: '1px solid var(--line)', background: 'var(--paper)', marginBottom: 8 }}>
+        <div style={{ width: 34, height: 34, borderRadius: 999, flexShrink: 0, background: 'linear-gradient(145deg, var(--accent), var(--accent-ink))', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontFamily: 'var(--serif)', fontSize: 16, fontWeight: 600 }}>V</div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, minWidth: 0 }}>
+            <span style={{ fontFamily: 'var(--mono)', fontSize: 12.5, fontWeight: 600, color: 'var(--ink)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {ownerId ? `${ownerId.slice(0, 12)}…` : 'Your vault'}
+            </span>
+            {ownerId && (
+              <span style={{ fontFamily: 'var(--ui)', fontSize: 9.5, fontWeight: 700, letterSpacing: 0.6, textTransform: 'uppercase', color: 'var(--ink-3)', flexShrink: 0 }}>vault id</span>
+            )}
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 2 }}>
+            <ConnectionDot status={status} size={7} />
+            <span style={{ fontFamily: 'var(--mono)', fontSize: 10.5, color: 'var(--ink-3)' }}>{connLabel(status).toLowerCase()}</span>
+          </div>
+        </div>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <Row icon="lock" label="Lock journal" onClick={handOff(onLock)} />
+        <Row icon="shield" label="Replace recovery phrase" onClick={handOff(onRotate)} />
+        <Row icon="trash" label="Delete vault" danger onClick={handOff(onDeleteVault)} />
+      </div>
     </div>
   );
 

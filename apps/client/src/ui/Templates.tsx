@@ -16,6 +16,7 @@ import type { TemplateRecord } from '../sync/engine';
 import { useRichEditor } from '../editor/useRichEditor';
 import { parseBody } from '../editor/doc';
 import { DocPreview } from '../editor/DocPreview';
+import { createMathHandle, MathDialog } from '../editor/math';
 import '../editor/editor.css';
 
 const UI_13 = { fontFamily: 'var(--ui)', fontSize: 13 } as const;
@@ -47,9 +48,11 @@ function TemplateEditorView({
     text: template?.bodyText ?? '',
   });
   const initial = useMemo(() => parseBody(template?.bodyJson, template?.bodyText ?? ''), []);
-  const { mountRef } = useRichEditor({
+  const mathHandle = useMemo(createMathHandle, []);
+  const { editor, mountRef } = useRichEditor({
     initial,
     placeholder: 'Headings, prompts, checklists — the shape an entry starts from…',
+    math: mathHandle,
     onChange: (c) => {
       body.current = c;
     },
@@ -78,6 +81,7 @@ function TemplateEditorView({
         ref={mountRef}
         style={{ minHeight: 180, maxHeight: '42vh', overflow: 'auto', padding: '4px 12px', borderRadius: 12, border: '1px solid var(--line)', background: 'var(--paper)' }}
       />
+      <MathDialog handle={mathHandle} editor={editor} />
       <div style={{ display: 'flex', gap: 10 }}>
         <Btn kind="ghost" size="md" onClick={onDone} style={{ flex: 1 }}>Cancel</Btn>
         <Btn kind="primary" size="md" onClick={save} style={{ flex: 2 }}>

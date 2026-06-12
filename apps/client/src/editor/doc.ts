@@ -8,11 +8,13 @@ import { TaskList } from '@tiptap/extension-task-list';
 import { TaskItem } from '@tiptap/extension-task-item';
 import type { Extensions, JSONContent } from '@tiptap/core';
 import type { Block } from '../data/sample';
+import { mathExtension, type MathHandle } from './math';
 
 export const EMPTY_DOC: JSONContent = { type: 'doc', content: [{ type: 'paragraph' }] };
 
-/** The extension set, shared by every editor instance. */
-export function buildExtensions(placeholder: string): Extensions {
+/** The extension set, shared by every editor instance. Math is always in (docs
+ * containing formulas must open everywhere); the handle wires click-to-edit. */
+export function buildExtensions(placeholder: string, math?: MathHandle): Extensions {
   return [
     StarterKit.configure({
       heading: { levels: [1, 2, 3] },
@@ -20,6 +22,7 @@ export function buildExtensions(placeholder: string): Extensions {
     TaskList,
     TaskItem.configure({ nested: true }),
     Placeholder.configure({ placeholder }),
+    mathExtension(math),
   ];
 }
 
@@ -63,9 +66,14 @@ export function docToText(doc: JSONContent): string {
       const n = Array.isArray(node.attrs?.images) ? node.attrs.images.length : 0;
       out.push(n === 1 ? '🖼 1 photo' : `🖼 ${n} photos`);
     }
+    // Math nodes carry their LaTeX source so previews/search can see formulas.
+    if ((node.type === 'inlineMath' || node.type === 'blockMath') && typeof node.attrs?.latex === 'string') {
+      out.push(node.attrs.latex);
+    }
     if (node.content) node.content.forEach(walk);
-    // Block-level nodes get a separating newline so previews read naturally.
-    if (node.type && node.type !== 'text' && node.type !== 'doc') out.push('\n');
+    // Block-level nodes get a separating newline so previews read naturally
+    // (inline math sits mid-sentence, so it stays on its line).
+    if (node.type && node.type !== 'text' && node.type !== 'doc' && node.type !== 'inlineMath') out.push('\n');
   };
   walk(doc);
   return out.join('').replace(/\n{2,}/g, '\n').trim();

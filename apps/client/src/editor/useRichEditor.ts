@@ -10,6 +10,7 @@ import type { EditorView } from '@tiptap/pm/view';
 import { buildExtensions, docToText } from './doc';
 import { slashExtension, type SlashCommand, type SlashHandle } from './slash';
 import { mediaAttachmentNode, mediaGalleryNode, type MediaNodeHandlers } from './media';
+import type { MathHandle } from './math';
 
 export interface RichEditorChange {
   json: string; // serialized ProseMirror doc
@@ -25,6 +26,8 @@ export function useRichEditor(opts: {
   slash?: { handle: SlashHandle; commands: SlashCommand[] };
   /** Enables inline media nodes (required to open docs containing them). */
   media?: MediaNodeHandlers;
+  /** Enables click-to-edit on math nodes; the caller renders <MathDialog handle={...}>. */
+  math?: MathHandle;
   /** Files dropped on / pasted into the editor — the caller runs the upload flow. */
   onFiles?: (files: File[]) => void;
 }): { editor: Editor | null; mountRef: RefObject<HTMLDivElement> } {
@@ -56,7 +59,7 @@ export function useRichEditor(opts: {
     const instance = new Editor({
       element: el,
       extensions: [
-        ...buildExtensions(opts.placeholder),
+        ...buildExtensions(opts.placeholder, opts.math),
         ...(opts.slash ? [slashExtension(opts.slash.handle, opts.slash.commands)] : []),
         ...(opts.media ? [mediaAttachmentNode(opts.media), mediaGalleryNode(opts.media)] : []),
       ],

@@ -5,6 +5,7 @@
 import { Extension, type Editor, type Range } from '@tiptap/core';
 import { Suggestion, exitSuggestion, type SuggestionProps } from '@tiptap/suggestion';
 import type { IconName } from '../ui/Icon';
+import type { MathKind } from './math';
 
 export interface SlashCommand {
   title: string;
@@ -44,6 +45,7 @@ export function buildSlashCommands(
     onImage?: () => void;
     onFile?: () => void;
     onTemplate?: () => void;
+    onMath?: (kind: MathKind) => void;
   } = {},
 ): SlashCommand[] {
   const commands: SlashCommand[] = [
@@ -84,6 +86,26 @@ export function buildSlashCommands(
       run: (e, r) => e.chain().focus().deleteRange(r).setHorizontalRule().run(),
     },
   ];
+  if (opts.onMath) {
+    const onMath = opts.onMath;
+    // Both open the LaTeX dialog; you can also just type $$x$$ ($$$x$$$ for a block).
+    commands.push(
+      {
+        title: 'Math', hint: 'Inline LaTeX formula', icon: 'math', keywords: 'latex katex formula equation tex inline',
+        run: (e, r) => {
+          e.chain().focus().deleteRange(r).run();
+          onMath('inline');
+        },
+      },
+      {
+        title: 'Math block', hint: 'Centered display formula', icon: 'math', keywords: 'latex katex formula equation tex display block',
+        run: (e, r) => {
+          e.chain().focus().deleteRange(r).run();
+          onMath('block');
+        },
+      },
+    );
+  }
   if (opts.onTemplate) {
     // One entry for all templates: opens the template picker, which inserts
     // the chosen template at the cursor (the "/" range is removed first).

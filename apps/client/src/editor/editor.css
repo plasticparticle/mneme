@@ -140,6 +140,39 @@
   outline-offset: 2px;
 }
 
+/* Math (KaTeX) nodes — @tiptap/extension-mathematics */
+.mneme-prose [data-type='inline-math'],
+.mneme-prose [data-type='block-math'] {
+  border-radius: 8px;
+  transition: background 0.12s;
+}
+.mneme-prose [data-type='inline-math'] {
+  padding: 0.05em 0.15em;
+}
+.mneme-prose [data-type='block-math'] {
+  padding: 8px 12px;
+  text-align: center;
+  overflow-x: auto;
+}
+.mneme-prose .tiptap-mathematics-render--editable {
+  cursor: pointer;
+}
+.mneme-prose .tiptap-mathematics-render--editable:hover {
+  background: var(--surface-2);
+}
+.mneme-prose .tiptap-mathematics-render.ProseMirror-selectednode {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+/* Unparseable LaTeX: the extension falls back to the raw source — mark it. */
+.mneme-prose .inline-math-error,
+.mneme-prose .block-math-error {
+  font-family: var(--mono);
+  font-size: 0.85em;
+  color: #b0563a;
+  background: rgba(228, 87, 61, 0.08);
+}
+
 /* Placeholder for empty document / nodes */
 .mneme-prose p.is-editor-empty:first-child::before,
 .mneme-prose .is-empty::before {

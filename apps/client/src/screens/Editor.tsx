@@ -8,7 +8,7 @@ import { findJournal, LABELS } from '../data/sample';
 import { useAppData } from '../state/data';
 import type { JournalEntry, MediaAttachment } from '../sync/engine';
 import { useRichEditor } from '../editor/useRichEditor';
-import { insertMediaAttachment } from '../editor/media';
+import { insertMediaAttachment, insertImageGallery, docImages } from '../editor/media';
 import { EditorToolbar } from '../editor/Toolbar';
 import { parseBody, docMediaIds } from '../editor/doc';
 import { ConfirmDialog } from '../ui/ConfirmDialog';
@@ -17,6 +17,7 @@ import { SlashMenu } from '../editor/SlashMenu';
 import { VideoCapture } from '../ui/VideoCapture';
 import { AudioCapture } from '../ui/AudioCapture';
 import { AttachmentList } from '../ui/Attachments';
+import { Lightbox } from '../ui/Lightbox';
 import { EntryDateTime } from '../ui/EntryDateTime';
 import '../editor/editor.css';
 
@@ -26,6 +27,27 @@ const SAVE_DEBOUNCE_MS = 600;
 function countWords(text: string): number {
   const t = text.trim();
   return t ? t.split(/\s+/).length : 0;
+}
+
+// Pixel size of an uploaded image, stored in the attachment metadata so layout
+// can reserve the right footprint before the bytes resolve.
+async function imageSize(blob: Blob): Promise<{ width?: number; height?: number }> {
+  try {
+    const bmp = await createImageBitmap(blob);
+    const size = { width: bmp.width, height: bmp.height };
+    bmp.close();
+    return size;
+  } catch {
+    return {}; // unsupported format — the gallery falls back to a default aspect
+  }
+}
+
+// Route an uploaded file to its attachment kind by mime type.
+function uploadKind(file: File): MediaAttachment['kind'] {
+  if (file.type.startsWith('image/')) return 'image';
+  if (file.type.startsWith('video/')) return 'video';
+  if (file.type.startsWith('audio/')) return 'audio';
+  return 'file';
 }
 
 // ── The editable entry surface: title + TipTap body, autosaving to the relay ──
@@ -63,44 +85,96 @@ function EntryEditor({
     saveTimer.current = setTimeout(save, SAVE_DEBOUNCE_MS);
   };
 
+  // Hidden pickers behind the "/" Image and File commands.
+  const imageInput = useRef<HTMLInputElement>(null);
+  const fileInput = useRef<HTMLInputElement>(null);
+
   // Stable for the lifetime of this mount (the editor mounts once; keyed by entry.id).
   const slashHandle = useMemo(createSlashHandle, []);
   // Commands rebuild when templates change, but the editor reads them through a
   // stable getter — the "/" palette stays current without remounting the editor.
   const slashCommands = useRef<SlashCommand[]>([]);
   slashCommands.current = useMemo(
-    () => buildSlashCommands({ onVideo: () => setCapturing('video'), onAudio: () => setCapturing('audio'), templates }),
+    () =>
+      buildSlashCommands({
+        onVideo: () => setCapturing('video'),
+        onAudio: () => setCapturing('audio'),
+        onImage: () => imageInput.current?.click(),
+        onFile: () => fileInput.current?.click(),
+        templates,
+      }),
     [templates],
   );
   const getSlashCommands = useCallback(() => slashCommands.current, []);
 
+  // Maximized image view: every image of the entry in document order, so ←/→
+  // steps through the whole entry. Opened through a ref because the (stable)
+  // media handlers are created before the editor instance exists.
+  const [lightbox, setLightbox] = useState<{ items: MediaAttachment[]; index: number } | null>(null);
+  const openImageRef = useRef<(att: MediaAttachment) => void>(() => undefined);
+
   // Stable per mount (keyed by entry.id): how inline media nodes get their
-  // bytes and how a confirmed delete purges them.
+  // bytes, how a confirmed delete purges them, and how an image maximizes.
   const mediaHandlers = useMemo(
     () => ({
       resolve: (att: MediaAttachment) => mediaBlob(entry.id, att),
       onRemoved: (att: MediaAttachment) => removeMedia(att.id),
+      onOpenImage: (att: MediaAttachment) => openImageRef.current(att),
     }),
     [],
   );
+
+  // The editor instance, reachable from callbacks created before it exists.
+  const editorRef = useRef<Editor | null>(null);
+
+  // Store the uploads, then embed them in the document at the cursor; the
+  // entry update rides the normal autosave of the changed document. Images
+  // picked together land as one gallery; everything else as its own card.
+  const uploadFiles = async (files: File[]): Promise<void> => {
+    const ed = editorRef.current;
+    const images: MediaAttachment[] = [];
+    for (const f of files.filter((f) => uploadKind(f) === 'image')) {
+      const att = await addMedia(entry.id, 'image', f, { name: f.name, ...(await imageSize(f)) });
+      if (att) images.push(att);
+    }
+    if (images.length && ed) insertImageGallery(ed, images);
+    for (const f of files.filter((f) => uploadKind(f) !== 'image')) {
+      const att = await addMedia(entry.id, uploadKind(f), f, { name: f.name });
+      if (att && ed) insertMediaAttachment(ed, att);
+    }
+  };
 
   const { editor, mountRef } = useRichEditor({
     initial,
     placeholder: 'Begin where you are…',
     slash: { handle: slashHandle, commands: getSlashCommands },
     media: mediaHandlers,
+    onFiles: (files) => void uploadFiles(files),
     onChange: (c) => {
       body.current = c;
       onWords(countWords(c.text));
       scheduleSave();
     },
   });
+  editorRef.current = editor;
+  openImageRef.current = (att) => {
+    const items = editor ? docImages(editor.getJSON()) : [];
+    const index = items.findIndex((i) => i.id === att.id);
+    setLightbox(index >= 0 ? { items, index } : { items: [att], index: 0 });
+  };
 
-  // Store the recording, then embed it in the document at the cursor; the
-  // entry update rides the normal autosave of the changed document.
+  // Store the recording, then embed it in the document at the cursor.
   const attach = async (kind: MediaAttachment['kind'], blob: Blob, durationMs: number): Promise<void> => {
-    const att = await addMedia(entry.id, kind, blob, durationMs);
+    const att = await addMedia(entry.id, kind, blob, { durationMs });
     if (att && editor) insertMediaAttachment(editor, att);
+  };
+
+  // Pickers re-fire change even for the same selection (value reset below).
+  const onPicked = (ev: Event): void => {
+    const el = ev.target as HTMLInputElement;
+    const files = Array.from(el.files ?? []);
+    el.value = '';
+    if (files.length) void uploadFiles(files);
   };
 
   useEffect(() => {
@@ -201,6 +275,20 @@ function EntryEditor({
           onCapture={(blob, durationMs) => void attach('audio', blob, durationMs)}
         />
       )}
+
+      {/* Hidden pickers for the "/" Image and File commands. */}
+      <input ref={imageInput} type="file" accept="image/*" multiple onChange={onPicked} style={{ display: 'none' }} />
+      <input ref={fileInput} type="file" multiple onChange={onPicked} style={{ display: 'none' }} />
+
+      {lightbox && (
+        <Lightbox
+          items={lightbox.items}
+          index={lightbox.index}
+          resolve={(att) => mediaBlob(entry.id, att)}
+          onNavigate={(index) => setLightbox((cur) => (cur ? { ...cur, index } : cur))}
+          onClose={() => setLightbox(null)}
+        />
+      )}
     </div>
   );
 }
@@ -266,7 +354,7 @@ function EntryMenu({ desk, entry, onDeleted }: { desk: boolean; entry: JournalEn
           <strong style={{ color: 'var(--ink)' }}>“{entry.title || 'Untitled'}”</strong> will be removed from all your
           devices
           {mediaCount > 0
-            ? `, and its ${mediaCount === 1 ? 'recording' : `${mediaCount} recordings`} will be deleted from this device and the sync server`
+            ? `, and its ${mediaCount === 1 ? 'media file' : `${mediaCount} media files`} will be deleted from this device and the sync server`
             : ''}
           . <strong style={{ color: 'var(--ink)' }}>This cannot be undone.</strong>
         </ConfirmDialog>
@@ -286,7 +374,7 @@ export function EditorScreen({
   entryId: string | null;
   onBack: () => void;
   onSelectEntry: (id: string) => void;
-  onNew: () => void;
+  onNew: (journalId?: string) => void;
 }): VNode {
   const { entries } = useAppData();
   const entry = entries.find((e) => e.id === entryId) ?? null;
@@ -298,14 +386,17 @@ export function EditorScreen({
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 14, color: 'var(--ink-3)' }}>
       <Icon name="feather" size={30} color="var(--ink-3)" />
       <span style={{ fontFamily: 'var(--ui)', fontSize: 14 }}>Nothing open yet.</span>
-      <button onClick={onNew} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '9px 14px', borderRadius: 10, border: '1px solid var(--line)', background: 'var(--surface)', cursor: 'pointer', color: 'var(--accent-ink)', fontFamily: 'var(--ui)', fontSize: 13.5, fontWeight: 600 }}>
+      <button onClick={() => onNew()} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '9px 14px', borderRadius: 10, border: '1px solid var(--line)', background: 'var(--surface)', cursor: 'pointer', color: 'var(--accent-ink)', fontFamily: 'var(--ui)', fontSize: 13.5, fontWeight: 600 }}>
         <Icon name="plus" size={16} color="var(--accent-ink)" /> New entry
       </button>
     </div>
   );
 
   if (desk) {
-    const list = [...entries].sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 12);
+    // The entry list is scoped to the open entry's journal; without one open
+    // (nothing selected yet) it falls back to the whole vault.
+    const scoped = entry ? entries.filter((x) => x.journalId === entry.journalId) : entries;
+    const list = [...scoped].sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 12);
     return (
       <div style={{ height: '100%', display: 'flex', background: 'var(--paper)' }}>
         {/* entry list */}
@@ -315,10 +406,10 @@ export function EditorScreen({
               {journal && <Cover journal={journal} w={26} h={34} r={6} />}
               <div>
                 <div style={{ fontFamily: 'var(--serif)', fontSize: 17, fontWeight: 500, color: 'var(--ink)' }}>{journal?.name ?? 'Write'}</div>
-                <div style={{ fontFamily: 'var(--ui)', fontSize: 11.5, color: 'var(--ink-3)' }}>{entries.length} entries</div>
+                <div style={{ fontFamily: 'var(--ui)', fontSize: 11.5, color: 'var(--ink-3)' }}>{scoped.length} {scoped.length === 1 ? 'entry' : 'entries'}</div>
               </div>
             </div>
-            <button title="New entry" onClick={onNew} style={{ width: 34, height: 34, borderRadius: 10, border: '1px solid var(--line)', background: 'var(--surface)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}><Icon name="plus" size={18} color="var(--accent-ink)" /></button>
+            <button title="New entry" onClick={() => onNew(entry?.journalId)} style={{ width: 34, height: 34, borderRadius: 10, border: '1px solid var(--line)', background: 'var(--surface)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}><Icon name="plus" size={18} color="var(--accent-ink)" /></button>
           </div>
           <div style={{ flex: 1, overflow: 'auto', padding: '0 12px 14px', display: 'flex', flexDirection: 'column', gap: 4 }}>
             {list.map((x) => {
@@ -377,7 +468,7 @@ export function EditorScreen({
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <ConnChip compact />
-          <button title="New entry" onClick={onNew} style={{ width: 36, height: 36, borderRadius: 999, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'transparent', border: 'none', cursor: 'pointer' }}><Icon name="plus" size={20} color="var(--accent-ink)" /></button>
+          <button title="New entry" onClick={() => onNew(entry?.journalId)} style={{ width: 36, height: 36, borderRadius: 999, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'transparent', border: 'none', cursor: 'pointer' }}><Icon name="plus" size={20} color="var(--accent-ink)" /></button>
           <EntryMenu desk={false} entry={entry} onDeleted={onBack} />
         </div>
       </div>

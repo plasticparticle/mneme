@@ -50,11 +50,16 @@ interface AppData {
   /** Tombstones the template (built-ins included) so the deletion reaches other devices. */
   deleteTemplate(id: string): void;
   /**
-   * Persist a freshly-recorded clip locally and queue its background upload.
-   * Returns the attachment metadata for the caller to embed in the entry
-   * document (the editor inserts it as an inline node in bodyJson).
+   * Persist a freshly-recorded clip or uploaded file locally and queue its
+   * background upload. Returns the attachment metadata for the caller to embed
+   * in the entry document (the editor inserts it as an inline node in bodyJson).
    */
-  addMedia(entryId: string, kind: MediaAttachment['kind'], blob: Blob, durationMs?: number): Promise<MediaAttachment | null>;
+  addMedia(
+    entryId: string,
+    kind: MediaAttachment['kind'],
+    blob: Blob,
+    meta?: { durationMs?: number; name?: string; width?: number; height?: number },
+  ): Promise<MediaAttachment | null>;
   /**
    * After the user confirmed deleting a recording: purge its local bytes +
    * upload-queue slot and delete it from the relay (queued durably if offline).
@@ -466,16 +471,21 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
   // devices learn the media id while the relay only ever sees that random id
   // and ciphertext chunks.
   const addMedia: AppData['addMedia'] = useCallback(
-    async (entryId, kind, blob, durationMs) => {
+    async (entryId, kind, blob, meta) => {
       const data = new Uint8Array(await blob.arrayBuffer());
       if (data.length === 0) return null;
       const now = Date.now();
+      const fallbackMime =
+        kind === 'audio' ? 'audio/webm' : kind === 'video' ? 'video/webm' : kind === 'image' ? 'image/jpeg' : 'application/octet-stream';
       const att: MediaAttachment = {
         id: newMediaId(),
         kind,
-        mime: blob.type || (kind === 'audio' ? 'audio/webm' : 'video/webm'),
+        mime: blob.type || fallbackMime,
         bytes: data.length,
-        durationMs,
+        durationMs: meta?.durationMs,
+        name: meta?.name,
+        width: meta?.width,
+        height: meta?.height,
         createdAt: now,
       };
       const rec: MediaRecord = {
@@ -483,7 +493,7 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
         entryId,
         mime: att.mime,
         bytes: att.bytes,
-        durationMs,
+        durationMs: meta?.durationMs,
         createdAt: now,
         data,
         synced: false,

@@ -5,6 +5,7 @@ import { Btn, Cover, ConnChip, SyncNotice } from '../ui/primitives';
 import { hexA } from '../ui/color';
 import type { CoverPattern, Journal } from '../data/sample';
 import type { TemplateRecord } from '../sync/engine';
+import { DocPreview } from '../editor/DocPreview';
 
 const JCOLORS = ['#B0563A', '#4E8B85', '#6A6AA0', '#B08A2E', '#5A7BA6', '#6E8B5E', '#8E6A93', '#C06A4A'];
 const JCOVERS: CoverPattern[] = ['lines', 'dots', 'grid', 'plain', 'photo'];
@@ -83,6 +84,15 @@ export function NewJournalSheet({
             </button>
           ))}
         </div>
+        {(() => {
+          // Picking a template shows what the journal's first entry will hold.
+          const sel = templates.find((t) => t.id === tpl);
+          return sel ? (
+            <div style={{ marginTop: 10, border: '1px solid var(--line)', borderRadius: 12, background: 'var(--paper)', maxHeight: 150, overflowY: 'auto', overscrollBehavior: 'contain', padding: '10px 14px' }}>
+              <DocPreview json={sel.bodyJson} text={sel.bodyText} size={13} />
+            </div>
+          ) : null;
+        })()}
       </Field>
 
       <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>

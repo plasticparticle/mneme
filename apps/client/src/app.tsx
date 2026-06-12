@@ -262,7 +262,7 @@ export function App(): VNode {
 
   const screen = (() => {
     if (flow === 'calendar') return <CalendarScreen desk={desk} onOpenEntry={(id) => (id ? openEntry(id) : newEntry())} />;
-    if (flow === 'editor') return <EditorScreen desk={desk} entryId={openEntryId} onBack={() => setFlow('journals')} onSelectEntry={openEntry} onNew={() => newEntry()} />;
+    if (flow === 'editor') return <EditorScreen desk={desk} entryId={openEntryId} onBack={() => setFlow('journals')} onSelectEntry={openEntry} onNew={newEntry} />;
     return <JournalsScreen desk={desk} journals={journals} onOpen={openJournal} onNew={() => setModal(true)} onSearch={() => setSearchOpen(true)} syncing={bootstrapping} />;
   })();
 

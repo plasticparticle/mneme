@@ -39,7 +39,13 @@ export function createSlashHandle(): SlashHandle {
 }
 
 export function buildSlashCommands(
-  opts: { onVideo?: () => void; onAudio?: () => void; templates?: TemplateRecord[] } = {},
+  opts: {
+    onVideo?: () => void;
+    onAudio?: () => void;
+    onImage?: () => void;
+    onFile?: () => void;
+    templates?: TemplateRecord[];
+  } = {},
 ): SlashCommand[] {
   const commands: SlashCommand[] = [
     {
@@ -94,6 +100,24 @@ export function buildSlashCommands(
       run: (e, r) => {
         e.chain().focus().deleteRange(r).run();
         opts.onAudio?.();
+      },
+    });
+  }
+  if (opts.onImage) {
+    commands.push({
+      title: 'Image', hint: 'Upload photos', icon: 'image', keywords: 'photo picture upload gallery media img',
+      run: (e, r) => {
+        e.chain().focus().deleteRange(r).run();
+        opts.onImage?.();
+      },
+    });
+  }
+  if (opts.onFile) {
+    commands.push({
+      title: 'File', hint: 'Attach a file', icon: 'file', keywords: 'attachment upload document pdf media',
+      run: (e, r) => {
+        e.chain().focus().deleteRange(r).run();
+        opts.onFile?.();
       },
     });
   }

@@ -5,9 +5,11 @@
 import type { RefObject } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { Editor, type JSONContent } from '@tiptap/core';
+import { TextSelection } from '@tiptap/pm/state';
+import type { EditorView } from '@tiptap/pm/view';
 import { buildExtensions, docToText } from './doc';
 import { slashExtension, type SlashCommand, type SlashHandle } from './slash';
-import { mediaAttachmentNode, type MediaNodeHandlers } from './media';
+import { mediaAttachmentNode, mediaGalleryNode, type MediaNodeHandlers } from './media';
 
 export interface RichEditorChange {
   json: string; // serialized ProseMirror doc
@@ -22,14 +24,32 @@ export function useRichEditor(opts: {
   /** Enables the "/" command palette; the caller renders <SlashMenu handle={...}>.
    * `commands` is a getter so the list can change while the editor stays mounted. */
   slash?: { handle: SlashHandle; commands: () => SlashCommand[] };
-  /** Enables inline mediaAttachment nodes (required to open docs containing them). */
+  /** Enables inline media nodes (required to open docs containing them). */
   media?: MediaNodeHandlers;
+  /** Files dropped on / pasted into the editor — the caller runs the upload flow. */
+  onFiles?: (files: File[]) => void;
 }): { editor: Editor | null; mountRef: RefObject<HTMLDivElement> } {
   const mountRef = useRef<HTMLDivElement>(null);
   const [editor, setEditor] = useState<Editor | null>(null);
-  // Keep the latest onChange without re-creating the editor.
+  // Keep the latest onChange/onFiles without re-creating the editor.
   const onChangeRef = useRef(opts.onChange);
   onChangeRef.current = opts.onChange;
+  const onFilesRef = useRef(opts.onFiles);
+  onFilesRef.current = opts.onFiles;
+
+  // Route dropped/pasted files into the upload flow instead of letting the
+  // browser navigate away or paste a filename. Drops first move the cursor to
+  // the drop point so the upload's insert lands where the user aimed.
+  const takeFiles = (view: EditorView, list: FileList | null | undefined, at?: number): boolean => {
+    const files = Array.from(list ?? []);
+    if (files.length === 0 || !onFilesRef.current) return false;
+    if (typeof at === 'number') {
+      const tr = view.state.tr.setSelection(TextSelection.near(view.state.doc.resolve(at)));
+      view.dispatch(tr);
+    }
+    onFilesRef.current(files);
+    return true;
+  };
 
   useEffect(() => {
     const el = mountRef.current;
@@ -39,12 +59,18 @@ export function useRichEditor(opts: {
       extensions: [
         ...buildExtensions(opts.placeholder),
         ...(opts.slash ? [slashExtension(opts.slash.handle, opts.slash.commands)] : []),
-        ...(opts.media ? [mediaAttachmentNode(opts.media)] : []),
+        ...(opts.media ? [mediaAttachmentNode(opts.media), mediaGalleryNode(opts.media)] : []),
       ],
       content: opts.initial,
       editable: opts.editable ?? true,
       editorProps: {
         attributes: { class: 'mneme-prose', spellcheck: 'true' },
+        handleDrop: (view, event, _slice, moved) => {
+          if (moved) return false; // internal drag of an existing node
+          const pos = view.posAtCoords({ left: event.clientX, top: event.clientY });
+          return takeFiles(view, event.dataTransfer?.files, pos?.pos);
+        },
+        handlePaste: (view, event) => takeFiles(view, event.clipboardData?.files),
       },
       onUpdate: ({ editor: ed }) => {
         const json = ed.getJSON();

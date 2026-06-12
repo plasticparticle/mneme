@@ -11,10 +11,15 @@ import type { PushEntry, RelayClient } from './relay';
 // ciphertext chunk sizes, never mime/duration/size-of-plaintext (§3).
 export interface MediaAttachment {
   id: string; // random 128-bit hex (newMediaId) — never date-encoded (§3)
-  kind: 'video' | 'audio';
+  kind: 'video' | 'audio' | 'image' | 'file';
   mime: string;
   bytes: number; // plaintext size
   durationMs?: number;
+  /** Original filename for uploads (recordings have none). */
+  name?: string;
+  /** Pixel size for images — lets layout reserve space before bytes resolve. */
+  width?: number;
+  height?: number;
   createdAt: number;
 }
 

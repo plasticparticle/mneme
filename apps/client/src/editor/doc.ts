@@ -51,7 +51,18 @@ export function docToText(doc: JSONContent): string {
   const walk = (node: JSONContent): void => {
     if (node.type === 'text' && node.text) out.push(node.text);
     // Inline media has no text content; give previews/search a small marker.
-    if (node.type === 'mediaAttachment') out.push(node.attrs?.kind === 'audio' ? '🎙 audio' : '🎬 video');
+    if (node.type === 'mediaAttachment') {
+      const kind = node.attrs?.kind;
+      const name = typeof node.attrs?.name === 'string' && node.attrs.name ? ` ${node.attrs.name}` : '';
+      if (kind === 'audio') out.push('🎙 audio');
+      else if (kind === 'image') out.push(`🖼 image${name}`);
+      else if (kind === 'file') out.push(`📎${name || ' file'}`);
+      else out.push('🎬 video');
+    }
+    if (node.type === 'mediaGallery') {
+      const n = Array.isArray(node.attrs?.images) ? node.attrs.images.length : 0;
+      out.push(n === 1 ? '🖼 1 photo' : `🖼 ${n} photos`);
+    }
     if (node.content) node.content.forEach(walk);
     // Block-level nodes get a separating newline so previews read naturally.
     if (node.type && node.type !== 'text' && node.type !== 'doc') out.push('\n');
@@ -60,12 +71,17 @@ export function docToText(doc: JSONContent): string {
   return out.join('').replace(/\n{2,}/g, '\n').trim();
 }
 
-/** Media ids of every inline mediaAttachment node in a doc (editor/media.tsx). */
+/** Media ids of every inline media node in a doc — single attachments and gallery images alike. */
 export function docMediaIds(doc: JSONContent): string[] {
   const ids: string[] = [];
   const walk = (node: JSONContent): void => {
     if (node.type === 'mediaAttachment' && typeof node.attrs?.id === 'string' && node.attrs.id) {
       ids.push(node.attrs.id);
+    }
+    if (node.type === 'mediaGallery' && Array.isArray(node.attrs?.images)) {
+      for (const img of node.attrs.images as { id?: unknown }[]) {
+        if (typeof img?.id === 'string' && img.id) ids.push(img.id);
+      }
     }
     node.content?.forEach(walk);
   };

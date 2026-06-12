@@ -10,10 +10,12 @@
 // entry and every reachable media object is stored under the new one. Any
 // failure before the wipe leaves the old account fully intact, and re-running
 // rotation with the same new phrase is safe (pushes are LWW-idempotent).
+import type { JSONContent } from '@tiptap/core';
 import { authenticate, identityFromMnemonic, type Session } from './identity';
 import { pushEntries, pushTemplates, pullEntries, type JournalEntry, type TemplateRecord } from './engine';
 import { uploadMedia, downloadMedia } from './media';
 import { RelayError, type RelayClient } from './relay';
+import { docMediaIds } from '../editor/doc';
 
 export interface RotationProgress {
   phase: 'pull' | 'entries' | 'media' | 'wipe';
@@ -102,12 +104,22 @@ export async function rotateAccount(input: RotationInput): Promise<RotationResul
   //    and re-upload through the normal outbox later.
   const mediaIds: string[] = [];
   const seen = new Set<string>();
+  const collect = (id: string): void => {
+    if (!seen.has(id)) {
+      seen.add(id);
+      mediaIds.push(id);
+    }
+  };
   for (const e of entries) {
     if (e.deleted) continue;
-    for (const a of e.attachments ?? []) {
-      if (!seen.has(a.id)) {
-        seen.add(a.id);
-        mediaIds.push(a.id);
+    // Legacy attachments-array media AND inline media nodes (recordings,
+    // images, files, galleries) — the latter reference their ids in bodyJson.
+    for (const a of e.attachments ?? []) collect(a.id);
+    if (e.bodyJson) {
+      try {
+        for (const id of docMediaIds(JSON.parse(e.bodyJson) as JSONContent)) collect(id);
+      } catch {
+        /* unparseable body — nothing inline to carry over */
       }
     }
   }

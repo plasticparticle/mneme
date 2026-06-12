@@ -3,6 +3,7 @@ import { darken, hexA } from '../ui/color';
 
 const MODE_KEY = 'mneme.theme.mode';
 const PALETTE_KEY = 'mneme.theme.palette';
+const SKIN_KEY = 'mneme.theme.skin';
 const LEGACY_DARK_KEY = 'mneme.theme.dark'; // pre-preferences boolean toggle
 
 export type ThemeMode = 'light' | 'dark' | 'system';
@@ -13,14 +14,36 @@ export interface ThemePalette {
   accent: string;
 }
 
-/** Accent themes over the warm-paper surfaces; the default terracotta first.
- * Muted, ink-compatible tones — the surface/ink ramp itself never changes. */
+/** Accent tints, orthogonal to the skin: any accent works on any skin.
+ * Muted, ink-compatible tones; the default terracotta first. */
 export const PALETTES: ThemePalette[] = [
   { id: 'terracotta', name: 'Terracotta', accent: '#B0563A' },
   { id: 'moss', name: 'Moss', accent: '#6F7D4D' },
   { id: 'sea', name: 'Sea', accent: '#3F7B82' },
   { id: 'twilight', name: 'Twilight', accent: '#5C6291' },
   { id: 'plum', name: 'Plum', accent: '#91527D' },
+  { id: 'rose', name: 'Rose', accent: '#C25573' },
+];
+
+export interface ThemeSkin {
+  id: string;
+  name: string;
+  hint: string;
+  /** Palette id adopted when the skin is picked (re-tintable afterwards). */
+  accent: string;
+  /** Swatch colors for the picker card (the skin's signature variant). */
+  preview: { bg: string; ink: string; accent: string };
+}
+
+/** Full themes: each redefines the surface/ink ramp (and for some, the type)
+ * via [data-skin] blocks in styles/tokens.css. Paper is the brand default. */
+export const SKINS: ThemeSkin[] = [
+  { id: 'paper', name: 'Paper', hint: 'Warm cream and serif — the classic', accent: 'terracotta', preview: { bg: '#f4eee2', ink: '#2a2521', accent: '#B0563A' } },
+  { id: 'modern', name: 'Modern', hint: 'Clean neutral grays, sans headings', accent: 'twilight', preview: { bg: '#fafafa', ink: '#1f1f1f', accent: '#5C6291' } },
+  { id: 'terminal', name: 'Terminal', hint: 'Graphite ops console — dense and technical', accent: 'sea', preview: { bg: '#0d1117', ink: '#d7dee8', accent: '#3F7B82' } },
+  { id: 'forest', name: 'Forest', hint: 'Mossy greens, a cabin notebook', accent: 'moss', preview: { bg: '#eef0e2', ink: '#232a1e', accent: '#6F7D4D' } },
+  { id: 'blossom', name: 'Blossom', hint: 'Soft rose and blush', accent: 'rose', preview: { bg: '#f9eef0', ink: '#322327', accent: '#C25573' } },
+  { id: 'lavender', name: 'Lavender', hint: 'Lilac calm', accent: 'twilight', preview: { bg: '#f0edf6', ink: '#2a2533', accent: '#5C6291' } },
 ];
 
 function initialMode(): ThemeMode {
@@ -36,6 +59,11 @@ function initialPalette(): string {
   return stored && PALETTES.some((p) => p.id === stored) ? stored : PALETTES[0].id;
 }
 
+function initialSkin(): string {
+  const stored = localStorage.getItem(SKIN_KEY);
+  return stored && SKINS.some((s) => s.id === stored) ? stored : SKINS[0].id;
+}
+
 export interface ThemeControls {
   mode: ThemeMode;
   setMode: (m: ThemeMode) => void;
@@ -45,6 +73,9 @@ export interface ThemeControls {
   toggleDark: () => void;
   palette: string;
   setPalette: (id: string) => void;
+  skin: string;
+  /** Picking a skin also adopts its default accent (re-tintable afterwards). */
+  setSkin: (id: string) => void;
 }
 
 /**
@@ -56,6 +87,7 @@ export interface ThemeControls {
 export function useTheme(): ThemeControls {
   const [mode, setModeState] = useState<ThemeMode>(initialMode);
   const [palette, setPaletteState] = useState<string>(initialPalette);
+  const [skin, setSkinState] = useState<string>(initialSkin);
   const [systemDark, setSystemDark] = useState(
     () => window.matchMedia('(prefers-color-scheme: dark)').matches,
   );
@@ -74,11 +106,12 @@ export function useTheme(): ThemeControls {
   useEffect(() => {
     const root = document.documentElement;
     root.dataset.theme = dark ? 'dark' : 'light';
+    root.dataset.skin = skin;
     root.style.setProperty('--accent', accent);
-    root.style.setProperty('--accent-ink', darken(accent, 0.16));
+    root.style.setProperty('--accent-ink', darken(accent, dark ? 0 : 0.16));
     root.style.setProperty('--accent-soft', hexA(accent, dark ? 0.2 : 0.12));
     root.style.setProperty('--accent-line', hexA(accent, 0.28));
-  }, [dark, accent]);
+  }, [dark, accent, skin]);
 
   const setMode = useCallback((m: ThemeMode) => {
     setModeState(m);
@@ -90,7 +123,17 @@ export function useTheme(): ThemeControls {
     localStorage.setItem(PALETTE_KEY, id);
   }, []);
 
+  const setSkin = useCallback(
+    (id: string) => {
+      setSkinState(id);
+      localStorage.setItem(SKIN_KEY, id);
+      const def = SKINS.find((s) => s.id === id)?.accent;
+      if (def) setPalette(def);
+    },
+    [setPalette],
+  );
+
   const toggleDark = useCallback(() => setMode(dark ? 'light' : 'dark'), [dark, setMode]);
 
-  return { mode, setMode, dark, toggleDark, palette, setPalette };
+  return { mode, setMode, dark, toggleDark, palette, setPalette, skin, setSkin };
 }

@@ -95,7 +95,9 @@ commands; click a formula to edit it in a live-preview LaTeX dialog. The formula
 inside bodyJson, so it stays inside the encrypted entry body; `docToText` surfaces the LaTeX source
 to previews/search and `DocPreview` renders it in template previews), and a **preferences overlay**
 (`ui/Preferences.tsx` — desktop sidebar gear / mobile settings → Preferences) with light/dark/system
-appearance + five accent themes (`hooks/useTheme.ts`; device-local localStorage, never synced — the
+appearance, six theme skins (Paper/Modern/Terminal/Forest/Blossom/Lavender — full `[data-skin]`
+surface/type ramps in `tokens.css`, each light+dark) × six orthogonal accent tints (picking a skin
+adopts its default accent; `hooks/useTheme.ts`; all device-local localStorage, never synced — the
 old boolean dark key migrates) and writing stats computed locally over the decrypted entries
 (`state/stats.ts`: totals, streaks, days journaled).
 

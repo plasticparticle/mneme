@@ -6,7 +6,7 @@ import type { VNode } from 'preact';
 import { useMemo } from 'preact/hooks';
 import { Icon, type IconName } from './Icon';
 import { useAppData } from '../state/data';
-import { PALETTES, type ThemeControls, type ThemeMode } from '../hooks/useTheme';
+import { PALETTES, SKINS, type ThemeControls, type ThemeMode } from '../hooks/useTheme';
 import { compactCount, dayStreak, journaledDays, longestStreak, monthWords, totalWords } from '../state/stats';
 import { hexA } from './color';
 
@@ -98,6 +98,34 @@ export function PreferencesSheet({ desk, theme, onClose }: {
       )}
 
       <SectionLabel>Theme</SectionLabel>
+      <div style={{ display: 'grid', gridTemplateColumns: desk ? 'repeat(3, 1fr)' : 'repeat(2, 1fr)', gap: 8 }}>
+        {SKINS.map((s) => {
+          const active = theme.skin === s.id;
+          return (
+            <button
+              key={s.id}
+              onClick={() => theme.setSkin(s.id)}
+              title={s.hint}
+              style={{ display: 'flex', flexDirection: 'column', gap: 0, padding: 0, overflow: 'hidden', borderRadius: 12, cursor: 'pointer', textAlign: 'left', border: `1.5px solid ${active ? 'var(--accent)' : 'var(--line)'}`, background: active ? 'var(--accent-soft)' : 'var(--paper)' }}
+            >
+              {/* Mini preview in the skin's signature colors, mode-independent. */}
+              <span style={{ display: 'block', width: '100%', height: 44, boxSizing: 'border-box', background: s.preview.bg, padding: '9px 10px', borderBottom: `1px solid ${active ? 'var(--accent-line)' : 'var(--line)'}` }}>
+                <span style={{ display: 'block', width: '55%', height: 5, borderRadius: 3, background: s.preview.ink, opacity: 0.85 }} />
+                <span style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 6 }}>
+                  <span style={{ width: 9, height: 9, borderRadius: 999, background: s.preview.accent, flexShrink: 0 }} />
+                  <span style={{ display: 'block', flex: 1, maxWidth: '70%', height: 4, borderRadius: 3, background: s.preview.ink, opacity: 0.3 }} />
+                </span>
+              </span>
+              <span style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '7px 10px', fontFamily: 'var(--ui)', fontSize: 12, fontWeight: active ? 700 : 600, color: active ? 'var(--accent-ink)' : 'var(--ink-2)' }}>
+                {s.name}
+                {active && <Icon name="check" size={12} stroke={2.4} />}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
+      <SectionLabel>Accent</SectionLabel>
       <div style={{ display: 'flex', gap: desk ? 10 : 6, justifyContent: 'space-between' }}>
         {PALETTES.map((p) => {
           const active = theme.palette === p.id;

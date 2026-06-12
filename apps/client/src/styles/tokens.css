@@ -40,6 +40,147 @@
   --ph-b: #221d18;
 }
 
+/* ── Theme skins (hooks/useTheme.ts SKINS sets [data-skin]) ──────────────────
+   Each skin redefines the full surface/ink ramp for light, and again for dark
+   below it — the dark block must override every var the light block sets, so
+   source order alone resolves the skin-vs-paper-dark cascade (equal-or-higher
+   specificity, later wins). The default Paper skin needs no block. */
+
+/* Modern — neutral grays, sans headings, serif kept for the writing surface. */
+[data-skin='modern'] {
+  --paper: #f5f5f4;
+  --surface: #ffffff;
+  --surface-2: #efefed;
+  --surface-glass: rgba(255, 255, 255, 0.84);
+  --ink: #1f1f1f;
+  --ink-2: #6b6b6b;
+  --ink-3: #a3a3a3;
+  --line: #e4e4e2;
+  --ph-a: #ebebea;
+  --ph-b: #f5f5f4;
+  --serif: 'Hanken Grotesk', system-ui, -apple-system, sans-serif;
+  --editor-font: 'Newsreader', Georgia, serif;
+}
+[data-skin='modern'][data-theme='dark'] {
+  --paper: #131313;
+  --surface: #1c1c1c;
+  --surface-2: #171717;
+  --surface-glass: rgba(19, 19, 19, 0.82);
+  --ink: #ebebeb;
+  --ink-2: #a0a0a0;
+  --ink-3: #6e6e6e;
+  --line: #2b2b2b;
+  --ph-a: #222222;
+  --ph-b: #1a1a1a;
+}
+
+/* Terminal — graphite ops console: cool blue-gray ramp, sans everywhere,
+   mono already carries the metadata. Dark is its native habitat. */
+[data-skin='terminal'] {
+  --paper: #eef1f4;
+  --surface: #f8fafc;
+  --surface-2: #e8edf1;
+  --surface-glass: rgba(248, 250, 252, 0.85);
+  --ink: #1a2129;
+  --ink-2: #5a6878;
+  --ink-3: #93a1b0;
+  --line: #d6dde5;
+  --ph-a: #e2e8ee;
+  --ph-b: #eef1f4;
+  --serif: 'Hanken Grotesk', system-ui, -apple-system, sans-serif;
+  --editor-font: 'Hanken Grotesk', system-ui, -apple-system, sans-serif;
+}
+[data-skin='terminal'][data-theme='dark'] {
+  --paper: #0d1117;
+  --surface: #151b23;
+  --surface-2: #10161d;
+  --surface-glass: rgba(13, 17, 23, 0.85);
+  --ink: #d7dee8;
+  --ink-2: #8b98a8;
+  --ink-3: #5b6878;
+  --line: #232c38;
+  --ph-a: #1a212a;
+  --ph-b: #141a22;
+}
+
+/* Forest — mossy greens, a cabin notebook. */
+[data-skin='forest'] {
+  --paper: #eef0e2;
+  --surface: #f7f8ee;
+  --surface-2: #e8ecd9;
+  --surface-glass: rgba(247, 248, 238, 0.84);
+  --ink: #232a1e;
+  --ink-2: #5f6a52;
+  --ink-3: #97a088;
+  --line: #dce1ca;
+  --ph-a: #e4e8d3;
+  --ph-b: #eff1e3;
+}
+[data-skin='forest'][data-theme='dark'] {
+  --paper: #161a12;
+  --surface: #1d231a;
+  --surface-2: #181e15;
+  --surface-glass: rgba(22, 26, 18, 0.82);
+  --ink: #e4e9d8;
+  --ink-2: #a2ac90;
+  --ink-3: #6e7860;
+  --line: #2c3424;
+  --ph-a: #232a1d;
+  --ph-b: #1b2117;
+}
+
+/* Blossom — soft rose & blush. */
+[data-skin='blossom'] {
+  --paper: #f9eef0;
+  --surface: #fef7f8;
+  --surface-2: #f5e7eb;
+  --surface-glass: rgba(254, 247, 248, 0.84);
+  --ink: #322327;
+  --ink-2: #7d626b;
+  --ink-3: #b596a0;
+  --line: #eedae0;
+  --ph-a: #f3e2e7;
+  --ph-b: #f9eff2;
+}
+[data-skin='blossom'][data-theme='dark'] {
+  --paper: #211a1d;
+  --surface: #2a2125;
+  --surface-2: #241c20;
+  --surface-glass: rgba(33, 26, 29, 0.82);
+  --ink: #f0e2e7;
+  --ink-2: #b298a1;
+  --ink-3: #7d6670;
+  --line: #3b2e34;
+  --ph-a: #2e2428;
+  --ph-b: #251d21;
+}
+
+/* Lavender — lilac calm. */
+[data-skin='lavender'] {
+  --paper: #f0edf6;
+  --surface: #f9f7fc;
+  --surface-2: #e9e5f1;
+  --surface-glass: rgba(249, 247, 252, 0.84);
+  --ink: #2a2533;
+  --ink-2: #6f6680;
+  --ink-3: #a89db8;
+  --line: #e1dbeb;
+  --ph-a: #e7e2ef;
+  --ph-b: #f1eef7;
+}
+[data-skin='lavender'][data-theme='dark'] {
+  --paper: #1b1822;
+  --surface: #231f2c;
+  --surface-2: #1e1a26;
+  --surface-glass: rgba(27, 24, 34, 0.82);
+  --ink: #e8e3f0;
+  --ink-2: #a79dbb;
+  --ink-3: #6f6582;
+  --line: #322c40;
+  --ph-a: #272230;
+  --ph-b: #201c29;
+}
+
 * {
   box-sizing: border-box;
 }

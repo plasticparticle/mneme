@@ -78,8 +78,12 @@ body, labels, and date spellings — FTS5 is still blocked), label autocomplete 
 (`ui/LabelField.tsx`), editable entry date/time (rides inside the encrypted body — re-dating leaks
 nothing to the relay), **entry deletion** behind a confirmation (`ui/ConfirmDialog.tsx`; tombstones
 through the LWW oplog, purges referenced media locally and on the relay; tombstoned entries stay in
-the raw provider list so LWW keeps winning, consumers see a filtered list), and a visible
-password-manager autofill target on phrase restore.
+the raw provider list so LWW keeps winning, consumers see a filtered list), a visible
+password-manager autofill target on phrase restore, and **math typesetting** (`editor/math.tsx` —
+`@tiptap/extension-mathematics` + KaTeX; type `$$x$$` inline / `$$$x$$$` block, or the `/` Math
+commands; click a formula to edit it in a live-preview LaTeX dialog. The formula is a `latex` attr
+inside bodyJson, so it stays inside the encrypted entry body; `docToText` surfaces the LaTeX source
+to previews/search and `DocPreview` renders it in template previews).
 
 Not yet: FTS5 (blocked on a custom wa-sqlite wasm build), push transport + reminders UI (step 6),
 export/import (step 7), Tauri shells (step 8) and their OS-keychain at-rest storage (§6).

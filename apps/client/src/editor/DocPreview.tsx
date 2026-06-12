@@ -5,6 +5,7 @@
 import type { ComponentChildren, VNode } from 'preact';
 import type { JSONContent } from '@tiptap/core';
 import { parseBody } from './doc';
+import { renderLatex } from './math';
 import './editor.css';
 
 interface Mark {
@@ -65,6 +66,10 @@ function renderNode(n: JSONContent, i: number): ComponentChildren {
       );
     case 'horizontalRule':
       return <hr key={i} />;
+    case 'inlineMath':
+      return <span key={i} data-type="inline-math" dangerouslySetInnerHTML={{ __html: renderLatex(String(n.attrs?.latex ?? ''), 'inline') }} />;
+    case 'blockMath':
+      return <div key={i} data-type="block-math" dangerouslySetInnerHTML={{ __html: renderLatex(String(n.attrs?.latex ?? ''), 'block') }} />;
     case 'hardBreak':
       return <br key={i} />;
     case 'mediaAttachment': {

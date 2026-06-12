@@ -14,6 +14,7 @@ import { parseBody, docMediaIds } from '../editor/doc';
 import { ConfirmDialog } from '../ui/ConfirmDialog';
 import { buildSlashCommands, createSlashHandle } from '../editor/slash';
 import { SlashMenu } from '../editor/SlashMenu';
+import { createMathHandle, MathDialog } from '../editor/math';
 import { VideoCapture } from '../ui/VideoCapture';
 import { AudioCapture } from '../ui/AudioCapture';
 import { AttachmentList } from '../ui/Attachments';
@@ -94,6 +95,7 @@ function EntryEditor({
 
   // Stable for the lifetime of this mount (the editor mounts once; keyed by entry.id).
   const slashHandle = useMemo(createSlashHandle, []);
+  const mathHandle = useMemo(createMathHandle, []);
   const slashCommands = useMemo(
     () =>
       buildSlashCommands({
@@ -102,6 +104,8 @@ function EntryEditor({
         onImage: () => imageInput.current?.click(),
         onFile: () => fileInput.current?.click(),
         onTemplate: () => setPickingTemplate(true),
+        // The dialog is the handle's listener; pos null means insert at the cursor.
+        onMath: (kind) => mathHandle.listener?.({ kind, latex: '', pos: null }),
       }),
     [],
   );
@@ -148,6 +152,7 @@ function EntryEditor({
     placeholder: 'Begin where you are…',
     slash: { handle: slashHandle, commands: slashCommands },
     media: mediaHandlers,
+    math: mathHandle,
     onFiles: (files) => void uploadFiles(files),
     onChange: (c) => {
       body.current = c;
@@ -270,6 +275,7 @@ function EntryEditor({
 
       <div ref={mountRef} />
       <SlashMenu handle={slashHandle} />
+      <MathDialog handle={mathHandle} editor={editor} />
 
       {/* Legacy attachments only (pre-inline entries); new recordings are inline nodes. */}
       <AttachmentList entry={entry} />

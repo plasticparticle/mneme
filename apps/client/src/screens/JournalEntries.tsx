@@ -8,11 +8,13 @@ const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct
 
 // Mobile-only drill-in: the entries of one notebook. Desktop never routes here —
 // it shows the journal-scoped list as the editor's left pane instead.
-export function JournalEntriesScreen({ journal, onBack, onOpenEntry, onNew, syncing }: {
+export function JournalEntriesScreen({ journal, onBack, onOpenEntry, onNew, onDelete, syncing }: {
   journal: Journal;
   onBack: () => void;
   onOpenEntry: (id: string) => void;
   onNew: () => void;
+  /** Opens the typed-"delete" confirmation sheet for this notebook. */
+  onDelete: () => void;
   syncing?: boolean;
 }): VNode {
   const { entries } = useAppData();
@@ -28,6 +30,9 @@ export function JournalEntriesScreen({ journal, onBack, onOpenEntry, onNew, sync
         </button>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <ConnChip compact />
+          <button title="Delete journal" onClick={onDelete} style={{ width: 36, height: 36, borderRadius: 999, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'transparent', border: 'none', cursor: 'pointer' }}>
+            <Icon name="trash" size={18} color="var(--accent)" />
+          </button>
           <button title="New entry" onClick={onNew} style={{ width: 36, height: 36, borderRadius: 999, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'transparent', border: 'none', cursor: 'pointer' }}>
             <Icon name="plus" size={20} color="var(--accent-ink)" />
           </button>

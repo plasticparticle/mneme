@@ -9,7 +9,8 @@ export type IconName =
   | 'list' | 'checklist' | 'heading' | 'settings' | 'more' | 'moon' | 'feather'
   | 'pin' | 'clock' | 'copy' | 'eye' | 'eyeoff' | 'shield' | 'arrowR' | 'sun'
   | 'grid' | 'timeline' | 'x' | 'video' | 'olist' | 'code' | 'divider' | 'trash'
-  | 'file' | 'download' | 'math' | 'monitor';
+  | 'file' | 'download' | 'math' | 'monitor' | 'table' | 'link'
+  | 'rowplus' | 'colplus' | 'rowminus' | 'colminus';
 
 interface IconProps {
   name: IconName;
@@ -71,6 +72,12 @@ export function Icon({ name, size = 20, stroke = 1.7, style = {}, color = 'curre
     download: <><path d="M12 4v11M7.5 11l4.5 4.5L16.5 11" {...P} /><path d="M5 19.5h14" {...P} /></>,
     math: <><path d="M3.5 13.5h2.5l2.5 5L13 5.5h7.5" {...P} /><path d="M14.5 12.5l5 6M19.5 12.5l-5 6" {...P} /></>,
     monitor: <><rect x="3.5" y="5" width="17" height="12" rx="2" {...P} /><path d="M9.5 20.5h5M12 17v3.5" {...P} /></>,
+    table: <><rect x="3.5" y="5" width="17" height="14" rx="2" {...P} /><path d="M3.5 10h17M9.5 10v9M15.5 10v9" {...P} /></>,
+    link: <><path d="M10.5 13.5a4 4 0 0 0 5.6.4l2.6-2.3a4 4 0 0 0-5.3-6l-1.5 1.3" {...P} /><path d="M13.5 10.5a4 4 0 0 0-5.6-.4l-2.6 2.3a4 4 0 0 0 5.3 6l1.5-1.3" {...P} /></>,
+    rowplus: <><rect x="3.5" y="4.5" width="17" height="8" rx="2" {...P} /><path d="M3.5 8.5h17M12 15.5v5M9.5 18h5" {...P} /></>,
+    colplus: <><rect x="3.5" y="3.5" width="8" height="17" rx="2" {...P} /><path d="M7.5 3.5v17M15.5 12h5M18 9.5v5" {...P} /></>,
+    rowminus: <><rect x="3.5" y="4.5" width="17" height="8" rx="2" {...P} /><path d="M3.5 8.5h17M9.5 18h5" {...P} /></>,
+    colminus: <><rect x="3.5" y="3.5" width="8" height="17" rx="2" {...P} /><path d="M7.5 3.5v17M15.5 12h5" {...P} /></>,
   };
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" style={{ display: 'block', flexShrink: 0, ...style }}>

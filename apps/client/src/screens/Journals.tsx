@@ -178,7 +178,7 @@ function JournalCard({ j, onOpen }: { j: Journal; onOpen: (j: Journal) => void }
   );
 }
 
-export function JournalsScreen({ desk, journals, onOpen, onNew, onSearch, syncing }: { desk: boolean; journals: Journal[]; onOpen: (j: Journal) => void; onNew: () => void; onSearch: () => void; syncing?: boolean }): VNode {
+export function JournalsScreen({ desk, journals, onOpen, onNew, onDelete, onSearch, syncing }: { desk: boolean; journals: Journal[]; onOpen: (j: Journal) => void; onNew: () => void; onDelete: (j: Journal) => void; onSearch: () => void; syncing?: boolean }): VNode {
   if (desk) {
     return (
       <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: 'var(--paper)' }}>
@@ -196,9 +196,13 @@ export function JournalsScreen({ desk, journals, onOpen, onNew, onSearch, syncin
         <div style={{ flex: 1, overflow: 'auto', padding: '8px 34px 34px' }}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16 }}>
             {journals.map((j) => (
-              <button
+              // A div, not a <button>: the delete control below has to nest inside.
+              <div
                 key={j.id}
+                role="button"
+                tabIndex={0}
                 onClick={() => onOpen(j)}
+                onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen(j); } }}
                 style={{ textAlign: 'left', cursor: 'pointer', borderRadius: 18, overflow: 'hidden', background: 'var(--surface)', border: '1px solid var(--line)', transition: 'all .15s', padding: 0 }}
                 onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 12px 30px rgba(40,28,18,.1)'; }}
                 onMouseLeave={(e) => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = 'none'; }}
@@ -211,9 +215,20 @@ export function JournalsScreen({ desk, journals, onOpen, onNew, onSearch, syncin
                 <div style={{ padding: '14px 16px 16px' }}>
                   <div style={{ fontFamily: 'var(--serif)', fontSize: 19, fontWeight: 500, color: 'var(--ink)' }}>{j.name}</div>
                   <div style={{ fontFamily: 'var(--ui)', fontSize: 13, color: 'var(--ink-2)', marginTop: 2 }}>{j.subtitle}</div>
-                  <div style={{ fontFamily: 'var(--ui)', fontSize: 12, color: 'var(--ink-3)', marginTop: 9 }}>{j.last ? `Edited ${j.last}` : 'No entries yet'}</div>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 9 }}>
+                    <span style={{ fontFamily: 'var(--ui)', fontSize: 12, color: 'var(--ink-3)' }}>{j.last ? `Edited ${j.last}` : 'No entries yet'}</span>
+                    <button
+                      title="Delete journal"
+                      onClick={(e) => { e.stopPropagation(); onDelete(j); }}
+                      style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28, margin: -6, borderRadius: 8, border: 'none', background: 'transparent', cursor: 'pointer', opacity: 0.55 }}
+                      onMouseEnter={(e) => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.background = 'var(--accent-soft)'; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.opacity = '0.55'; e.currentTarget.style.background = 'transparent'; }}
+                    >
+                      <Icon name="trash" size={15} color="var(--accent)" />
+                    </button>
+                  </div>
                 </div>
-              </button>
+              </div>
             ))}
             <button
               onClick={onNew}

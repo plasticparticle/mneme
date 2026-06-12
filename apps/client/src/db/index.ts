@@ -4,6 +4,7 @@
 // local store; the in-memory list in state/data.tsx is a reactive mirror of it.
 import type { DbRequest, DbResponse, SqlParam, SqlValue } from './protocol';
 import type { JournalEntry, MediaAttachment, TemplateRecord } from '../sync/engine';
+import type { CoverPattern, Journal } from '../data/sample';
 
 // Distributive omit so each variant of the DbRequest union keeps its own fields
 // (a plain Omit<DbRequest, 'id'> would collapse to just the shared `kind`).
@@ -92,6 +93,23 @@ const TPL_UPSERT_SET =
   `name=excluded.name, body_text=excluded.body_text, body_json=excluded.body_json, ` +
   `builtin=excluded.builtin, pristine=excluded.pristine, created_at=excluded.created_at, ` +
   `updated_at=excluded.updated_at, deleted=excluded.deleted, dirty=excluded.dirty`;
+
+// ── journal rows (schema v5): the local notebook grouping — never syncs ──
+
+const JOURNAL_COLS = 'id, name, subtitle, color, cover, created_at, deleted';
+
+function rowToJournal(r: SqlValue[]): Journal {
+  return {
+    id: r[0] as string,
+    name: (r[1] as string) ?? '',
+    subtitle: (r[2] as string) ?? '',
+    color: (r[3] as string) ?? '',
+    cover: ((r[4] as string) || 'plain') as CoverPattern,
+    // Derived live from the entries by the provider (journalsWithCounts).
+    count: 0,
+    last: '',
+  };
+}
 
 // ── media rows (schema v2): plaintext bytes + upload-outbox flag ──
 
@@ -337,6 +355,46 @@ export class LocalDb {
     }));
     const res = await this.#send({ kind: 'batch', statements });
     if (!res.ok) throw new Error(res.error);
+  }
+
+  // ── journals (schema v5) ──
+
+  /** All non-deleted journals in creation order (count/last are derived live by the provider). */
+  async allJournals(): Promise<Journal[]> {
+    const rows = await this.#query(`SELECT ${JOURNAL_COLS} FROM journals WHERE deleted = 0 ORDER BY rowid ASC`);
+    return rows.map(rowToJournal);
+  }
+
+  /** Total journal rows including tombstones — 0 means this device was never seeded. */
+  async journalCount(): Promise<number> {
+    const rows = await this.#query(`SELECT COUNT(*) FROM journals`);
+    return (rows[0]?.[0] as number) ?? 0;
+  }
+
+  /** Create (or restyle) a journal. Local-only — journals never reach the relay. */
+  async putJournal(j: Journal): Promise<void> {
+    await this.#run(
+      `INSERT INTO journals (${JOURNAL_COLS}) VALUES (?,?,?,?,?,?,0) ` +
+        `ON CONFLICT(id) DO UPDATE SET name=excluded.name, subtitle=excluded.subtitle, ` +
+        `color=excluded.color, cover=excluded.cover, deleted=0`,
+      [j.id, j.name, j.subtitle, j.color, j.cover, Date.now()],
+    );
+  }
+
+  /** Lay down the sample notebooks once per device. Existing rows — tombstones included — win. */
+  async seedJournals(journals: Journal[]): Promise<void> {
+    if (!journals.length) return;
+    const statements = journals.map((j) => ({
+      sql: `INSERT OR IGNORE INTO journals (${JOURNAL_COLS}) VALUES (?,?,?,?,?,?,0)`,
+      params: [j.id, j.name, j.subtitle, j.color, j.cover, Date.now()] as SqlParam[],
+    }));
+    const res = await this.#send({ kind: 'batch', statements });
+    if (!res.ok) throw new Error(res.error);
+  }
+
+  /** Tombstone a journal — the kept row stops a deleted sample notebook from re-seeding. */
+  async deleteJournal(id: string): Promise<void> {
+    await this.#run(`UPDATE journals SET deleted = 1 WHERE id = ?`, [id]);
   }
 
   // ── media (schema v2) ──

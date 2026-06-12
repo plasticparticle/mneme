@@ -17,6 +17,8 @@ export interface Identity {
   dataKey: Uint8Array;
   /** Reserved for chunked media (not used yet). */
   mediaKey: Uint8Array;
+  /** Wraps the sealed AI-assistant settings (API key etc.) at rest. */
+  aiKey: Uint8Array;
   /** X25519 owner public key (for sealed-box pairing). */
   ownerPub: Uint8Array;
   /** base64url(sha256(ownerPub)) — must match the relay's derivation. */
@@ -35,6 +37,7 @@ export interface Identity {
 export function deriveIdentity(seed: Uint8Array): Identity {
   const dataKey = hkdf(sha256, seed, SALT, utf8('data'), KEY_LEN);
   const mediaKey = hkdf(sha256, seed, SALT, utf8('media'), KEY_LEN);
+  const aiKey = hkdf(sha256, seed, SALT, utf8('ai-settings'), KEY_LEN);
 
   const identitySeed = hkdf(sha256, seed, SALT, utf8('identity'), KEY_LEN);
   const ownerPub = x25519.getPublicKey(identitySeed);
@@ -45,6 +48,7 @@ export function deriveIdentity(seed: Uint8Array): Identity {
   return {
     dataKey,
     mediaKey,
+    aiKey,
     ownerPub,
     ownerId: toBase64Url(sha256(ownerPub)),
     devicePriv: deviceSeed,

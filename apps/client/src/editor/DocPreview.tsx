@@ -66,6 +66,23 @@ function renderNode(n: JSONContent, i: number): ComponentChildren {
       );
     case 'horizontalRule':
       return <hr key={i} />;
+    case 'table':
+      return (
+        <div key={i} class="tableWrapper">
+          <table>
+            <tbody>{kids}</tbody>
+          </table>
+        </div>
+      );
+    case 'tableRow':
+      return <tr key={i}>{kids}</tr>;
+    case 'tableHeader':
+      return <th key={i} colSpan={(n.attrs?.colspan as number) ?? 1} rowSpan={(n.attrs?.rowspan as number) ?? 1}>{kids}</th>;
+    case 'tableCell':
+      return <td key={i} colSpan={(n.attrs?.colspan as number) ?? 1} rowSpan={(n.attrs?.rowspan as number) ?? 1}>{kids}</td>;
+    case 'entryLink':
+      // Display-only chip; previews don't navigate.
+      return <span key={i} class="mneme-wikilink">{String(n.attrs?.label ?? '')}</span>;
     case 'inlineMath':
       return <span key={i} data-type="inline-math" dangerouslySetInnerHTML={{ __html: renderLatex(String(n.attrs?.latex ?? ''), 'inline') }} />;
     case 'blockMath':

@@ -176,6 +176,151 @@
   background: rgba(228, 87, 61, 0.08);
 }
 
+/* Tables (@tiptap/extension-table). The wrapper scrolls horizontally so wide
+   measurement tables don't break the zen column. */
+.mneme-prose .tableWrapper {
+  overflow-x: auto;
+  margin: calc(var(--editor-gap) * 0.4) 0;
+}
+.mneme-prose table {
+  border-collapse: collapse;
+  table-layout: fixed;
+  width: 100%;
+  font-family: var(--ui);
+  font-size: 0.82em;
+  line-height: 1.5;
+}
+.mneme-prose th,
+.mneme-prose td {
+  border: 1px solid var(--line);
+  padding: 7px 10px;
+  vertical-align: top;
+  min-width: 3em;
+  position: relative;
+}
+.mneme-prose th {
+  background: var(--surface-2);
+  font-weight: 600;
+  text-align: left;
+}
+.mneme-prose td > p,
+.mneme-prose th > p {
+  margin: 0;
+}
+/* Cell-range selection (drag across cells). */
+.mneme-prose .selectedCell::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--accent-soft);
+  pointer-events: none;
+}
+/* Column resize (drag a cell's right edge). */
+.mneme-prose .column-resize-handle {
+  position: absolute;
+  right: -2px;
+  top: 0;
+  bottom: -1px;
+  width: 4px;
+  background: var(--accent);
+  pointer-events: none;
+}
+.mneme-prose.resize-cursor {
+  cursor: col-resize;
+}
+
+/* Syntax highlighting (lowlight/highlight.js classes) — warm-paper theme.
+   Tones sit between the ink ramp and the terracotta accent. */
+.mneme-prose pre .hljs-comment,
+.mneme-prose pre .hljs-quote { color: var(--ink-3); font-style: italic; }
+.mneme-prose pre .hljs-keyword,
+.mneme-prose pre .hljs-selector-tag,
+.mneme-prose pre .hljs-tag,
+.mneme-prose pre .hljs-name { color: #97462c; }
+.mneme-prose pre .hljs-string,
+.mneme-prose pre .hljs-regexp,
+.mneme-prose pre .hljs-addition { color: #5c7a4a; }
+.mneme-prose pre .hljs-number,
+.mneme-prose pre .hljs-literal,
+.mneme-prose pre .hljs-symbol,
+.mneme-prose pre .hljs-bullet { color: #8a6d1f; }
+.mneme-prose pre .hljs-title,
+.mneme-prose pre .hljs-function .hljs-title,
+.mneme-prose pre .hljs-section,
+.mneme-prose pre .hljs-selector-id,
+.mneme-prose pre .hljs-selector-class { color: #6a5acd; }
+.mneme-prose pre .hljs-attr,
+.mneme-prose pre .hljs-attribute,
+.mneme-prose pre .hljs-variable,
+.mneme-prose pre .hljs-template-variable,
+.mneme-prose pre .hljs-params { color: #3d6e8f; }
+.mneme-prose pre .hljs-built_in,
+.mneme-prose pre .hljs-type,
+.mneme-prose pre .hljs-class .hljs-title { color: #a3623c; }
+.mneme-prose pre .hljs-meta,
+.mneme-prose pre .hljs-deletion { color: #b0563a; }
+.mneme-prose pre .hljs-emphasis { font-style: italic; }
+.mneme-prose pre .hljs-strong { font-weight: 700; }
+[data-theme='dark'] .mneme-prose pre .hljs-keyword,
+[data-theme='dark'] .mneme-prose pre .hljs-selector-tag,
+[data-theme='dark'] .mneme-prose pre .hljs-tag,
+[data-theme='dark'] .mneme-prose pre .hljs-name { color: #d98a6a; }
+[data-theme='dark'] .mneme-prose pre .hljs-string,
+[data-theme='dark'] .mneme-prose pre .hljs-regexp,
+[data-theme='dark'] .mneme-prose pre .hljs-addition { color: #a4c08a; }
+[data-theme='dark'] .mneme-prose pre .hljs-number,
+[data-theme='dark'] .mneme-prose pre .hljs-literal,
+[data-theme='dark'] .mneme-prose pre .hljs-symbol,
+[data-theme='dark'] .mneme-prose pre .hljs-bullet { color: #cdb066; }
+[data-theme='dark'] .mneme-prose pre .hljs-title,
+[data-theme='dark'] .mneme-prose pre .hljs-function .hljs-title,
+[data-theme='dark'] .mneme-prose pre .hljs-section,
+[data-theme='dark'] .mneme-prose pre .hljs-selector-id,
+[data-theme='dark'] .mneme-prose pre .hljs-selector-class { color: #a99ae6; }
+[data-theme='dark'] .mneme-prose pre .hljs-attr,
+[data-theme='dark'] .mneme-prose pre .hljs-attribute,
+[data-theme='dark'] .mneme-prose pre .hljs-variable,
+[data-theme='dark'] .mneme-prose pre .hljs-template-variable,
+[data-theme='dark'] .mneme-prose pre .hljs-params { color: #84aec9; }
+[data-theme='dark'] .mneme-prose pre .hljs-built_in,
+[data-theme='dark'] .mneme-prose pre .hljs-type,
+[data-theme='dark'] .mneme-prose pre .hljs-class .hljs-title { color: #c98f66; }
+[data-theme='dark'] .mneme-prose pre .hljs-meta,
+[data-theme='dark'] .mneme-prose pre .hljs-deletion { color: #d96f4e; }
+
+/* Entry links (editor/wikilink.ts node views + DocPreview chips) */
+.mneme-prose .mneme-wikilink {
+  display: inline;
+  padding: 0.06em 0.3em;
+  border-radius: 7px;
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+  font-family: var(--ui);
+  font-size: 0.88em;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.12s;
+}
+.mneme-prose .mneme-wikilink::before {
+  content: '↳ ';
+  opacity: 0.6;
+}
+.mneme-prose .mneme-wikilink:hover {
+  background: var(--accent-line);
+}
+.mneme-prose .mneme-wikilink[data-missing] {
+  background: var(--surface-2);
+  color: var(--ink-3);
+  border: 1px dashed var(--line);
+  cursor: default;
+  text-decoration: line-through;
+}
+.mneme-prose .mneme-wikilink.ProseMirror-selectednode {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
 /* Placeholder for empty document / nodes */
 .mneme-prose p.is-editor-empty:first-child::before,
 .mneme-prose .is-empty::before {

@@ -6,6 +6,7 @@ import { Extension, type Editor, type Range } from '@tiptap/core';
 import { Suggestion, exitSuggestion, type SuggestionProps } from '@tiptap/suggestion';
 import type { IconName } from '../ui/Icon';
 import type { MathKind } from './math';
+import type { AiEditorAction } from '../ai/prompts';
 
 export interface SlashCommand {
   title: string;
@@ -46,6 +47,8 @@ export function buildSlashCommands(
     onFile?: () => void;
     onTemplate?: () => void;
     onMath?: (kind: MathKind) => void;
+    onLink?: () => void;
+    onAi?: (action: AiEditorAction) => void;
   } = {},
 ): SlashCommand[] {
   const commands: SlashCommand[] = [
@@ -82,6 +85,10 @@ export function buildSlashCommands(
       run: (e, r) => e.chain().focus().deleteRange(r).setCodeBlock().run(),
     },
     {
+      title: 'Table', hint: 'Rows and columns', icon: 'table', keywords: 'grid rows columns cells data measurements',
+      run: (e, r) => e.chain().focus().deleteRange(r).insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run(),
+    },
+    {
       title: 'Divider', hint: 'Horizontal rule', icon: 'divider', keywords: 'hr line separator rule',
       run: (e, r) => e.chain().focus().deleteRange(r).setHorizontalRule().run(),
     },
@@ -105,6 +112,17 @@ export function buildSlashCommands(
         },
       },
     );
+  }
+  if (opts.onLink) {
+    // Hands off to the "[[" entry picker (editor/wikilink.ts) — same flow as
+    // typing "[[" directly.
+    commands.push({
+      title: 'Link to entry', hint: 'Reference another entry', icon: 'link', keywords: 'wiki backlink reference mention connect entry',
+      run: (e, r) => {
+        e.chain().focus().deleteRange(r).run();
+        opts.onLink?.();
+      },
+    });
   }
   if (opts.onTemplate) {
     // One entry for all templates: opens the template picker, which inserts
@@ -152,6 +170,34 @@ export function buildSlashCommands(
         opts.onFile?.();
       },
     });
+  }
+  if (opts.onAi) {
+    const onAi = opts.onAi;
+    // Only offered when the user enabled the AI assistant (ui/AiSettings.tsx).
+    // Each opens a confirm-before-insert dialog over the current entry only.
+    commands.push(
+      {
+        title: 'Continue writing', hint: 'AI picks up where you stopped', icon: 'feather', keywords: 'ai assistant write continue more',
+        run: (e, r) => {
+          e.chain().focus().deleteRange(r).run();
+          onAi('continue');
+        },
+      },
+      {
+        title: 'Summarize entry', hint: 'AI summary of this entry', icon: 'feather', keywords: 'ai assistant summary tldr recap',
+        run: (e, r) => {
+          e.chain().focus().deleteRange(r).run();
+          onAi('summarize');
+        },
+      },
+      {
+        title: 'Suggest title', hint: 'AI title ideas for this entry', icon: 'feather', keywords: 'ai assistant headline name title',
+        run: (e, r) => {
+          e.chain().focus().deleteRange(r).run();
+          onAi('title');
+        },
+      },
+    );
   }
   return commands;
 }

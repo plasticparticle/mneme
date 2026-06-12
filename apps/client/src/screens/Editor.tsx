@@ -10,11 +10,14 @@ import type { JournalEntry, MediaAttachment, TemplateRecord } from '../sync/engi
 import { useRichEditor } from '../editor/useRichEditor';
 import { insertMediaAttachment, insertImageGallery, docImages } from '../editor/media';
 import { EditorToolbar } from '../editor/Toolbar';
-import { parseBody, docMediaIds } from '../editor/doc';
+import { parseBody, docMediaIds, docEntryLinks } from '../editor/doc';
+import { buildEntryLinkItems } from '../editor/wikilink';
 import { ConfirmDialog } from '../ui/ConfirmDialog';
 import { buildSlashCommands, createSlashHandle } from '../editor/slash';
 import { SlashMenu } from '../editor/SlashMenu';
 import { createMathHandle, MathDialog } from '../editor/math';
+import { AiActionDialog } from '../ui/AiActionDialog';
+import type { AiEditorAction } from '../ai/prompts';
 import { VideoCapture } from '../ui/VideoCapture';
 import { AudioCapture } from '../ui/AudioCapture';
 import { AttachmentList } from '../ui/Attachments';
@@ -58,16 +61,20 @@ function EntryEditor({
   desk,
   onEditorReady,
   onWords,
+  onOpenEntry,
 }: {
   entry: JournalEntry;
   desk: boolean;
   onEditorReady: (e: Editor | null) => void;
   onWords: (n: number) => void;
+  onOpenEntry: (id: string) => void;
 }): VNode {
-  const { entries, updateEntry, addMedia, removeMedia, mediaBlob } = useAppData();
+  const { entries, updateEntry, addMedia, removeMedia, mediaBlob, aiSettings } = useAppData();
   const [capturing, setCapturing] = useState<'video' | 'audio' | null>(null);
   // The template picker behind the "/" Template command.
   const [pickingTemplate, setPickingTemplate] = useState(false);
+  // The confirm-before-insert dialog behind the "/" AI commands.
+  const [aiAction, setAiAction] = useState<AiEditorAction | null>(null);
   // Computed once per mount; this component is keyed by entry.id so a different
   // entry remounts it with fresh initial content.
   const initial = useMemo(() => parseBody(entry.bodyJson, entry.bodyText), [entry.id]);
@@ -96,6 +103,7 @@ function EntryEditor({
   // Stable for the lifetime of this mount (the editor mounts once; keyed by entry.id).
   const slashHandle = useMemo(createSlashHandle, []);
   const mathHandle = useMemo(createMathHandle, []);
+  const wikiHandle = useMemo(createSlashHandle, []);
   const slashCommands = useMemo(
     () =>
       buildSlashCommands({
@@ -106,9 +114,53 @@ function EntryEditor({
         onTemplate: () => setPickingTemplate(true),
         // The dialog is the handle's listener; pos null means insert at the cursor.
         onMath: (kind) => mathHandle.listener?.({ kind, latex: '', pos: null }),
+        // Typing "[[" inserts the trigger text; the suggester takes it from there.
+        onLink: () => editorRef.current?.chain().focus().insertContent('[[').run(),
+        // Gated at mount (the commands array is fixed for the editor's lifetime):
+        // toggling AI on takes effect when the entry is reopened.
+        onAi: aiSettings?.enabled ? (action) => setAiAction(action) : undefined,
       }),
     [],
   );
+
+  // Live lookups for entry links — node views and the "[[" picker read through
+  // refs so the (stable, created-once) handlers see the current entry set.
+  const entriesRef = useRef(entries);
+  entriesRef.current = entries;
+  const onOpenEntryRef = useRef(onOpenEntry);
+  onOpenEntryRef.current = onOpenEntry;
+  const wiki = useMemo(
+    () => ({
+      handlers: {
+        resolveTitle: (id: string) => {
+          const target = entriesRef.current.find((x) => x.id === id && !x.deleted);
+          return target ? target.title || 'Untitled' : null;
+        },
+        onOpen: (id: string) => {
+          if (entriesRef.current.some((x) => x.id === id && !x.deleted)) onOpenEntryRef.current(id);
+        },
+      },
+      suggest: {
+        handle: wikiHandle,
+        items: (query: string) => buildEntryLinkItems(entriesRef.current, entry.id, query),
+      },
+    }),
+    [],
+  );
+
+  // Entries whose body links here — recomputed as entries sync in.
+  const backlinks = useMemo(() => {
+    const out: JournalEntry[] = [];
+    for (const e of entries) {
+      if (e.deleted || e.id === entry.id || !e.bodyJson) continue;
+      try {
+        if (docEntryLinks(JSON.parse(e.bodyJson) as JSONContent).includes(entry.id)) out.push(e);
+      } catch {
+        /* unparseable body — skip */
+      }
+    }
+    return out.sort((a, b) => b.updatedAt - a.updatedAt);
+  }, [entries, entry.id]);
 
   // Maximized image view: every image of the entry in document order, so ←/→
   // steps through the whole entry. Opened through a ref because the (stable)
@@ -153,6 +205,7 @@ function EntryEditor({
     slash: { handle: slashHandle, commands: slashCommands },
     media: mediaHandlers,
     math: mathHandle,
+    wiki,
     onFiles: (files) => void uploadFiles(files),
     onChange: (c) => {
       body.current = c;
@@ -211,11 +264,33 @@ function EntryEditor({
     [],
   );
 
+  // Insert generated text at the cursor as paragraphs (the AI dialog confirmed it).
+  const insertAiText = (text: string): void => {
+    const ed = editorRef.current;
+    if (!ed) return;
+    const paras: JSONContent[] = text
+      .split(/\n+/)
+      .map((p) => p.trim())
+      .filter(Boolean)
+      .map((p) => ({ type: 'paragraph', content: [{ type: 'text', text: p }] }));
+    if (paras.length) ed.chain().focus().insertContent(paras).run();
+  };
+
   const journal = findJournal(entry.journalId);
   // Grow the title textarea to fit its wrapped content (single-line inputs can't wrap).
+  const titleEl = useRef<HTMLTextAreaElement | null>(null);
   const fitTitle = (el: HTMLTextAreaElement): void => {
     el.style.height = 'auto';
     el.style.height = `${el.scrollHeight}px`;
+  };
+  // Apply an AI-picked title: mirror what typing into the textarea does.
+  const applyTitle = (t: string): void => {
+    title.current = t;
+    if (titleEl.current) {
+      titleEl.current.value = t;
+      fitTitle(titleEl.current);
+    }
+    scheduleSave();
   };
   const onTitleInput = (ev: Event): void => {
     const el = ev.target as HTMLTextAreaElement;
@@ -248,7 +323,7 @@ function EntryEditor({
       />
 
       <textarea
-        ref={(el) => { if (el) fitTitle(el); }}
+        ref={(el) => { titleEl.current = el; if (el) fitTitle(el); }}
         defaultValue={entry.title}
         onInput={onTitleInput}
         placeholder="Untitled"
@@ -275,10 +350,41 @@ function EntryEditor({
 
       <div ref={mountRef} />
       <SlashMenu handle={slashHandle} />
+      <SlashMenu handle={wikiHandle} />
       <MathDialog handle={mathHandle} editor={editor} />
 
       {/* Legacy attachments only (pre-inline entries); new recordings are inline nodes. */}
       <AttachmentList entry={entry} />
+
+      {backlinks.length > 0 && (
+        <div style={{ marginTop: 36, paddingTop: 18, borderTop: '1px solid var(--line)' }}>
+          <div style={{ fontFamily: 'var(--ui)', fontSize: 11.5, fontWeight: 700, letterSpacing: 0.6, textTransform: 'uppercase', color: 'var(--ink-3)', marginBottom: 10 }}>
+            Linked from
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {backlinks.map((e) => {
+              const d = new Date(e.createdAt);
+              return (
+                <button
+                  key={e.id}
+                  onClick={() => onOpenEntry(e.id)}
+                  style={{ display: 'flex', alignItems: 'baseline', gap: 10, width: '100%', textAlign: 'left', cursor: 'pointer', padding: '8px 10px', borderRadius: 10, background: 'transparent', border: 'none' }}
+                  onMouseEnter={(ev) => (ev.currentTarget.style.background = 'var(--surface-2)')}
+                  onMouseLeave={(ev) => (ev.currentTarget.style.background = 'transparent')}
+                >
+                  <Icon name="link" size={14} color="var(--ink-3)" style={{ alignSelf: 'center' }} />
+                  <span style={{ fontFamily: 'var(--serif)', fontSize: 15.5, fontWeight: 500, color: 'var(--ink)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {e.title || 'Untitled'}
+                  </span>
+                  <span style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--ink-3)', flexShrink: 0 }}>
+                    {MON[d.getMonth()]} {d.getDate()}, {d.getFullYear()}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {capturing === 'video' && (
         <VideoCapture
@@ -301,6 +407,18 @@ function EntryEditor({
           useLabel="Insert"
           onClose={() => setPickingTemplate(false)}
           onUse={insertTemplate}
+        />
+      )}
+
+      {aiAction && aiSettings && (
+        <AiActionDialog
+          action={aiAction}
+          entryTitle={title.current}
+          entryText={body.current.text}
+          settings={aiSettings}
+          onInsert={insertAiText}
+          onPickTitle={applyTitle}
+          onClose={() => setAiAction(null)}
         />
       )}
 
@@ -470,7 +588,7 @@ export function EditorScreen({
           <div style={{ flex: 1, overflow: 'auto' }}>
             {entry ? (
               <div style={{ maxWidth: 660, margin: '0 auto', padding: '40px 32px 80px' }}>
-                <EntryEditor key={entry.id} entry={entry} desk onEditorReady={setEditor} onWords={setWords} />
+                <EntryEditor key={entry.id} entry={entry} desk onEditorReady={setEditor} onWords={setWords} onOpenEntry={onSelectEntry} />
               </div>
             ) : (
               empty
@@ -504,7 +622,7 @@ export function EditorScreen({
       <div style={{ flex: 1, overflow: 'auto' }}>
         {entry ? (
           <div style={{ padding: '6px 22px 120px' }}>
-            <EntryEditor key={entry.id} entry={entry} desk={false} onEditorReady={setEditor} onWords={setWords} />
+            <EntryEditor key={entry.id} entry={entry} desk={false} onEditorReady={setEditor} onWords={setWords} onOpenEntry={onSelectEntry} />
           </div>
         ) : (
           empty

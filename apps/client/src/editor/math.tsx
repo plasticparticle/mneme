@@ -53,11 +53,43 @@ export function renderLatex(latex: string, kind: MathKind): string {
   return katex.renderToString(latex, { throwOnError: false, displayMode: kind === 'block' });
 }
 
+/** The in-dialog LaTeX cheatsheet: each snippet is KaTeX-rendered as its own
+ * preview and clicking it inserts the source at the textarea cursor. */
+const CHEATSHEET: ReadonlyArray<{ title: string; items: readonly string[] }> = [
+  {
+    title: 'Basics',
+    items: ['x^{2}', 'x_{i}', '\\frac{a}{b}', '\\sqrt{x}', '\\sqrt[n]{x}', '\\binom{n}{k}', '\\vec{v}', '\\hat{x}', '\\overline{x}'],
+  },
+  {
+    title: 'Calculus',
+    items: ['\\sum_{i=1}^{n}', '\\prod_{i=1}^{n}', '\\int_{a}^{b}', '\\oint', '\\lim_{x \\to \\infty}', '\\frac{dy}{dx}', '\\frac{\\partial f}{\\partial x}', '\\nabla'],
+  },
+  {
+    title: 'Symbols',
+    items: ['\\times', '\\cdot', '\\pm', '\\leq', '\\geq', '\\neq', '\\approx', '\\equiv', '\\in', '\\notin', '\\subset', '\\cup', '\\cap', '\\infty', '\\to', '\\Rightarrow', '\\Leftrightarrow', '\\forall', '\\exists', '\\emptyset'],
+  },
+  {
+    title: 'Greek',
+    items: ['\\alpha', '\\beta', '\\gamma', '\\delta', '\\epsilon', '\\theta', '\\lambda', '\\mu', '\\pi', '\\sigma', '\\tau', '\\phi', '\\omega', '\\Gamma', '\\Delta', '\\Sigma', '\\Omega'],
+  },
+  {
+    title: 'Layout',
+    items: [
+      '\\begin{pmatrix} a & b \\\\ c & d \\end{pmatrix}',
+      '\\begin{cases} a & x > 0 \\\\ b & x \\leq 0 \\end{cases}',
+      '\\text{text}',
+      'a_1, a_2, \\dots',
+      '\\underbrace{a+b}_{n}',
+    ],
+  },
+];
+
 /** Modal LaTeX editor with a live preview. Renders nothing until the handle's
  * listener fires (a click on a math node, or a "/" Math command). */
 export function MathDialog({ handle, editor }: { handle: MathHandle; editor: Editor | null }): VNode | null {
   const [req, setReq] = useState<MathEditRequest | null>(null);
   const [latex, setLatex] = useState('');
+  const [showCheatsheet, setShowCheatsheet] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
@@ -92,6 +124,19 @@ export function MathDialog({ handle, editor }: { handle: MathHandle; editor: Edi
       }
     }
     close();
+  };
+
+  const insertSnippet = (snippet: string): void => {
+    const el = inputRef.current;
+    const start = el?.selectionStart ?? latex.length;
+    const end = el?.selectionEnd ?? latex.length;
+    setLatex(latex.slice(0, start) + snippet + latex.slice(end));
+    // Refocus after the re-render and park the caret behind the snippet, so
+    // chips can be chained without re-clicking into the textarea.
+    requestAnimationFrame(() => {
+      el?.focus();
+      el?.setSelectionRange(start + snippet.length, start + snippet.length);
+    });
   };
 
   const remove = (): void => {
@@ -142,13 +187,50 @@ export function MathDialog({ handle, editor }: { handle: MathHandle; editor: Edi
           style={{ width: '100%', boxSizing: 'border-box', resize: 'vertical', fontFamily: 'var(--mono)', fontSize: 13.5, lineHeight: 1.6, color: 'var(--ink)', background: 'var(--paper)', border: '1px solid var(--line)', borderRadius: 12, padding: '10px 12px', outline: 'none' }}
         />
 
-        <div style={{ minHeight: 54, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '12px 0 16px', padding: '10px 12px', borderRadius: 12, background: 'var(--surface-2)', border: '1px dashed var(--line)', overflowX: 'auto' }}>
+        <div style={{ minHeight: 54, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '12px 0', padding: '10px 12px', borderRadius: 12, background: 'var(--surface-2)', border: '1px dashed var(--line)', overflowX: 'auto' }}>
           {latex.trim() ? (
             <div style={{ color: 'var(--ink)' }} dangerouslySetInnerHTML={{ __html: renderLatex(latex, req.kind) }} />
           ) : (
             <span style={{ fontFamily: 'var(--ui)', fontSize: 12.5, color: 'var(--ink-3)' }}>LaTeX preview</span>
           )}
         </div>
+
+        <button
+          type="button"
+          onClick={() => setShowCheatsheet((v) => !v)}
+          aria-expanded={showCheatsheet}
+          style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginBottom: showCheatsheet ? 10 : 16, padding: 0, background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'var(--ui)', fontSize: 12.5, fontWeight: 600, color: 'var(--ink-2)' }}
+        >
+          <Icon name={showCheatsheet ? 'down' : 'right'} size={12} color="var(--ink-3)" />
+          Cheatsheet
+        </button>
+
+        {showCheatsheet && (
+          <div style={{ maxHeight: 230, overflowY: 'auto', marginBottom: 16, padding: '10px 12px', borderRadius: 12, background: 'var(--paper)', border: '1px solid var(--line)' }}>
+            {CHEATSHEET.map((section) => (
+              <div key={section.title} style={{ marginBottom: 10 }}>
+                <div style={{ fontFamily: 'var(--ui)', fontSize: 10.5, fontWeight: 700, letterSpacing: 0.6, textTransform: 'uppercase', color: 'var(--ink-3)', marginBottom: 6 }}>
+                  {section.title}
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  {section.items.map((snippet) => (
+                    <button
+                      key={snippet}
+                      type="button"
+                      title={snippet}
+                      onClick={() => insertSnippet(snippet)}
+                      style={{ display: 'inline-flex', alignItems: 'center', padding: '4px 9px', background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 8, cursor: 'pointer', color: 'var(--ink)', fontSize: 13 }}
+                      dangerouslySetInnerHTML={{ __html: renderLatex(snippet, 'inline') }}
+                    />
+                  ))}
+                </div>
+              </div>
+            ))}
+            <div style={{ fontFamily: 'var(--ui)', fontSize: 11.5, color: 'var(--ink-3)' }}>
+              Click a formula to insert its LaTeX at the cursor — hover to see the source.
+            </div>
+          </div>
+        )}
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           {editing && (

@@ -17,6 +17,9 @@ import { useRichEditor } from '../editor/useRichEditor';
 import { parseBody } from '../editor/doc';
 import { DocPreview } from '../editor/DocPreview';
 import { createMathHandle, MathDialog } from '../editor/math';
+import { buildSlashCommands, createSlashHandle } from '../editor/slash';
+import { SlashMenu } from '../editor/SlashMenu';
+import { EditorToolbar } from '../editor/Toolbar';
 import '../editor/editor.css';
 
 const UI_13 = { fontFamily: 'var(--ui)', fontSize: 13 } as const;
@@ -49,10 +52,18 @@ function TemplateEditorView({
   });
   const initial = useMemo(() => parseBody(template?.bodyJson, template?.bodyText ?? ''), []);
   const mathHandle = useMemo(createMathHandle, []);
+  const slashHandle = useMemo(createSlashHandle, []);
+  // Block + math commands only — media, entry links, and template-in-template
+  // inserts don't apply to a template body.
+  const slashCommands = useMemo(
+    () => buildSlashCommands({ onMath: (kind) => mathHandle.listener?.({ kind, latex: '', pos: null }) }),
+    [],
+  );
   const { editor, mountRef } = useRichEditor({
     initial,
     placeholder: 'Headings, prompts, checklists — the shape an entry starts from…',
     math: mathHandle,
+    slash: { handle: slashHandle, commands: slashCommands },
     onChange: (c) => {
       body.current = c;
     },
@@ -77,10 +88,12 @@ function TemplateEditorView({
         />
         <div style={{ height: 1, background: 'var(--line)', marginTop: 4 }} />
       </div>
+      <EditorToolbar editor={editor} />
       <div
         ref={mountRef}
         style={{ minHeight: 180, maxHeight: '42vh', overflow: 'auto', padding: '4px 12px', borderRadius: 12, border: '1px solid var(--line)', background: 'var(--paper)' }}
       />
+      <SlashMenu handle={slashHandle} />
       <MathDialog handle={mathHandle} editor={editor} />
       <div style={{ display: 'flex', gap: 10 }}>
         <Btn kind="ghost" size="md" onClick={onDone} style={{ flex: 1 }}>Cancel</Btn>

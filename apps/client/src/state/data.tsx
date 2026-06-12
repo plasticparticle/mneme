@@ -12,7 +12,9 @@ import { authenticate, type Session } from '../sync/identity';
 import { deriveIdentity, type Identity } from '../crypto/keys';
 import { mnemonicToSeed } from '../crypto/mnemonic';
 import { sealSeed, sealWithKey, openSeed, type WrapKey } from '../crypto/seedlock';
-import { loadSealedSeed, storeSealedSeed, clearSealedSeed } from '../platform/keystore';
+import { loadSealedSeed, storeSealedSeed, clearSealedSeed, loadAiSettingsRecord, storeAiSettingsRecord, clearAiSettingsRecord } from '../platform/keystore';
+import { sealAiSettings, openAiSettings } from '../ai/settings';
+import type { AiSettings } from '../ai/types';
 import { pushEntries, pushTemplates, pullEntries, type JournalEntry, type MediaAttachment, type TemplateRecord } from '../sync/engine';
 import { uploadMedia, downloadMedia } from '../sync/media';
 import { rotateAccount, type RotationProgress } from '../sync/rotate';
@@ -48,6 +50,13 @@ interface AppData {
   // Entry templates — built-in seeds and user-created records alike, tombstones
   // included (callers filter on `deleted`).
   templates: TemplateRecord[];
+  // AI assistant configuration (client-only feature; the relay is never involved).
+  // null while locked or when the feature was never set up — every AI surface
+  // hides itself in that case. Decrypted from its sealed IndexedDB record on
+  // unlock; the seal key derives from the vault seed.
+  aiSettings: AiSettings | null;
+  /** Persist (sealed) and apply new AI settings; null disables and clears the record. */
+  saveAiSettings(s: AiSettings | null): Promise<void>;
   /**
    * Enter with the recovery phrase. With `passphrase` set, the derived seed is
    * additionally sealed (Argon2id → XChaCha20) into IndexedDB so later cold
@@ -68,6 +77,13 @@ interface AppData {
    */
   deleteEntry(id: string): void;
   newJournal(j: Journal): void;
+  /**
+   * After the user typed "delete": remove the notebook and tombstone every entry
+   * in it (the deletions sync to other devices through the LWW oplog, and the
+   * entries' recordings are purged locally and on the relay). The journal row
+   * itself is a local grouping — it disappears from this device immediately.
+   */
+  deleteJournal(id: string): void;
   createTemplate(input: { name: string; bodyText?: string; bodyJson?: string }): TemplateRecord;
   updateTemplate(id: string, patch: { name?: string; bodyText?: string; bodyJson?: string }): void;
   /** Tombstones the template (built-ins included) so the deletion reaches other devices. */
@@ -203,8 +219,11 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
   const [saving, setSaving] = useState(false);
   const [bootstrapping, setBootstrapping] = useState(false);
   const [entries, setEntries] = useState<JournalEntry[]>([]);
-  const [journals, setJournals] = useState<Journal[]>(JOURNALS);
+  // Journals live in the local DB only (a per-device grouping, §3) — loaded on
+  // unlock; the sample notebooks seed once per device like entries/templates.
+  const [journals, setJournals] = useState<Journal[]>([]);
   const [templates, setTemplates] = useState<TemplateRecord[]>([]);
+  const [aiSettings, setAiSettings] = useState<AiSettings | null>(null);
 
   const session = useRef<Session | null>(null);
   // Kept after sign-in so the background loop can re-authenticate without the mnemonic.
@@ -377,6 +396,16 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
       const id = deriveIdentity(seed); // local, synchronous
       identity.current = id;
       setOwnerId(id.ownerId);
+      // Restore the AI settings, if this vault sealed any on this device. A
+      // record sealed by a different vault fails the AEAD tag → stays null.
+      void loadAiSettingsRecord().then((rec) => {
+        if (!rec || identity.current !== id) return;
+        try {
+          setAiSettings(openAiSettings(id.aiKey, rec));
+        } catch {
+          /* tampered or another vault's record — AI stays unconfigured */
+        }
+      });
       // Leave the lock screen immediately: loading the SQLite wasm and the
       // first relay sync take visible time — the app shell shows "connecting"
       // + the first-sync notice instead of freezing.
@@ -403,6 +432,14 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
           await db.seedTemplates(localTpl);
         }
         setTemplates(localTpl);
+        // Journals: same once-per-device seeding (a tombstoned sample notebook
+        // keeps its row, so deleting one sticks across unlocks).
+        let localJournals = await db.allJournals();
+        if ((await db.journalCount()) === 0) {
+          localJournals = JOURNALS;
+          await db.seedJournals(localJournals);
+        }
+        setJournals(localJournals);
         // Rebuild the outboxes from work left unsynced by a previous offline session.
         for (const e of await db.dirtyEntries()) pending.current.set(e.id, e);
         for (const t of await db.dirtyTemplates()) pendingTemplates.current.set(t.id, t);
@@ -414,6 +451,7 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
         dbReady.current = false;
         setEntries((prev) => (prev.length ? prev : seedEntries()));
         setTemplates((prev) => (prev.length ? prev : seedBuiltinTemplates(Date.now())));
+        setJournals((prev) => (prev.length ? prev : JOURNALS));
       }
       try {
         await connect(true);
@@ -485,7 +523,8 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
     dbReady.current = false;
     setEntries([]);
     setTemplates([]);
-    setJournals(JOURNALS);
+    setAiSettings(null); // the decrypted API key leaves memory with the keys
+    setJournals([]);
     setPendingCount(0);
     setSaving(false);
     setBootstrapping(false);
@@ -550,9 +589,13 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
     [db, flush, syncPendingCount],
   );
 
-  const newJournal = useCallback((j: Journal) => {
-    setJournals((prev) => [...prev, j]);
-  }, []);
+  const newJournal = useCallback(
+    (j: Journal) => {
+      setJournals((prev) => [...prev, j]);
+      if (dbReady.current) void db.putJournal(j);
+    },
+    [db],
+  );
 
   const createTemplate: AppData['createTemplate'] = useCallback(
     (input) => {
@@ -613,6 +656,20 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
     },
     [db, flush, syncPendingCount],
   );
+
+  // Persist new AI settings sealed under the vault-derived key. The plaintext
+  // (API key included) only ever lives in this state object while unlocked.
+  const saveAiSettings: AppData['saveAiSettings'] = useCallback(async (s) => {
+    const id = identity.current;
+    if (!id) throw new Error('not signed in');
+    if (s === null) {
+      await clearAiSettingsRecord();
+      setAiSettings(null);
+      return;
+    }
+    await storeAiSettingsRecord(sealAiSettings(id.aiKey, s));
+    setAiSettings(s);
+  }, []);
 
   // Store a recording: bytes go to the local DB + media outbox. The attachment
   // metadata is returned for the editor to embed as an inline node in the entry
@@ -708,6 +765,42 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
     [db, flush, syncPendingCount, removeMedia],
   );
 
+  // Delete a whole notebook (the caller has shown the typed-"delete" sheet).
+  // Every entry in it tombstones like a single entry delete — one batch, one
+  // flush — and the journal row itself is dropped locally (it never synced).
+  const deleteJournal: AppData['deleteJournal'] = useCallback(
+    (id) => {
+      const now = Date.now();
+      const mediaIds = new Set<string>();
+      setEntries((prev) => {
+        const victims = prev.filter((e) => e.journalId === id && !e.deleted);
+        if (victims.length === 0) return prev;
+        const tombstones = victims.map((e): JournalEntry => ({ ...e, deleted: true, updatedAt: now }));
+        for (const e of tombstones) {
+          if (dbReady.current) void db.putLocal(e);
+          pending.current.set(e.id, e);
+        }
+        for (const v of victims) {
+          for (const a of v.attachments ?? []) mediaIds.add(a.id);
+          if (v.bodyJson) {
+            try {
+              for (const m of docMediaIds(JSON.parse(v.bodyJson) as JSONContent)) mediaIds.add(m);
+            } catch {
+              /* unparseable body — nothing to collect */
+            }
+          }
+        }
+        return mergeByLWW(prev, tombstones);
+      });
+      for (const m of mediaIds) removeMedia(m);
+      setJournals((prev) => prev.filter((j) => j.id !== id));
+      if (dbReady.current) void db.deleteJournal(id);
+      syncPendingCount();
+      void flush();
+    },
+    [db, flush, syncPendingCount, removeMedia],
+  );
+
   // Resolve attachment bytes for playback: outbox → local DB → relay download
   // (decrypted with the media key, then cached locally for next time).
   const mediaBlob: AppData['mediaBlob'] = useCallback(
@@ -792,6 +885,9 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
             // is on the new relay account already, so it lands non-dirty.
             await db.seedTemplates(allTpl.filter((t) => t.pristine));
             await db.mergeRemoteTemplates(allTpl.filter((t) => !t.pristine));
+            // Journals are local-only — carry the current set into the new DB
+            // (marked as seeded, so the samples don't re-appear on top).
+            await db.seedJournals(journals);
           } catch {
             dbReady.current = false;
           }
@@ -820,6 +916,18 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
           }
         }
 
+        // Same for the sealed AI settings: their wrap key derives from the seed,
+        // so the old record would no longer open. Re-seal under the new identity;
+        // on failure, clear — AI falls back to "not configured".
+        if (aiSettings) {
+          try {
+            await storeAiSettingsRecord(sealAiSettings(result.session.identity.aiKey, aiSettings));
+          } catch {
+            void clearAiSettingsRecord();
+            setAiSettings(null);
+          }
+        }
+
         setEntries(all);
         setTemplates(allTpl);
         syncPendingCount();
@@ -831,7 +939,7 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
         throw e;
       }
     },
-    [relay, db, entries, templates, syncPendingCount],
+    [relay, db, entries, templates, journals, aiSettings, syncPendingCount],
   );
 
   // Permanently delete the vault. Relay first — only after the server confirms
@@ -858,6 +966,7 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
     void destroyOwnerDb(s.ownerId);
     wrap.current = null;
     void clearSealedSeed();
+    void clearAiSettingsRecord(); // the sealed API key must not survive the vault
     setHasVault(false);
     lock(); // drops the in-memory identity and lands on onboarding
   }, [relay, db, lock]);
@@ -904,6 +1013,6 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
   // and the outbox can push them) but every consumer sees only live entries.
   const liveEntries = useMemo(() => entries.filter((e) => !e.deleted), [entries]);
 
-  const value: AppData = { status, hasVault, ownerId, pendingCount, saving, bootstrapping, entries: liveEntries, journals: journalsWithCounts, templates, signIn, unlock, lock, createEntry, updateEntry, deleteEntry, newJournal, createTemplate, updateTemplate, deleteTemplate, addMedia, removeMedia, mediaBlob, rotatePhrase, deleteVault };
+  const value: AppData = { status, hasVault, ownerId, pendingCount, saving, bootstrapping, entries: liveEntries, journals: journalsWithCounts, templates, aiSettings, saveAiSettings, signIn, unlock, lock, createEntry, updateEntry, deleteEntry, newJournal, deleteJournal, createTemplate, updateTemplate, deleteTemplate, addMedia, removeMedia, mediaBlob, rotatePhrase, deleteVault };
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

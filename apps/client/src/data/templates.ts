@@ -28,6 +28,9 @@ const taskItem = (): JSONContent => ({
   content: [{ type: 'paragraph' }],
 });
 const listItem = (): JSONContent => ({ type: 'listItem', content: [{ type: 'paragraph' }] });
+const th = (text: string): JSONContent => ({ type: 'tableHeader', content: [p(text)] });
+const td = (): JSONContent => ({ type: 'tableCell', content: [p()] });
+const row = (cells: JSONContent[]): JSONContent => ({ type: 'tableRow', content: cells });
 
 export const BUILTIN_TEMPLATES: BuiltinTemplate[] = [
   {
@@ -68,6 +71,47 @@ export const BUILTIN_TEMPLATES: BuiltinTemplate[] = [
         p(),
         h2('What it might be holding'),
         p(),
+      ],
+    },
+  },
+  {
+    slug: 'experiment',
+    name: 'Experiment log',
+    doc: {
+      type: 'doc',
+      content: [
+        h2('Question'),
+        p(),
+        h2('Setup'),
+        p(),
+        h2('Observations'),
+        {
+          type: 'table',
+          content: [
+            row([th('Measurement'), th('Value'), th('Notes')]),
+            row([td(), td(), td()]),
+            row([td(), td(), td()]),
+          ],
+        },
+        h2('Conclusion'),
+        p(),
+      ],
+    },
+  },
+  {
+    slug: 'study',
+    name: 'Study notes',
+    doc: {
+      type: 'doc',
+      content: [
+        h2('Topic & source'),
+        p(),
+        h2('Key ideas'),
+        { type: 'bulletList', content: [listItem(), listItem(), listItem()] },
+        h2('In my own words'),
+        p(),
+        h2('Open questions'),
+        { type: 'taskList', content: [taskItem(), taskItem()] },
       ],
     },
   },

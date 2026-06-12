@@ -22,6 +22,16 @@ const TOOLS: Tool[] = [
   { icon: 'checklist', label: 'Checklist', isActive: (e) => e.isActive('taskList'), run: (e) => e.chain().focus().toggleTaskList().run() },
 ];
 
+// Shown only while the cursor is inside a table (useEditorTick keeps it live).
+const TABLE_TOOLS: Tool[] = [
+  { icon: 'rowplus', label: 'Add row below', isActive: () => false, run: (e) => e.chain().focus().addRowAfter().run(), group: true },
+  { icon: 'colplus', label: 'Add column right', isActive: () => false, run: (e) => e.chain().focus().addColumnAfter().run() },
+  { icon: 'rowminus', label: 'Delete row', isActive: () => false, run: (e) => e.chain().focus().deleteRow().run() },
+  { icon: 'colminus', label: 'Delete column', isActive: () => false, run: (e) => e.chain().focus().deleteColumn().run() },
+  { icon: 'table', label: 'Toggle header row', isActive: () => false, run: (e) => e.chain().focus().toggleHeaderRow().run() },
+  { icon: 'trash', label: 'Delete table', isActive: () => false, run: (e) => e.chain().focus().deleteTable().run() },
+];
+
 /** Re-render whenever the selection/document changes so active states track the cursor. */
 function useEditorTick(editor: Editor | null): void {
   const [, setTick] = useState(0);
@@ -41,6 +51,11 @@ export function EditorToolbar({ editor, floating }: { editor: Editor | null; flo
   useEditorTick(editor);
   const big = !!floating;
   const sz = big ? 40 : 38;
+  // Inside a table the table tools lead the strip — on the (scrollable) mobile
+  // floating bar, trailing tools would sit off-screen and never be found.
+  const tools = editor?.isActive('table')
+    ? [...TABLE_TOOLS.map((t, i) => (i === 0 ? { ...t, group: false } : t)), ...TOOLS.map((t, i) => (i === 0 ? { ...t, group: true } : t))]
+    : TOOLS;
   return (
     <div
       style={{
@@ -48,9 +63,10 @@ export function EditorToolbar({ editor, floating }: { editor: Editor | null; flo
         borderRadius: big ? 16 : 14, background: 'var(--surface)', border: '1px solid var(--line)',
         boxShadow: floating ? '0 10px 30px rgba(40,28,18,.18)' : 'none',
         overflowX: floating ? 'auto' : undefined, maxWidth: floating ? '100%' : undefined,
+        flexWrap: floating ? undefined : 'wrap', // narrow hosts (template sheet) wrap instead of clipping
       }}
     >
-      {TOOLS.map((t) => {
+      {tools.map((t) => {
         const active = !!editor && t.isActive(editor);
         return (
           <Fragment key={t.icon}>

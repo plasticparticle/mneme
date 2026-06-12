@@ -75,7 +75,24 @@ export const MIGRATIONS: string[] = [
     created_at  INTEGER NOT NULL            -- ms since epoch (when the user deleted it)
   );
   `,
-  // ── v5 (FUTURE) — FTS5 full-text index (§3 mandates FTS5 for search) ──
+  // ── v5 — journals (the local notebook grouping) ──
+  // Journals are a per-device grouping only (§3 isolated tenants): they hold no
+  // content and never sync — entries reference journal_id inside their encrypted
+  // body. Deletion is a tombstone, not a DROP: the sample notebooks seed once
+  // per device (row count 0 = never seeded), and a kept row is what stops a
+  // deleted sample journal from re-seeding on the next unlock.
+  `
+  CREATE TABLE journals (
+    id          TEXT PRIMARY KEY,
+    name        TEXT NOT NULL DEFAULT '',
+    subtitle    TEXT NOT NULL DEFAULT '',
+    color       TEXT NOT NULL DEFAULT '',
+    cover       TEXT NOT NULL DEFAULT 'plain',
+    created_at  INTEGER NOT NULL,           -- ms since epoch
+    deleted     INTEGER NOT NULL DEFAULT 0
+  );
+  `,
+  // ── v6 (FUTURE) — FTS5 full-text index (§3 mandates FTS5 for search) ──
   // The published wa-sqlite 1.0.0 wasm builds are compiled WITHOUT the FTS5
   // module, so creating this table fails today ("no such module: fts5"). When we
   // ship an FTS5-enabled wasm, append the migration below as a forward-only step

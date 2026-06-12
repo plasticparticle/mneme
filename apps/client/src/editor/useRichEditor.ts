@@ -11,6 +11,7 @@ import { buildExtensions, docToText } from './doc';
 import { slashExtension, type SlashCommand, type SlashHandle } from './slash';
 import { mediaAttachmentNode, mediaGalleryNode, type MediaNodeHandlers } from './media';
 import type { MathHandle } from './math';
+import { wikiLinkSuggestion, type WikiLinkHandlers } from './wikilink';
 
 export interface RichEditorChange {
   json: string; // serialized ProseMirror doc
@@ -28,6 +29,12 @@ export function useRichEditor(opts: {
   media?: MediaNodeHandlers;
   /** Enables click-to-edit on math nodes; the caller renders <MathDialog handle={...}>. */
   math?: MathHandle;
+  /** Enables entry links: live titles + click-to-navigate, and (optionally) the
+   * "[[" entry picker — the caller renders a <SlashMenu handle={...}> for it. */
+  wiki?: {
+    handlers: WikiLinkHandlers;
+    suggest?: { handle: SlashHandle; items: (query: string) => SlashCommand[] };
+  };
   /** Files dropped on / pasted into the editor — the caller runs the upload flow. */
   onFiles?: (files: File[]) => void;
 }): { editor: Editor | null; mountRef: RefObject<HTMLDivElement> } {
@@ -59,9 +66,10 @@ export function useRichEditor(opts: {
     const instance = new Editor({
       element: el,
       extensions: [
-        ...buildExtensions(opts.placeholder, opts.math),
+        ...buildExtensions(opts.placeholder, opts.math, opts.wiki?.handlers),
         ...(opts.slash ? [slashExtension(opts.slash.handle, opts.slash.commands)] : []),
         ...(opts.media ? [mediaAttachmentNode(opts.media), mediaGalleryNode(opts.media)] : []),
+        ...(opts.wiki?.suggest ? [wikiLinkSuggestion(opts.wiki.suggest.handle, opts.wiki.suggest.items)] : []),
       ],
       content: opts.initial,
       editable: opts.editable ?? true,

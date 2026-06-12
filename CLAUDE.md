@@ -88,7 +88,13 @@ body, labels, and date spellings — FTS5 is still blocked), label autocomplete 
 (`ui/LabelField.tsx`), editable entry date/time (rides inside the encrypted body — re-dating leaks
 nothing to the relay), **entry deletion** behind a confirmation (`ui/ConfirmDialog.tsx`; tombstones
 through the LWW oplog, purges referenced media locally and on the relay; tombstoned entries stay in
-the raw provider list so LWW keeps winning, consumers see a filtered list), a visible
+the raw provider list so LWW keeps winning, consumers see a filtered list), **journal deletion**
+behind a typed-"delete" sheet (`ui/DeleteJournal.tsx`, desktop journal-card trash / mobile drill-in
+header; `deleteJournal` in `state/data.tsx` tombstones every entry in the notebook through the LWW
+oplog and purges their media local + relay. Journals themselves now persist in the local `journals`
+table — schema v5, seeded once per device, carried across phrase rotation — as a per-device grouping
+per §3: they never sync, and a deleted journal keeps its tombstone row so the sample seed can't
+resurrect it), a visible
 password-manager autofill target on phrase restore, and **math typesetting** (`editor/math.tsx` —
 `@tiptap/extension-mathematics` + KaTeX; type `$$x$$` inline / `$$$x$$$` block, or the `/` Math
 commands; click a formula to edit it in a live-preview LaTeX dialog. The formula is a `latex` attr
@@ -100,6 +106,42 @@ surface/type ramps in `tokens.css`, each light+dark) × six orthogonal accent ti
 adopts its default accent; `hooks/useTheme.ts`; all device-local localStorage, never synced — the
 old boolean dark key migrates) and writing stats computed locally over the decrypted entries
 (`state/stats.ts`: totals, streaks, days journaled).
+
+**Lab/learning-notebook capabilities** (a positioning widening, not a pivot): **tables**
+(`@tiptap/extension-table` TableKit, resizable; `/` Table command; row/column controls lead the
+toolbar strip while the cursor is inside a table — the template editor (`ui/Templates.tsx`) carries
+the same toolbar plus a block-and-math-only `/` palette), **code-block syntax highlighting**
+(`@tiptap/extension-code-block-lowlight`, lowlight `common` grammars with auto-detect; warm-paper
+token theme + dark variant in `editor.css`), and **cross-entry links with backlinks**
+(`editor/wikilink.ts`: an inline `entryLink` atom node carrying `{entryId, label}` inside bodyJson —
+entry ids are random, so nothing new leaks to the relay; typing `[[` (or the `/` "Link to entry"
+command, which just inserts `[[`) opens an entry picker reusing the SlashMenu machinery; node views
+re-resolve live titles so renames heal on next open, and deleted targets render as muted dead chips;
+a "Linked from" section under the entry lists referencing entries via `docEntryLinks`). All three
+node types are registered unconditionally in `buildExtensions` (docs containing them must open
+everywhere) and `DocPreview` renders them. Built-in template seeds gained "Experiment log" (results
+table) and "Study notes" — fresh vaults only, since builtin seeding is all-or-nothing. Regression
+check: `pnpm --filter client exec tsx scripts/labbook-repro.ts` (jsdom, no relay needed).
+Deliberately NOT built: compliance-grade ELN features — signed immutable records fight LWW + E2EE.
+
+**Opt-in AI assistant** (client-only; off by default; docs/SECURITY.md §2 "opt-in AI assistant"):
+`src/ai/` holds a two-backend provider abstraction — Anthropic (BYO API key, direct browser→API
+calls via the dangerous-direct-browser-access CORS header) and Ollama (fully local) — behind one
+`AiProvider` interface (`ai/types.ts`; an OpenAI-compatible backend is one new file). **Zero relay
+involvement**: requests go browser→provider; journal plaintext must NEVER be proxied through the
+relay. Two surfaces: **"Ask my journal"** (`ui/AskJournal.tsx`, sidebar row / mobile settings,
+only when enabled) — Q&A over the decrypted in-memory entries, context built by `ai/context.ts`
+(search-ranked via the extracted `src/search/core.ts` + recency, per-backend char budgets),
+streaming, transcript memory-only; and **editor writing help** (`/` slash commands Continue/
+Summarize/Suggest-title → `ui/AiActionDialog.tsx`, current entry only, confirm-before-insert;
+gated at editor mount). Settings (`ui/AiSettings.tsx`, vault menu / mobile settings) carry the
+per-backend privacy copy — the cloud card states that context entries leave E2EE for that request.
+The API key is sealed at rest: `Identity.aiKey` (HKDF info="ai-settings", `crypto/keys.ts`) wraps
+the settings JSON via `crypto/aead.ts` (version byte + AAD `mneme:ai-settings:v1`, `ai/settings.ts`)
+into the IndexedDB keystore slot `'ai-settings'`; lifecycle in `state/data.tsx` (load on unlock,
+drop on lock, re-seal under the new seed on phrase rotation, cleared on vault deletion; a different
+vault's record fails the AEAD tag → unconfigured). Wire-path check:
+`pnpm --filter client exec tsx scripts/ai-roundtrip.ts` (Ollama chat step skips when not running).
 
 Not yet: FTS5 (blocked on a custom wa-sqlite wasm build), push transport + reminders UI (step 6),
 export/import (step 7), Tauri shells (step 8) and their OS-keychain at-rest storage (§6).

@@ -6,23 +6,35 @@ import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
 import { TaskList } from '@tiptap/extension-task-list';
 import { TaskItem } from '@tiptap/extension-task-item';
+import { TableKit } from '@tiptap/extension-table';
+import { CodeBlockLowlight } from '@tiptap/extension-code-block-lowlight';
+import { common, createLowlight } from 'lowlight';
 import type { Extensions, JSONContent } from '@tiptap/core';
 import type { Block } from '../data/sample';
 import { mathExtension, type MathHandle } from './math';
+import { wikiLinkNode, type WikiLinkHandlers } from './wikilink';
+
+// lowlight's "common" grammar set (~35 languages); unset code blocks auto-detect.
+const lowlight = createLowlight(common);
 
 export const EMPTY_DOC: JSONContent = { type: 'doc', content: [{ type: 'paragraph' }] };
 
-/** The extension set, shared by every editor instance. Math is always in (docs
- * containing formulas must open everywhere); the handle wires click-to-edit. */
-export function buildExtensions(placeholder: string, math?: MathHandle): Extensions {
+/** The extension set, shared by every editor instance. Math, tables, and entry
+ * links are always in (docs containing them must open everywhere); the optional
+ * handles/handlers wire interactivity (click-to-edit, link navigation). */
+export function buildExtensions(placeholder: string, math?: MathHandle, wiki?: WikiLinkHandlers): Extensions {
   return [
     StarterKit.configure({
       heading: { levels: [1, 2, 3] },
+      codeBlock: false, // replaced by the lowlight-highlighted code block
     }),
+    CodeBlockLowlight.configure({ lowlight }),
+    TableKit.configure({ table: { resizable: true } }),
     TaskList,
     TaskItem.configure({ nested: true }),
     Placeholder.configure({ placeholder }),
     mathExtension(math),
+    wikiLinkNode(wiki),
   ];
 }
 
@@ -70,10 +82,14 @@ export function docToText(doc: JSONContent): string {
     if ((node.type === 'inlineMath' || node.type === 'blockMath') && typeof node.attrs?.latex === 'string') {
       out.push(node.attrs.latex);
     }
+    // Entry links surface their label so previews/search match the link text.
+    if (node.type === 'entryLink' && typeof node.attrs?.label === 'string') {
+      out.push(`🔗 ${node.attrs.label}`);
+    }
     if (node.content) node.content.forEach(walk);
     // Block-level nodes get a separating newline so previews read naturally
-    // (inline math sits mid-sentence, so it stays on its line).
-    if (node.type && node.type !== 'text' && node.type !== 'doc' && node.type !== 'inlineMath') out.push('\n');
+    // (inline math and entry links sit mid-sentence, so they stay on their line).
+    if (node.type && node.type !== 'text' && node.type !== 'doc' && node.type !== 'inlineMath' && node.type !== 'entryLink') out.push('\n');
   };
   walk(doc);
   return out.join('').replace(/\n{2,}/g, '\n').trim();
@@ -90,6 +106,19 @@ export function docMediaIds(doc: JSONContent): string[] {
       for (const img of node.attrs.images as { id?: unknown }[]) {
         if (typeof img?.id === 'string' && img.id) ids.push(img.id);
       }
+    }
+    node.content?.forEach(walk);
+  };
+  walk(doc);
+  return ids;
+}
+
+/** Entry ids referenced by every entryLink node in a doc — drives backlinks. */
+export function docEntryLinks(doc: JSONContent): string[] {
+  const ids: string[] = [];
+  const walk = (node: JSONContent): void => {
+    if (node.type === 'entryLink' && typeof node.attrs?.entryId === 'string' && node.attrs.entryId) {
+      ids.push(node.attrs.entryId);
     }
     node.content?.forEach(walk);
   };

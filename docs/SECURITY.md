@@ -66,6 +66,20 @@ footprints (pseudonymous truncated owner ids) and owner-less daily aggregates (`
 owner column by design). It adds **no new observation capability** — everything it shows, an admin
 with database access could already query.
 
+### The opt-in AI assistant — a deliberate, user-consented exception
+
+The client ships an **off-by-default** AI assistant (`apps/client/src/ai/`): "Ask my journal" Q&A
+and editor writing help. It is entirely client-side — **the relay is never involved and gains no
+new visibility whatsoever**. But when the user enables the *cloud* backend (their own Anthropic API
+key), the entries selected as context for a question are sent, **decrypted, over HTTPS to the model
+provider**. That is a voluntary extension of the user's trust boundary to a provider of their
+choice — not a weakening of the relay threat model. Guardrails: the feature is opt-in with the
+consequence spelled out in the settings UI; a fully local backend (Ollama) is offered where nothing
+leaves the device; the API key is stored sealed (XChaCha20 under an HKDF key derived from the vault
+seed, `ai/settings.ts` — only openable while unlocked, re-sealed on phrase rotation, cleared on
+vault deletion); chat transcripts are memory-only and never persisted or synced. The one invariant
+that must never break: **journal plaintext must never be routed through the relay as an AI proxy.**
+
 ---
 
 ## 3. Cryptographic building blocks
@@ -242,7 +256,9 @@ In rough priority order:
 
 1. 🔧 **Ship a tamper-resistant client** (Tauri, signed) and/or serve the PWA separately from the relay
    with SRI + strict CSP — closes §6.1, the most fundamental gap for browser E2EE.
-2. 🔧 **Content-Security-Policy** in the client (auto-lock is ✅ in) — reduces §6.2.
+2. 🔧 **Content-Security-Policy** in the client (auto-lock is ✅ in) — reduces §6.2. Any future CSP
+   needs `connect-src` for the relay origin plus, for the AI assistant, `https://api.anthropic.com`
+   and the user's Ollama origin (default `http://localhost:11434`).
 3. 🔧 **At-rest key protection, Tauri half** (OS keychain) — the PWA's Argon2id seal is ✅ in — §4, §6.11.
 4. 🔧 **Harden device registration** (prove seed possession; existing-device approval) + **rate limiting**
    — §6.5.

@@ -1,0 +1,133 @@
+// Editor writing-assistant dialog: runs one action (continue / summarize /
+// suggest title) over the *current entry only*, streams the result into a
+// read-only preview, and touches nothing until the user confirms. Insert goes
+// through the editor's normal insert-at-cursor path; titles go through the
+// caller (which routes them into the entry's autosave).
+import type { JSX, VNode } from 'preact';
+import { useEffect, useRef, useState } from 'preact/hooks';
+import { Icon } from './Icon';
+import { Btn } from './primitives';
+import { makeProvider } from '../ai/provider';
+import { editorSystemPrompt, editorUserMessage, type AiEditorAction } from '../ai/prompts';
+import { toAiError, type AiSettings } from '../ai/types';
+
+const TITLES: Record<AiEditorAction, string> = {
+  continue: 'Continue writing',
+  summarize: 'Summarize entry',
+  title: 'Suggest a title',
+};
+
+const pStyle: JSX.CSSProperties = { fontFamily: 'var(--ui)', fontSize: 13, lineHeight: 1.55, color: 'var(--ink-2)', margin: 0 };
+
+export function AiActionDialog({ action, entryTitle, entryText, settings, onInsert, onPickTitle, onClose }: {
+  action: AiEditorAction;
+  entryTitle: string;
+  entryText: string;
+  settings: AiSettings;
+  /** Confirmed: insert the generated text at the cursor. */
+  onInsert: (text: string) => void;
+  /** Confirmed (title action): apply the picked title. */
+  onPickTitle: (title: string) => void;
+  onClose: () => void;
+}): VNode {
+  const [text, setText] = useState('');
+  const [busy, setBusy] = useState(true);
+  const [error, setError] = useState('');
+  const abortRef = useRef<AbortController | null>(null);
+  const provider = useRef(makeProvider(settings)).current;
+
+  useEffect(() => {
+    const ac = new AbortController();
+    abortRef.current = ac;
+    setBusy(true);
+    setError('');
+    setText('');
+    void provider
+      .chat({
+        system: editorSystemPrompt(action, entryTitle, entryText),
+        messages: [{ role: 'user', content: editorUserMessage(action) }],
+        maxTokens: 1024,
+        signal: ac.signal,
+        onToken: (t) => setText((prev) => prev + t),
+      })
+      .catch((e: unknown) => {
+        const err = toAiError(e);
+        if (err.hint !== 'aborted') {
+          setError(
+            err.hint === 'auth'
+              ? 'The API key was rejected — check it in AI settings.'
+              : err.hint === 'refused'
+                ? 'The model declined.'
+                : provider.local
+                  ? 'Could not reach Ollama — is it running? (ollama serve)'
+                  : `Request failed: ${err.message}`,
+          );
+        }
+      })
+      .finally(() => setBusy(false));
+    return () => ac.abort();
+    // Run exactly once per dialog open; the action/entry are fixed at open time.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const titleOptions = action === 'title' && !busy && !error
+    ? text.split('\n').map((l) => l.replace(/^[-*\d.\s]+/, '').trim()).filter(Boolean).slice(0, 3)
+    : [];
+
+  return (
+    <div
+      onClick={onClose}
+      style={{ position: 'absolute', inset: 0, zIndex: 70, background: 'rgba(30,22,16,.34)', backdropFilter: 'blur(2px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{ width: 520, maxWidth: '100%', boxSizing: 'border-box', background: 'var(--surface)', borderRadius: 18, border: '1px solid var(--line)', padding: 22, boxShadow: '0 20px 60px rgba(30,20,12,.3)', maxHeight: '85%', display: 'flex', flexDirection: 'column', gap: 13 }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+          <Icon name="feather" size={16} color="var(--accent)" />
+          <h3 style={{ fontFamily: 'var(--serif)', fontSize: 17, fontWeight: 500, color: 'var(--ink)', margin: 0, flex: 1 }}>{TITLES[action]}</h3>
+          <span style={{ fontFamily: 'var(--mono)', fontSize: 10, letterSpacing: 0.4, textTransform: 'uppercase', color: provider.local ? 'var(--accent-ink)' : 'var(--ink-3)', background: provider.local ? 'var(--accent-soft)' : 'var(--paper)', border: `1px solid ${provider.local ? 'var(--accent-line)' : 'var(--line)'}`, borderRadius: 6, padding: '2px 7px' }}>
+            {provider.local ? 'on this device' : 'sent to Anthropic'}
+          </span>
+        </div>
+
+        {error ? (
+          <p style={{ ...pStyle, color: 'var(--accent-ink)' }}>{error}</p>
+        ) : titleOptions.length > 0 ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <p style={pStyle}>Pick a title:</p>
+            {titleOptions.map((t) => (
+              <button
+                key={t}
+                onClick={() => { onPickTitle(t); onClose(); }}
+                style={{ fontFamily: 'var(--serif)', fontSize: 15.5, color: 'var(--ink)', textAlign: 'left', padding: '11px 14px', borderRadius: 12, background: 'var(--paper)', border: '1px solid var(--line)', cursor: 'pointer' }}
+              >
+                {t}
+              </button>
+            ))}
+          </div>
+        ) : (
+          <div style={{ overflowY: 'auto', minHeight: 90, padding: '12px 14px', borderRadius: 12, background: 'var(--paper)', border: '1px solid var(--line)', fontFamily: 'var(--serif)', fontSize: 15, lineHeight: 1.65, color: 'var(--ink)', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
+            {text || <span style={{ color: 'var(--ink-3)' }}>{busy ? 'Thinking…' : '(nothing generated)'}</span>}
+          </div>
+        )}
+
+        <div style={{ display: 'flex', gap: 10 }}>
+          {busy ? (
+            <>
+              <Btn kind="ghost" size="md" onClick={() => abortRef.current?.abort()} style={{ flex: 1 }}>Stop</Btn>
+              <Btn kind="ghost" size="md" onClick={onClose} style={{ flex: 1 }}>Cancel</Btn>
+            </>
+          ) : (
+            <>
+              <Btn kind="ghost" size="md" onClick={onClose} style={{ flex: 1 }}>Discard</Btn>
+              {action !== 'title' && text && !error && (
+                <Btn kind="primary" size="md" onClick={() => { onInsert(text); onClose(); }} style={{ flex: 2 }}>Insert at cursor</Btn>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}

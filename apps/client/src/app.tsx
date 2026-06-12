@@ -342,6 +342,8 @@ export function App(): VNode {
       <div style={{ height: '100%', display: 'flex', background: 'var(--paper)', position: 'relative' }}>
         <Sidebar flow={flow} setFlow={navTo} journals={journals} onOpenJournal={openJournal} status={status} ownerId={ownerId} onTemplates={() => setTemplatesOpen(true)} onSearch={() => setSearchOpen(true)} onPreferences={() => setPrefsOpen(true)} onAsk={aiSettings?.enabled ? () => setAskOpen(true) : null} />
         <div style={{ flex: 1, minWidth: 0 }}>{screen}</div>
+        {/* Non-modal companion: a flex sibling, so the app stays usable beside it. */}
+        {askOpen && <AskJournalSheet desk onClose={() => setAskOpen(false)} />}
         {searchSheet}
         {deleteJournalSheet}
         {prefsOpen && <PreferencesSheet desk theme={theme} onClose={() => setPrefsOpen(false)} ownerId={ownerId} status={status} onLock={lock} onRotate={() => setRotateOpen(true)} onDeleteVault={() => setDeleteVaultOpen(true)} onAiSettings={() => setAiSettingsOpen(true)} />}
@@ -350,7 +352,6 @@ export function App(): VNode {
         {rotateOpen && <RotatePhraseSheet desk onClose={() => setRotateOpen(false)} rotate={rotatePhrase} />}
         {deleteVaultOpen && <DeleteVaultSheet desk onClose={() => setDeleteVaultOpen(false)} deleteVault={deleteVault} />}
         {aiSettingsOpen && <AiSettingsSheet desk onClose={() => setAiSettingsOpen(false)} />}
-        {askOpen && <AskJournalSheet desk onClose={() => setAskOpen(false)} />}
       </div>
     );
   }

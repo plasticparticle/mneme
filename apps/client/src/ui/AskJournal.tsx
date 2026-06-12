@@ -86,14 +86,13 @@ export function AskJournalSheet({ desk, onClose }: { desk: boolean; onClose: () 
     }
   };
 
-  return (
-    <div
-      onClick={onClose}
-      style={{ position: 'absolute', inset: 0, zIndex: 60, background: 'rgba(30,22,16,.34)', backdropFilter: 'blur(2px)', display: 'flex', alignItems: desk ? 'center' : 'flex-end', justifyContent: 'center' }}
-    >
+  // Desktop: an inline, non-modal side panel — rendered as a flex sibling of
+  // the main content (app.tsx), so the rest of the app stays fully usable
+  // while the conversation stays open. Mobile: a modal bottom sheet.
+  const panel = (
       <div
         onClick={(e) => e.stopPropagation()}
-        style={{ width: desk ? 620 : '100%', height: desk ? 'min(70vh, 640px)' : '88%', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', background: 'var(--surface)', borderRadius: desk ? 20 : '24px 24px 0 0', border: '1px solid var(--line)', boxShadow: '0 20px 60px rgba(30,20,12,.3)', overflow: 'hidden' }}
+        style={{ width: desk ? 'min(440px, 40vw)' : '100%', flexShrink: 0, height: desk ? '100%' : '88%', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', background: 'var(--surface)', borderRadius: desk ? 0 : '24px 24px 0 0', border: desk ? 'none' : '1px solid var(--line)', borderLeft: '1px solid var(--line)', boxShadow: desk ? 'none' : '0 20px 60px rgba(30,20,12,.3)', overflow: 'hidden' }}
       >
         <div style={{ padding: desk ? '18px 22px 12px' : '14px 20px 10px', borderBottom: '1px solid var(--line)' }}>
           {!desk && <div style={{ width: 38, height: 4, borderRadius: 9, background: 'var(--line)', margin: '0 auto 12px' }} />}
@@ -157,6 +156,15 @@ export function AskJournalSheet({ desk, onClose }: { desk: boolean; onClose: () 
           </form>
         </div>
       </div>
+  );
+
+  if (desk) return panel;
+  return (
+    <div
+      onClick={onClose}
+      style={{ position: 'absolute', inset: 0, zIndex: 60, background: 'rgba(30,22,16,.34)', backdropFilter: 'blur(2px)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}
+    >
+      {panel}
     </div>
   );
 }

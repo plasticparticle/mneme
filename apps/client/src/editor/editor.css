@@ -2,6 +2,9 @@
    styled blocks), so the editor's typography lives here — tuned to match the
    design's reading view (Block in screens/Editor before it became editable). */
 
+/* KaTeX styles + fonts for math nodes (bundled by Vite — works offline). */
+@import 'katex/dist/katex.min.css';
+
 .mneme-prose {
   font-family: var(--editor-font);
   font-size: var(--editor-size);

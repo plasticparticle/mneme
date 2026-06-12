@@ -47,7 +47,9 @@ This is a deliberate availability tradeoff in exchange for confidentiality.
 |---|---|---|
 | Entry title & body | ✅ | — |
 | Entry labels | ✅ (inside the blob) | — |
-| Media bytes _(planned)_ | ✅ chunked | size, chunk count |
+| Entry templates | ✅ (ride the entry oplog; kind is inside the ciphertext) | — |
+| Media bytes (video/audio/image/file) | ✅ chunked | size, chunk count |
+| Media mime/duration/entry-linkage | ✅ (inside the entry blob) | — |
 | — | — | ⚠️ number of entries (≈ writing frequency) |
 | — | — | ⚠️ blob sizes |
 | — | — | ⚠️ edit timing (via `lww_clock`, see §7) |
@@ -96,9 +98,15 @@ mnemonic ──derive──▶ {data_key, owner X25519, device Ed25519}  (in RAM
 
 - **In memory while unlocked is unavoidable** for any client-side crypto — the keys must exist in
   process memory to encrypt/decrypt.
-- **At rest, today:** _nothing is persisted._ The current implementation keeps the identity in memory
-  only; you re-enter the mnemonic on every cold start. This sidesteps at-rest key storage entirely at
-  the cost of UX.
+- **Keys at rest, today:** _the seed and derived keys are never persisted._ The identity lives in
+  memory only; you re-enter the mnemonic on every cold start. This sidesteps at-rest *key* storage
+  entirely at the cost of UX.
+- **Data at rest, today:** the journal itself **is persisted in plaintext** on the device — a
+  per-owner wa-sqlite database in the browser's origin-private file system (OPFS) holds entries,
+  media bytes, and templates (CLAUDE.md §5a: "alles im Klartext, weil nur auf dem entsperrten
+  Gerät"). This is the deliberate local-first design, but it means device-level protection (OS disk
+  encryption, browser-profile isolation) is what stands between a device thief and the data — see
+  §6.11. ⚠️ **Accepted** (with at-rest hardening tracked below).
 - **At rest, planned:** PWA → seed encrypted with an Argon2id-derived key in IndexedDB, or not stored
   at all; Tauri → OS keychain (Stronghold) unlocked by OS biometrics. (CLAUDE.md §6.) 🔧 **Open.**
 
@@ -192,7 +200,10 @@ order. (Note: this intentionally diverges from the "ULID" wording in CLAUDE.md �
 in §3 wins.)
 
 ### 6.11 Stolen unlocked device / local exposure — ⚠️/🔧
-If a device is stolen while unlocked, the journal is exposed (true of any app). Auto-lock and at-rest
+If a device is stolen while unlocked, the journal is exposed (true of any app). The local wa-sqlite
+DB additionally persists the decrypted vault in OPFS (§4), so anyone with access to the OS user
+account / browser profile can read it even when the app is "locked" — OS-level disk encryption and
+a non-shared user account are the current line of defense. Auto-lock and at-rest
 encryption (§4) are the planned mitigations. Also beware shoulder-surfing during the recovery-phrase
 reveal, clipboard exposure on "copy mnemonic", and screenshots — the UI nudges ("make sure no one is
 watching") but cannot enforce these.

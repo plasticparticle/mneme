@@ -28,7 +28,8 @@ pnpm dev                  # client dev server (:5173), points at :8080 by defaul
 ```
 
 Override the relay URL with `VITE_RELAY_URL`. Identity is in-memory only, so you re-enter the
-mnemonic on each cold start (nothing sensitive is persisted yet).
+mnemonic on each cold start (the seed/keys are never persisted); your entries persist locally in a
+per-owner wa-sqlite DB on OPFS and reappear after unlock.
 
 ## Quality gates
 
@@ -48,8 +49,9 @@ docker compose up -d postgres
 TEST_DATABASE_URL=postgres://journal:journal_dev@localhost:5432/journal?sslmode=disable \
   go test -tags e2e ./e2e/...
 
-# Full client↔relay round-trip (relay must be running)
-pnpm --filter client exec tsx apps/client/scripts/integration.ts
+# Full client↔relay round-trips (relay must be running)
+pnpm --filter client exec tsx apps/client/scripts/integration.ts          # register → auth → encrypt → push/pull
+pnpm --filter client exec tsx apps/client/scripts/templates-roundtrip.ts  # templates through the entry oplog
 ```
 
 There's no CI yet and no ESLint config yet — `typecheck` + `build` + `go test` are the gates. Adding
@@ -78,10 +80,12 @@ If you touch crypto, auth, sync, or anything that crosses the client↔server bo
 |---|---|
 | Colours / fonts / spacing | `apps/client/src/styles/tokens.css` |
 | A screen's layout | `apps/client/src/screens/` |
-| Shared UI bits (buttons, icons, chips) | `apps/client/src/ui/` |
-| Crypto (keys, AEAD, mnemonic) | `apps/client/src/crypto/` |
-| Sync (relay client, auth, push/pull) | `apps/client/src/sync/` |
-| App state / sync loop / identity | `apps/client/src/state/data.tsx` |
+| Shared UI bits (buttons, icons, chips, search, templates, lightbox) | `apps/client/src/ui/` |
+| Crypto (keys, AEAD, mnemonic, chunked media) | `apps/client/src/crypto/` |
+| The local database (schema, queries, OPFS worker) | `apps/client/src/db/` (migrations are forward-only) |
+| The editor (TipTap, slash palette, inline media nodes) | `apps/client/src/editor/` |
+| Sync (relay client, auth, push/pull, media, rotation) | `apps/client/src/sync/` |
+| App state / sync loop / identity / outboxes | `apps/client/src/state/data.tsx` |
 
 ## Where things live (server)
 

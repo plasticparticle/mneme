@@ -17,8 +17,13 @@ project. Scaffolded so far:
 - **`apps/client/`** — Vite + Preact + TS app, all four screens built. **Wired to the relay**: real
   BIP39 onboarding → key derivation (`src/crypto/`) → device challenge-response auth + LWW
   encrypted-entry push/pull (`src/sync/`, `src/state/data.tsx`). Identity is in-memory only (re-enter
-  the mnemonic on cold start; nothing sensitive persisted). Entry bodies are XChaCha20-Poly1305
-  encrypted client-side; the timeline seeds from sample data and merges synced entries.
+  the mnemonic on cold start; the seed/keys are never persisted). Entries are **durable**: a
+  per-owner wa-sqlite DB on OPFS (`src/db/`, forward-only client migrations, currently v4 —
+  entries, media, templates, media tombstones; plaintext by §5a design) is the local source of
+  truth, seeded once with sample content and merged with synced entries; dirty-flag outboxes let
+  edits, deletes, and media uploads survive offline restarts. The editor is real **TipTap**
+  (`src/editor/`: toolbar, `/` slash palette, inline media nodes). Entry bodies are
+  XChaCha20-Poly1305 encrypted client-side before push.
 - **`server/`** — the Go relay (`journald`): `/healthz` + `/readyz`, embedded forward-only migrations,
   device challenge-response auth (Ed25519), the LWW oplog `sync/push`+`sync/pull`, and CORS. Owner-scoped,
   opaque blobs only. Reminders CRUD + scheduler (logs, no push transport yet). Media is **implemented
@@ -27,8 +32,8 @@ project. Scaffolded so far:
   delivery is still a stub.
 - **Infra** — `docker-compose.yml` (Postgres + MinIO + server), `server/Dockerfile`, `.devcontainer/`.
 
-Media (§10 step 5) is in for **video and audio**: record via `getUserMedia`+MediaRecorder in the
-editor (`ui/VideoCapture.tsx`, `ui/AudioCapture.tsx`, inserted via the `/` slash menu; `addMedia`
+Media (§10 step 5) is in for **video, audio, images, and file attachments**: video/audio record via
+`getUserMedia`+MediaRecorder in the editor (`ui/VideoCapture.tsx`, `ui/AudioCapture.tsx`, inserted via the `/` slash menu; `addMedia`
 in `state/data.tsx`), chunked XChaCha20 encryption under the media key with per-chunk AAD
 (`crypto/media.ts`), local plaintext bytes + upload outbox in the wa-sqlite `media` table (schema v2),
 background upload + lazy cross-device download (`sync/media.ts`, `state/data.tsx`). Recordings are
@@ -36,8 +41,10 @@ background upload + lazy cross-device download (`sync/media.ts`, `state/data.tsx
 metadata inside bodyJson — still inside the encrypted entry body, `sync/engine.ts`); deleting one
 requires an explicit confirmation and then purges the local bytes **and the relay copy**
 (`removeMedia` → `DELETE /v1/media/{id}`, idempotent; queued in the local `media_tombstones`
-table while offline and retried until acknowledged). Entries from before inline media render
-their attachments-array via the legacy `<AttachmentList>` fallback.
+table while offline and retried until acknowledged). Images and files picked or dropped into the
+editor embed the same way — images group into galleries and maximize into a keyboard-navigable
+lightbox (`ui/Lightbox.tsx`) — and surface in previews and search text. Entries from before inline
+media render their attachments-array via the legacy `<AttachmentList>` fallback.
 
 **Entry templates** (§10 step 7, private only) are in: predefined seeds + user-created, all
 user-editable/deletable. Templates sync as encrypted blobs **through the entry oplog** — the record
@@ -48,7 +55,8 @@ type); the first edit/delete makes one a real synced record, and its `builtin` s
 devices retire their own pristine seed of it (supersede pass in `state/data.tsx` pull). Local store:
 `templates` table (schema v3); rotation carries templates (`sync/rotate.ts`). UI: manager sheet
 (`ui/Templates.tsx`, sidebar "Templates" / mobile settings) with create/edit/rename/delete/use, the
-`/` slash palette inserts a template at the cursor, and the new-journal "Start from" picker is wired
+`/` slash palette has a single **Template** command that opens the same picker and inserts the
+chosen template at the cursor, and the new-journal "Start from" picker is wired
 to live templates. Wire-path check: `scripts/templates-roundtrip.ts` (relay must be running). The
 §5b signed **public** template registry is still not built.
 
@@ -59,8 +67,17 @@ per-owner OPFS DB is destroyed locally. UI: "Replace recovery phrase" sheet (`ui
 from the desktop sidebar shield / mobile settings sheet. Old account stays intact until the final
 wipe; see docs/SECURITY.md §4 and docs/API.md "Account".
 
+Smaller client features in: **vault-wide search** (`ui/Search.tsx` — ⌘/Ctrl+K palette, desktop
+sidebar field, mobile nav, journals-screen bar; filters the decrypted in-memory entries by title,
+body, labels, and date spellings — FTS5 is still blocked), label autocomplete in the entry header
+(`ui/LabelField.tsx`), editable entry date/time (rides inside the encrypted body — re-dating leaks
+nothing to the relay), **entry deletion** behind a confirmation (`ui/ConfirmDialog.tsx`; tombstones
+through the LWW oplog, purges referenced media locally and on the relay; tombstoned entries stay in
+the raw provider list so LWW keeps winning, consumers see a filtered list), and a visible
+password-manager autofill target on phrase restore.
+
 Not yet: FTS5 (blocked on a custom wa-sqlite wasm build), seed at-rest encryption (Argon2id, §6),
-image attachments (the rest of step 5), push transport (step 6), Tauri shells (step 8).
+push transport + reminders UI (step 6), export/import (step 7), Tauri shells (step 8).
 
 ### Frontend design source
 The product visual design is a **handoff bundle from Claude Design** (claude.ai/design), available at:
@@ -97,9 +114,9 @@ and §7 (why the server is trivial).
 
 ### Architecture in three layers
 - **`apps/client/`** — Vite + Preact + TS. The single web codebase for both the PWA *and* the content
-  inside every Tauri shell. Holds crypto (`src/crypto/`) and the sync client (`src/sync/`) — both built.
-  The local wa-sqlite (OPFS + FTS5) DB that is meant to be the **source of truth**, the TipTap editor,
-  and the offline outbox are the **target** (not built yet — entries are in memory). (§4, §5a)
+  inside every Tauri shell. Holds crypto (`src/crypto/`), the sync client (`src/sync/`), the local
+  wa-sqlite OPFS DB that **is** the source of truth (`src/db/`; FTS5 still pending a custom wasm
+  build), the TipTap editor (`src/editor/`), and the dirty-flag offline outbox — all built. (§4, §5a)
 - **`apps/desktop/src-tauri/`** — Tauri 2 shell (Rust) for desktop *and* mobile. Rust only here:
   shell + native plugins (notifications, OS keychain, biometrics). Builds **locally only** — not in
   Codespaces (no display; iOS needs macOS/Xcode). (§3, §9)

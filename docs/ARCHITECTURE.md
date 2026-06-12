@@ -9,11 +9,13 @@ for the security model see [`SECURITY.md`](./SECURITY.md).
 ## 1. The one-paragraph version
 
 Mneme is a **local-first, end-to-end-encrypted journal**. The client (a Vite + Preact + TypeScript
-web app) owns all the cryptography: a 12-word BIP39 mnemonic derives every key, entry bodies are
-encrypted with XChaCha20-Poly1305 before they leave the device, and the server — a small Go binary
-called `journald` — is a **dumb relay** that stores opaque ciphertext blobs keyed by `owner_id` and
-compares a single integer (`lww_clock`) to resolve conflicts. The server can never read content,
-keys, or the mnemonic. There is no login and no password; the mnemonic *is* the account.
+web app) owns all the cryptography: a 12-word BIP39 mnemonic derives every key, entry bodies and
+media chunks are encrypted with XChaCha20-Poly1305 before they leave the device, and the server — a
+small Go binary called `journald` — is a **dumb relay** that stores opaque ciphertext blobs keyed by
+`owner_id` and compares a single integer (`lww_clock`) to resolve conflicts (media ciphertext is
+streamed through to S3/MinIO). The local source of truth is a per-owner wa-sqlite database on OPFS;
+the relay is just the courier between devices. The server can never read content, keys, or the
+mnemonic. There is no login and no password; the mnemonic *is* the account.
 
 ---
 
@@ -23,29 +25,36 @@ keys, or the mnemonic. There is no login and no password; the mnemonic *is* the 
 flowchart TB
   subgraph Client["Client — apps/client (Vite + Preact + TS)"]
     UI["UI screens<br/>Onboarding · Journals · Calendar · Editor"]
+    Editor["editor<br/>TipTap · slash palette · inline media"]
     State["AppData provider<br/>src/state/data.tsx"]
-    Crypto["crypto<br/>mnemonic · keys · aead · base64"]
-    Sync["sync<br/>relay client · identity · engine"]
+    DB[("local DB<br/>wa-sqlite on OPFS — source of truth")]
+    Crypto["crypto<br/>mnemonic · keys · aead · chunked media"]
+    Sync["sync<br/>relay client · identity · engine · media · rotate"]
     UI --> State
+    UI --> Editor
+    Editor --> State
+    State --> DB
     State --> Crypto
     State --> Sync
     Sync --> Crypto
   end
 
   subgraph Relay["Go relay — server/ (journald)"]
-    API["HTTP API<br/>auth · sync · reminders · CORS"]
+    API["HTTP API<br/>auth · sync · media · reminders · account · CORS"]
     Store["store (pgx)"]
+    Blobs["blobs (S3 streaming)"]
     Sched["reminder scheduler"]
     API --> Store
+    API --> Blobs
     Sched --> Store
   end
 
   PG[("PostgreSQL<br/>opaque blobs + metadata")]
-  S3[("S3 / MinIO<br/>encrypted media — planned")]
+  S3[("S3 / MinIO<br/>encrypted media chunks")]
 
-  Sync -- "HTTPS · ciphertext only<br/>register / auth / push / pull" --> API
+  Sync -- "HTTPS · ciphertext only<br/>register / auth / push / pull / media" --> API
   Store --> PG
-  API -. "presign — planned" .-> S3
+  Blobs --> S3
 ```
 
 **Trust boundary:** everything inside `Client` is trusted; everything from `Relay` rightward is
@@ -69,30 +78,32 @@ mneme/
 ├── apps/
 │   └── client/                # the web app (PWA + future Tauri content)
 │       ├── src/
-│       │   ├── crypto/        # mnemonic, keys (HKDF), aead (XChaCha20), base64, bytes
-│       │   ├── sync/          # relay client, identity (register+auth), engine (push/pull), ids
-│       │   ├── state/         # data.tsx — AppData provider (identity, sync loop, entries)
+│       │   ├── crypto/        # mnemonic, keys (HKDF), aead (XChaCha20), chunked media, base64
+│       │   ├── db/            # wa-sqlite on OPFS — durable local store (worker, schema, queries)
+│       │   ├── sync/          # relay client, identity, engine (push/pull), media, rotate, ids
+│       │   ├── editor/        # TipTap config — toolbar, slash palette, inline media nodes
+│       │   ├── state/         # data.tsx — AppData provider (identity, sync loop, outboxes)
 │       │   ├── screens/       # Onboarding · Journals · Calendar · Editor
-│       │   ├── ui/            # Icon, primitives, Wordmark, color
+│       │   ├── ui/            # search, templates, capture, lightbox, labels, primitives
 │       │   ├── hooks/         # useMediaQuery, useTheme
-│       │   ├── data/          # sample seed content
+│       │   ├── data/          # sample seed content + built-in templates
 │       │   └── styles/        # design tokens (CSS variables)
-│       └── scripts/           # integration.ts (live client↔relay check)
+│       └── scripts/           # integration.ts + templates-roundtrip.ts (live client↔relay checks)
 └── server/
     ├── cmd/journald/          # main: connect → migrate → serve → background workers
     ├── internal/
     │   ├── api/               # handlers, router, Bearer middleware, CORS
     │   ├── store/             # pgx queries + embedded migration runner
     │   ├── reminders/         # scheduler (claims due reminders; logs for now)
-    │   ├── blobs/             # media object-storage seam (stub)
+    │   ├── blobs/             # media object storage — streams encrypted chunks to S3/MinIO
     │   └── config/            # env config
     ├── migrations/            # forward-only SQL, embedded into the binary
     └── e2e/                   # tagged integration test (needs Postgres)
 ```
 
 > The `apps/client/src` tree above is the **live** layout. CLAUDE.md §4 shows the larger _target_
-> tree (it lists `db/`, `editor/`, `platform/`, `packages/proto/`, `apps/desktop/` that don't exist
-> yet). Build those in the order set by CLAUDE.md §10.
+> tree (it lists `platform/`, `packages/proto/`, `apps/desktop/` that don't exist yet). Build those
+> in the order set by CLAUDE.md §10.
 
 ---
 
@@ -105,7 +116,7 @@ start regenerates the entire identity, including the device key.
 flowchart LR
   M["12-word mnemonic<br/>(BIP39, 128-bit)"] --> S["seed<br/>(BIP39 PBKDF2, 64 bytes)"]
   S -->|"HKDF-SHA256<br/>info='data'"| DK["data_key<br/>(XChaCha20-Poly1305)"]
-  S -->|"info='media'"| MK["media_key<br/>(planned use)"]
+  S -->|"info='media'"| MK["media_key<br/>(chunked media AEAD)"]
   S -->|"info='identity'"| IK["X25519 owner keypair"] --> OID["owner_id =<br/>base64url(sha256(ownerPub))"]
   S -->|"info='device'"| DV["Ed25519 device keypair<br/>(auth signatures)"]
 ```
@@ -206,18 +217,30 @@ everything since seq N". `lww_clock` as wall-clock time is a pragmatic choice wi
 
 ## 8. Data model
 
-### Client (the real, decrypted database — _target: wa-sqlite, today: in-memory_)
-The durable local store (wa-sqlite + OPFS + FTS5) is **not built yet**; the client currently keeps
-entries in memory (`JournalEntry` in `src/sync/engine.ts`), seeded from sample content and merged
-with synced entries. The target schema is CLAUDE.md §5a.
+### Client (the real, decrypted database — wa-sqlite on OPFS)
+The durable local store is **built**: a per-`owner_id` wa-sqlite database on OPFS
+(`apps/client/src/db/` — `OPFSCoopSyncVFS` in a worker, forward-only client migrations tracked in
+`PRAGMA user_version`). Everything in it is plaintext by design: it exists only on the unlocked
+device, and only version-prefixed ciphertext ever syncs (CLAUDE.md §5a).
+
+| Table | Holds | Notes |
+|---|---|---|
+| `entries` | id, journal, timestamps, title, `body_text`, `body_json` (TipTap), labels, `deleted`, `dirty` | `dirty=1` is the sync outbox; `updated_at` doubles as the LWW clock |
+| `media` | id, entry, mime, size, duration, plaintext `data` blob, `synced` | `synced=0` is the upload outbox; `data` is NULL until lazily downloaded |
+| `templates` | id, name, body, `builtin` slug, `pristine`, `dirty` | pristine built-in seeds are local-only; edits make them synced records |
+| `media_tombstones` | media ids awaiting relay-side deletion | offline deletes retry until the relay acknowledges |
+
+Full-text search is still substring-based: the published wa-sqlite wasm lacks the FTS5 module, so the
+FTS5 table (CLAUDE.md §3) waits on a custom build — the planned migration is sketched in
+`src/db/schema.ts`.
 
 ### Server (Postgres — opaque + metadata only)
 | Table | Holds | Notes |
 |---|---|---|
 | `owners` | `owner_id`, `owner_pubkey` (X25519) | identity derived from the seed |
 | `devices` | `device_id`, `owner_id`, `device_pubkey` (Ed25519) | challenge-response auth |
-| `entry_blobs` | `owner_id`, `entry_id`, `lww_clock`, `ciphertext`, `deleted`, `seq` | the LWW oplog; server compares only `lww_clock` |
-| `media_blobs` | `owner_id`, `media_id`, `s3_key`, `bytes`, `chunks` | media index _(planned use)_ |
+| `entry_blobs` | `owner_id`, `entry_id`, `lww_clock`, `ciphertext`, `deleted`, `seq` | the LWW oplog; server compares only `lww_clock`. Templates ride this same oplog — the record kind is *inside* the ciphertext, so the relay can't tell them apart |
+| `media_blobs` | `owner_id`, `media_id`, `s3_key`, `bytes`, `chunks` | media index; the encrypted chunks themselves live in S3/MinIO |
 | `reminders` | `owner_id`, `reminder_id`, `fire_at`, `dispatched` | `fire_at` is **cleartext** (accepted leak) |
 | `push_subs` | push endpoints per device | _(planned use)_ |
 | `auth_challenges` | short-lived challenges | single-use, TTL'd |
@@ -239,12 +262,12 @@ flowchart LR
   subgraph Homelab["Self-hosted (docker-compose)"]
     J["journald :8080"]
     P[("Postgres :5432")]
-    Mn[("MinIO :9000 — planned")]
+    Mn[("MinIO :9000")]
   end
   B -- HTTPS --> J
   T -- HTTPS --> J
   J --> P
-  J -. planned .-> Mn
+  J -- "encrypted media chunks" --> Mn
 ```
 
 Several hundred users × E2EE is effectively free server-side: the relay does no content indexing, no
@@ -257,13 +280,18 @@ rendering, and no heavy queries — load is I/O, not CPU (CLAUDE.md §7).
 | Area | Status |
 |---|---|
 | UI (4 screens, responsive, dark mode) | ✅ built |
-| Crypto (BIP39 → keys → XChaCha20 AEAD) | ✅ built |
-| Relay (auth, LWW push/pull, reminders CRUD, CORS) | ✅ built |
-| Client ↔ relay encrypted sync | ✅ wired |
-| Durable local DB (wa-sqlite + FTS5) | 🔜 next |
-| Real TipTap editor (rich text/media) | 🔜 next |
+| Crypto (BIP39 → keys → XChaCha20 AEAD, chunked media) | ✅ built |
+| Relay (auth, LWW push/pull, media relay, reminders CRUD, account deletion, CORS) | ✅ built |
+| Client ↔ relay encrypted sync (offline outbox, dirty flags) | ✅ wired |
+| Durable local DB (wa-sqlite on OPFS, per owner) | ✅ built |
+| Real TipTap editor (rich text, slash palette, inline media) | ✅ built |
+| Media — video/audio recording, image & file attachments (encrypted, chunked, MinIO) | ✅ built |
+| Entry templates (encrypted, ride the entry oplog) | ✅ built |
+| Vault-wide search (⌘/Ctrl+K) | ✅ built (substring) |
+| Recovery-phrase rotation + account wipe | ✅ built |
+| FTS5 full-text index | 🔜 blocked on a custom wa-sqlite wasm build |
 | Seed at-rest encryption (Argon2id) | 🔜 later |
-| Media chunked upload (MinIO) | 🔜 later |
-| Reminder push transport (Web Push / APNs / FCM) | 🔜 later |
+| Reminders UI + push transport (Web Push / APNs / FCM) | 🔜 later |
+| Export/import | 🔜 later |
 | Tauri desktop + mobile shells | 🔜 later |
 | `packages/proto` shared wire-format | 🔜 later (JSON for now) |

@@ -48,6 +48,16 @@ Binary fields are standard base64. Authenticated routes need
 | GET  | `/v1/reminders` | ✅ | list reminders |
 | PUT  | `/v1/reminders` | ✅ | create / reschedule a reminder |
 | DELETE | `/v1/reminders/{id}` | ✅ | delete a reminder |
+| PUT  | `/v1/media/{id}/chunks/{n}` | ✅ | upload one encrypted media chunk (raw body) |
+| POST | `/v1/media/{id}/complete` | ✅ | finalize an upload (record chunk count) |
+| GET  | `/v1/media/{id}` | ✅ | media metadata (ciphertext bytes, chunk count) |
+| GET  | `/v1/media/{id}/chunks/{n}` | ✅ | download one encrypted media chunk |
+| DELETE | `/v1/media/{id}` | ✅ | delete one media object (idempotent) |
+| DELETE | `/v1/account` | ✅ | wipe the owner entirely (recovery-phrase rotation) |
+
+The full request/response shapes live in [`../docs/API.md`](../docs/API.md). Media endpoints
+answer `503` when `S3_ENDPOINT` is unset; with it set, chunks stream to S3/MinIO (the bucket is
+auto-provisioned) and Postgres keeps only the index row.
 
 ### Auth model
 
@@ -66,7 +76,7 @@ server/
 │   ├── api/              # HTTP handlers, router, Bearer-token middleware
 │   ├── store/            # pgx queries + embedded migration runner
 │   ├── reminders/        # scheduler (claims due reminders; logs for now)
-│   ├── blobs/            # media object-storage seam (stub — §10 step 5)
+│   ├── blobs/            # media object storage — streams encrypted chunks to S3/MinIO
 │   └── config/           # env config
 ├── migrations/           # forward-only SQL (embedded into the binary)
 └── e2e/                  # tagged integration test (needs Postgres)
@@ -74,8 +84,9 @@ server/
 
 ## Not yet wired (later build steps)
 
-- **Media** (`internal/blobs`): chunked encrypted uploads to MinIO/Garage — §10 step 5.
 - **Push delivery**: the scheduler claims due reminders but only logs them; Web Push /
   APNs / FCM transport is §10 step 6.
 - **Device pairing hardening**: registration is trust-on-first-use; authorizing an
   additional device under an existing owner is the §6 pairing flow (TODO in `auth.go`).
+- **Public template registry**: the signed-cleartext `public_templates` table from §5b
+  (private templates need no server support — they ride the entry oplog as ciphertext).

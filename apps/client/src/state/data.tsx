@@ -1,13 +1,18 @@
 // AppData provider: holds the in-memory identity/session, the live entry list,
-// and the background sync loop. Seed/identity live only in memory (re-enter the
-// mnemonic on cold start); entry bodies are encrypted before they reach the relay.
+// and the background sync loop. Seed/identity live in memory; at rest the seed
+// is either nowhere (re-enter the mnemonic on cold start — the default) or, if
+// the user opted in, sealed under an Argon2id passphrase in IndexedDB (§6).
+// Entry bodies are encrypted before they reach the relay either way.
 import type { ComponentChildren, VNode } from 'preact';
 import { createContext } from 'preact';
 import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 
 import { RelayClient, RelayError, defaultRelayUrl } from '../sync/relay';
-import { authenticate, identityFromMnemonic, type Session } from '../sync/identity';
-import type { Identity } from '../crypto/keys';
+import { authenticate, type Session } from '../sync/identity';
+import { deriveIdentity, type Identity } from '../crypto/keys';
+import { mnemonicToSeed } from '../crypto/mnemonic';
+import { sealSeed, sealWithKey, openSeed, type WrapKey } from '../crypto/seedlock';
+import { loadSealedSeed, storeSealedSeed, clearSealedSeed } from '../platform/keystore';
 import { pushEntries, pushTemplates, pullEntries, type JournalEntry, type MediaAttachment, type TemplateRecord } from '../sync/engine';
 import { uploadMedia, downloadMedia } from '../sync/media';
 import { rotateAccount, type RotationProgress } from '../sync/rotate';
@@ -22,6 +27,10 @@ export type SyncStatus = 'locked' | 'connecting' | 'online' | 'offline';
 
 interface AppData {
   status: SyncStatus;
+  // Whether an Argon2id-sealed seed exists on this device: true → the lock
+  // screen offers passphrase unlock; null → the keystore check hasn't resolved
+  // yet (don't render onboarding until it has, or the unlock view flashes).
+  hasVault: boolean | null;
   // How many local entries still wait to be pushed to the relay (the outbox depth).
   pendingCount: number;
   // True while a push to the relay is in flight.
@@ -35,7 +44,17 @@ interface AppData {
   // Entry templates — built-in seeds and user-created records alike, tombstones
   // included (callers filter on `deleted`).
   templates: TemplateRecord[];
-  signIn(mnemonic: string): Promise<void>;
+  /**
+   * Enter with the recovery phrase. With `passphrase` set, the derived seed is
+   * additionally sealed (Argon2id → XChaCha20) into IndexedDB so later cold
+   * starts can unlock with the passphrase; without it, any previously stored
+   * seal is removed and nothing about the identity touches disk.
+   */
+  signIn(mnemonic: string, passphrase?: string): Promise<void>;
+  /** Cold-start path when a sealed seed exists. Rejects on a wrong passphrase. */
+  unlock(passphrase: string): Promise<void>;
+  /** Drop the in-memory identity and return to the lock screen. */
+  lock(): void;
   createEntry(input: { journalId: string; title?: string; bodyText?: string; bodyJson?: string; labels?: string[] }): JournalEntry;
   updateEntry(id: string, patch: { title?: string; bodyText?: string; bodyJson?: string; labels?: string[]; createdAt?: number; attachments?: MediaAttachment[] }): void;
   /**
@@ -87,6 +106,10 @@ const SYNC_INTERVAL_MS = 30_000;
 // While disconnected, retry authentication on this cadence so the client recovers
 // on its own once the relay comes back — no need to re-enter the mnemonic.
 const RECONNECT_INTERVAL_MS = 5_000;
+// §6 auto-lock: drop the in-memory keys after this much inactivity. Armed only
+// when a sealed seed exists — without one, locking would force re-typing the
+// twelve words, punishing exactly the users who chose the stricter setting.
+const AUTO_LOCK_MS = 15 * 60_000;
 
 // Seed the timeline from the design's sample entries so the UI looks lived-in.
 // These stay local (not pushed); only user-created entries sync to the relay.
@@ -152,6 +175,7 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
   // reactive mirror of it; writes go to both so the UI updates synchronously.
   const db = useMemo(() => new LocalDb(), []);
   const [status, setStatus] = useState<SyncStatus>('locked');
+  const [hasVault, setHasVault] = useState<boolean | null>(null);
   const [pendingCount, setPendingCount] = useState(0);
   const [saving, setSaving] = useState(false);
   const [bootstrapping, setBootstrapping] = useState(false);
@@ -162,6 +186,9 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
   const session = useRef<Session | null>(null);
   // Kept after sign-in so the background loop can re-authenticate without the mnemonic.
   const identity = useRef<Identity | null>(null);
+  // The Argon2id wrap key while unlocked-with-persistence: lets phrase rotation
+  // re-seal the new seed without asking for the passphrase again.
+  const wrap = useRef<WrapKey | null>(null);
   // False when OPFS is unavailable (older browser / SSR): we degrade to an
   // in-memory session so the app still works, just without local persistence.
   const dbReady = useRef(false);
@@ -176,6 +203,18 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
   const pendingMediaDeletes = useRef<Set<string>>(new Set());
   const mediaFlushing = useRef(false);
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // One async check at startup: does a sealed seed exist on this device?
+  useEffect(() => {
+    void loadSealedSeed().then((rec) => setHasVault(rec !== null));
+  }, []);
+
+  // Connection-status setter for the background paths (flush/pull/connect):
+  // no-ops once locked, so an in-flight sync resolving after lock() can't flip
+  // the lock screen back to "online".
+  const setStatusLive = useCallback((next: Exclude<SyncStatus, 'locked'>) => {
+    if (identity.current) setStatus(next);
+  }, []);
 
   // Mirror the (mutable) outbox depth into reactive state so the UI can react.
   const syncPendingCount = useCallback(
@@ -219,11 +258,11 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
     } catch (e) {
       // 503 = relay has no object store configured; recordings stay queued
       // locally without flapping the connection indicator to "offline".
-      if (!(e instanceof RelayError && e.status === 503)) setStatus('offline');
+      if (!(e instanceof RelayError && e.status === 503)) setStatusLive('offline');
     } finally {
       mediaFlushing.current = false;
     }
-  }, [relay, db, syncPendingCount]);
+  }, [relay, db, syncPendingCount, setStatusLive]);
 
   const flush = useCallback(async () => {
     const s = session.current;
@@ -244,14 +283,14 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
       for (const id of appliedTpl) pendingTemplates.current.delete(id);
       if (dbReady.current) void db.markTemplatesSynced(tplBatch.filter((t) => appliedTpl.has(t.id)));
       syncPendingCount();
-      setStatus('online');
+      setStatusLive('online');
     } catch {
-      setStatus('offline');
+      setStatusLive('offline');
     } finally {
       setSaving(false);
     }
     void flushMedia();
-  }, [relay, db, syncPendingCount, flushMedia]);
+  }, [relay, db, syncPendingCount, flushMedia, setStatusLive]);
 
   const pull = useCallback(async () => {
     const s = session.current;
@@ -280,11 +319,11 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
           return merged.filter((t) => !superseded.has(t.id));
         });
       }
-      setStatus('online');
+      setStatusLive('online');
     } catch {
-      setStatus('offline');
+      setStatusLive('offline');
     }
-  }, [relay, db]);
+  }, [relay, db, setStatusLive]);
 
   // (Re)establish a relay session from the stored identity, then sync. `announce`
   // shows the "connecting…" state for a user-initiated attempt; background retries
@@ -293,30 +332,32 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
     async (announce: boolean) => {
       const id = identity.current;
       if (!id) return;
-      if (announce) setStatus('connecting');
+      if (announce) setStatusLive('connecting');
       try {
         session.current = await authenticate(relay, id);
         cursor.current = 0;
         await flush();
         await pull();
-        setStatus('online');
+        setStatusLive('online');
       } catch {
         // Local-first: identity is valid; the relay is just unreachable right now.
-        setStatus('offline');
+        setStatusLive('offline');
       }
     },
-    [relay, flush, pull],
+    [relay, flush, pull, setStatusLive],
   );
 
-  const signIn = useCallback(
-    async (mnemonic: string) => {
-      // Leave the onboarding screen immediately: deriving keys, loading the
-      // SQLite wasm, and the first relay sync all take visible time — the app
-      // shell shows "connecting" + the first-sync notice instead of freezing.
+  // Shared tail of signIn and unlock: derive the identity from the seed, open
+  // the per-owner DB, hydrate the UI, and kick off the first sync.
+  const startSession = useCallback(
+    async (seed: Uint8Array) => {
+      const id = deriveIdentity(seed); // local, synchronous
+      identity.current = id;
+      // Leave the lock screen immediately: loading the SQLite wasm and the
+      // first relay sync take visible time — the app shell shows "connecting"
+      // + the first-sync notice instead of freezing.
       setStatus('connecting');
       setBootstrapping(true);
-      const id = identityFromMnemonic(mnemonic); // local, synchronous
-      identity.current = id;
       try {
         // Open the per-owner local DB and hydrate the timeline from it.
         await db.open(id.ownerId);
@@ -360,6 +401,89 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
     },
     [db, connect, syncPendingCount],
   );
+
+  const signIn: AppData['signIn'] = useCallback(
+    async (mnemonic, passphrase) => {
+      const seed = mnemonicToSeed(mnemonic);
+      if (passphrase) {
+        try {
+          // Seal first, while the onboarding screen still shows its busy state
+          // (argon2idAsync yields, so the UI keeps painting).
+          const sealed = await sealSeed(seed, passphrase);
+          await storeSealedSeed(sealed.record);
+          wrap.current = sealed.wrap;
+          setHasVault(true);
+        } catch {
+          // Keystore unavailable — degrade to the nothing-persisted mode.
+          wrap.current = null;
+          setHasVault(false);
+        }
+      } else {
+        // An explicit phrase entry without a passphrase replaces whatever
+        // choice was stored before — possibly even a different account's seed.
+        wrap.current = null;
+        void clearSealedSeed();
+        setHasVault(false);
+      }
+      await startSession(seed);
+    },
+    [startSession],
+  );
+
+  const unlock: AppData['unlock'] = useCallback(
+    async (passphrase) => {
+      const record = await loadSealedSeed();
+      if (!record) {
+        setHasVault(false);
+        throw new Error('no sealed seed on this device');
+      }
+      const opened = await openSeed(record, passphrase); // throws on a wrong passphrase
+      wrap.current = opened.wrap;
+      await startSession(opened.seed);
+    },
+    [startSession],
+  );
+
+  const lock: AppData['lock'] = useCallback(() => {
+    // Drop references rather than zeroing the key bytes: an in-flight flush
+    // still holds them, and zeroing under a running encrypt would push garbage
+    // ciphertext. setStatusLive keeps that straggler from re-opening the UI.
+    session.current = null;
+    identity.current = null;
+    wrap.current = null;
+    cursor.current = 0;
+    pending.current.clear();
+    pendingTemplates.current.clear();
+    pendingMedia.current.clear();
+    pendingMediaDeletes.current.clear();
+    if (dbReady.current) db.close();
+    dbReady.current = false;
+    setEntries([]);
+    setTemplates([]);
+    setJournals(JOURNALS);
+    setPendingCount(0);
+    setSaving(false);
+    setBootstrapping(false);
+    setStatus('locked');
+  }, [db]);
+
+  // §6 auto-lock on inactivity, armed while unlocked on a device with a sealed
+  // seed (unlocking again is one passphrase away, and the outboxes are durable
+  // in the local DB, so nothing pending is lost).
+  useEffect(() => {
+    if (status === 'locked' || !hasVault) return;
+    let t = setTimeout(lock, AUTO_LOCK_MS);
+    const bump = (): void => {
+      clearTimeout(t);
+      t = setTimeout(lock, AUTO_LOCK_MS);
+    };
+    const events = ['pointerdown', 'keydown'] as const;
+    for (const ev of events) window.addEventListener(ev, bump, { passive: true });
+    return () => {
+      clearTimeout(t);
+      for (const ev of events) window.removeEventListener(ev, bump);
+    };
+  }, [status, hasVault, lock]);
 
   const createEntry: AppData['createEntry'] = useCallback(
     (input) => {
@@ -655,6 +779,21 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
           if (!rec.synced && rec.data) pendingMedia.current.set(rec.id, rec);
         }
 
+        // Keep the at-rest seal in step with the vault: same passphrase (same
+        // wrap key + salt), new seed. Left alone, the stored record would
+        // "unlock" into the old identity — wiped on the relay and with its
+        // local DB destroyed below. If re-sealing fails, clear it instead:
+        // a lying vault is worse than no vault.
+        if (wrap.current) {
+          try {
+            await storeSealedSeed(sealWithKey(wrap.current, mnemonicToSeed(newMnemonic)));
+          } catch {
+            wrap.current = null;
+            void clearSealedSeed();
+            setHasVault(false);
+          }
+        }
+
         setEntries(all);
         setTemplates(allTpl);
         syncPendingCount();
@@ -711,6 +850,6 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
   // and the outbox can push them) but every consumer sees only live entries.
   const liveEntries = useMemo(() => entries.filter((e) => !e.deleted), [entries]);
 
-  const value: AppData = { status, pendingCount, saving, bootstrapping, entries: liveEntries, journals: journalsWithCounts, templates, signIn, createEntry, updateEntry, deleteEntry, newJournal, createTemplate, updateTemplate, deleteTemplate, addMedia, removeMedia, mediaBlob, rotatePhrase };
+  const value: AppData = { status, hasVault, pendingCount, saving, bootstrapping, entries: liveEntries, journals: journalsWithCounts, templates, signIn, unlock, lock, createEntry, updateEntry, deleteEntry, newJournal, createTemplate, updateTemplate, deleteTemplate, addMedia, removeMedia, mediaBlob, rotatePhrase };
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

@@ -98,17 +98,28 @@ mnemonic ──derive──▶ {data_key, owner X25519, device Ed25519}  (in RAM
 
 - **In memory while unlocked is unavoidable** for any client-side crypto — the keys must exist in
   process memory to encrypt/decrypt.
-- **Keys at rest, today:** _the seed and derived keys are never persisted._ The identity lives in
-  memory only; you re-enter the mnemonic on every cold start. This sidesteps at-rest *key* storage
-  entirely at the cost of UX.
+- **Keys at rest, today:** _nothing is persisted by default_ — the identity lives in memory only and
+  you re-enter the mnemonic on every cold start. ✅ Optionally (an explicit onboarding choice, "stay
+  signed in on this device"), the BIP39 seed is sealed under an **Argon2id** passphrase-derived key
+  (`crypto/seedlock.ts`: Argon2id 64 MiB / t=3 / p=1 → XChaCha20-Poly1305 with the standard
+  version-byte envelope and a purpose-binding AAD) and stored in IndexedDB (`platform/keystore.ts`).
+  Cold start then asks for the passphrase instead of the phrase; a wrong passphrase fails the AEAD
+  tag. KDF parameters are stored inside the record, so they can be raised later without breaking old
+  seals. Signing in with the phrase but skipping the passphrase clears any stored seal; phrase
+  **rotation re-seals the new seed** under the kept wrap key (and clears the seal if that fails — a
+  record that would "unlock" into the wiped old identity is worse than none). The sealed record is an
+  offline-brute-forceable artifact for whoever obtains the disk; the slow KDF and the passphrase's
+  strength are all that stand in the way, and the UI says so. **Auto-lock after 15 min of
+  inactivity** drops the in-memory keys whenever a seal exists; a manual "Lock journal" control
+  exists on both layouts.
 - **Data at rest, today:** the journal itself **is persisted in plaintext** on the device — a
   per-owner wa-sqlite database in the browser's origin-private file system (OPFS) holds entries,
   media bytes, and templates (CLAUDE.md §5a: "alles im Klartext, weil nur auf dem entsperrten
   Gerät"). This is the deliberate local-first design, but it means device-level protection (OS disk
   encryption, browser-profile isolation) is what stands between a device thief and the data — see
   §6.11. ⚠️ **Accepted** (with at-rest hardening tracked below).
-- **At rest, planned:** PWA → seed encrypted with an Argon2id-derived key in IndexedDB, or not stored
-  at all; Tauri → OS keychain (Stronghold) unlocked by OS biometrics. (CLAUDE.md §6.) 🔧 **Open.**
+- **At rest, planned:** Tauri → OS keychain (Stronghold) unlocked by OS biometrics. (CLAUDE.md §6.)
+  🔧 **Open** — the PWA half (Argon2id-sealed seed in IndexedDB, or nothing stored) is ✅ done, above.
 
 The device key is derived from the seed (`info="device"`) rather than generated per-device, so the
 mnemonic alone fully reconstructs a working device. (Tradeoff: today there is effectively one logical
@@ -203,8 +214,9 @@ in §3 wins.)
 If a device is stolen while unlocked, the journal is exposed (true of any app). The local wa-sqlite
 DB additionally persists the decrypted vault in OPFS (§4), so anyone with access to the OS user
 account / browser profile can read it even when the app is "locked" — OS-level disk encryption and
-a non-shared user account are the current line of defense. Auto-lock and at-rest
-encryption (§4) are the planned mitigations. Also beware shoulder-surfing during the recovery-phrase
+a non-shared user account are the current line of defense. Auto-lock (15 min inactivity when a sealed
+seed exists) and the Argon2id seed seal (§4) are in; at-rest encryption of the local *database* is
+not. Also beware shoulder-surfing during the recovery-phrase
 reveal, clipboard exposure on "copy mnemonic", and screenshots — the UI nudges ("make sure no one is
 watching") but cannot enforce these.
 
@@ -224,8 +236,8 @@ In rough priority order:
 
 1. 🔧 **Ship a tamper-resistant client** (Tauri, signed) and/or serve the PWA separately from the relay
    with SRI + strict CSP — closes §6.1, the most fundamental gap for browser E2EE.
-2. 🔧 **Content-Security-Policy + auto-lock** in the client — reduces §6.2.
-3. 🔧 **At-rest key protection** (Argon2id / OS keychain) — §4, §6.11.
+2. 🔧 **Content-Security-Policy** in the client (auto-lock is ✅ in) — reduces §6.2.
+3. 🔧 **At-rest key protection, Tauri half** (OS keychain) — the PWA's Argon2id seal is ✅ in — §4, §6.11.
 4. 🔧 **Harden device registration** (prove seed possession; existing-device approval) + **rate limiting**
    — §6.5.
 5. 🔧 **HLC/Lamport `lww_clock`** to stop leaking real edit times — §6.9.

@@ -16,8 +16,13 @@ The directory is named `mneme`; the design doc calls the product "journal" — t
 project. Scaffolded so far:
 - **`apps/client/`** — Vite + Preact + TS app, all four screens built. **Wired to the relay**: real
   BIP39 onboarding → key derivation (`src/crypto/`) → device challenge-response auth + LWW
-  encrypted-entry push/pull (`src/sync/`, `src/state/data.tsx`). Identity is in-memory only (re-enter
-  the mnemonic on cold start; the seed/keys are never persisted). Entries are **durable**: a
+  encrypted-entry push/pull (`src/sync/`, `src/state/data.tsx`). Identity is in-memory while
+  unlocked; at rest the seed is either nowhere (re-enter the mnemonic on cold start — the default)
+  or, opt-in ("stay signed in on this device"), **sealed under an Argon2id passphrase** (§6 at-rest:
+  `crypto/seedlock.ts` Argon2id→XChaCha20 with version byte + purpose AAD, stored in IndexedDB via
+  `platform/keystore.ts`; passphrase unlock on cold start, 15-min inactivity auto-lock + manual
+  "Lock journal", phrase rotation re-seals the new seed, and a mnemonic sign-in without a passphrase
+  clears the seal). Entries are **durable**: a
   per-owner wa-sqlite DB on OPFS (`src/db/`, forward-only client migrations, currently v4 —
   entries, media, templates, media tombstones; plaintext by §5a design) is the local source of
   truth, seeded once with sample content and merged with synced entries; dirty-flag outboxes let
@@ -76,8 +81,8 @@ through the LWW oplog, purges referenced media locally and on the relay; tombsto
 the raw provider list so LWW keeps winning, consumers see a filtered list), and a visible
 password-manager autofill target on phrase restore.
 
-Not yet: FTS5 (blocked on a custom wa-sqlite wasm build), seed at-rest encryption (Argon2id, §6),
-push transport + reminders UI (step 6), export/import (step 7), Tauri shells (step 8).
+Not yet: FTS5 (blocked on a custom wa-sqlite wasm build), push transport + reminders UI (step 6),
+export/import (step 7), Tauri shells (step 8) and their OS-keychain at-rest storage (§6).
 
 ### Frontend design source
 The product visual design is a **handoff bundle from Claude Design** (claude.ai/design), available at:

@@ -21,7 +21,7 @@ import { SearchSheet } from './ui/Search';
 type Flow = 'journals' | 'journal' | 'calendar' | 'editor';
 
 // ── DESKTOP sidebar ─────────────────────────────────────────
-function Sidebar({ flow, setFlow, journals, onOpenJournal, dark, toggleDark, status, onRotate, onTemplates, onSearch }: {
+function Sidebar({ flow, setFlow, journals, onOpenJournal, dark, toggleDark, status, onRotate, onTemplates, onSearch, onLock }: {
   flow: Flow;
   setFlow: (f: Flow) => void;
   journals: Journal[];
@@ -32,6 +32,7 @@ function Sidebar({ flow, setFlow, journals, onOpenJournal, dark, toggleDark, sta
   onRotate: () => void;
   onTemplates: () => void;
   onSearch: () => void;
+  onLock: () => void;
 }): VNode {
   const nav = (key: Flow, icon: IconName, label: string): VNode => {
     const active = flow === key;
@@ -111,6 +112,13 @@ function Sidebar({ flow, setFlow, journals, onOpenJournal, dark, toggleDark, sta
           <Icon name="shield" size={17} color="var(--ink-3)" />
         </button>
         <button
+          title="Lock journal"
+          onClick={onLock}
+          style={{ width: 30, height: 30, borderRadius: 8, border: 'none', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+        >
+          <Icon name="lock" size={17} color="var(--ink-3)" />
+        </button>
+        <button
           title={dark ? 'Switch to light' : 'Switch to dark'}
           onClick={toggleDark}
           style={{ width: 30, height: 30, borderRadius: 8, border: 'none', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
@@ -124,12 +132,13 @@ function Sidebar({ flow, setFlow, journals, onOpenJournal, dark, toggleDark, sta
 
 // Compact mobile settings: appearance + the replace-recovery-phrase entry point
 // (the bottom-nav settings button used to just toggle the theme).
-function MobileSettingsSheet({ onClose, dark, toggleDark, onRotate, onTemplates }: {
+function MobileSettingsSheet({ onClose, dark, toggleDark, onRotate, onTemplates, onLock }: {
   onClose: () => void;
   dark: boolean;
   toggleDark: () => void;
   onRotate: () => void;
   onTemplates: () => void;
+  onLock: () => void;
 }): VNode {
   const row: JSX.CSSProperties = { display: 'flex', alignItems: 'center', gap: 12, width: '100%', textAlign: 'left', cursor: 'pointer', padding: '13px 14px', borderRadius: 12, border: '1px solid var(--line)', background: 'var(--paper)', fontFamily: 'var(--ui)', fontSize: 14, fontWeight: 600, color: 'var(--ink)' };
   return (
@@ -151,6 +160,11 @@ function MobileSettingsSheet({ onClose, dark, toggleDark, onRotate, onTemplates 
           <button onClick={() => { onClose(); onRotate(); }} style={row}>
             <Icon name="shield" size={18} color="var(--accent)" />
             <span style={{ flex: 1 }}>Replace recovery phrase</span>
+            <Icon name="right" size={16} color="var(--ink-3)" />
+          </button>
+          <button onClick={() => { onClose(); onLock(); }} style={row}>
+            <Icon name="lock" size={18} color="var(--ink-2)" />
+            <span style={{ flex: 1 }}>Lock journal</span>
             <Icon name="right" size={16} color="var(--ink-3)" />
           </button>
         </div>
@@ -194,7 +208,7 @@ function MobileNav({ flow, setFlow, onCompose, onSettings, onSearch }: {
 export function App(): VNode {
   const desk = useIsDesktop();
   const { dark, toggleDark } = useTheme();
-  const { status, bootstrapping, entries, journals, templates, newJournal, signIn, createEntry, rotatePhrase } = useAppData();
+  const { status, hasVault, bootstrapping, entries, journals, templates, newJournal, signIn, unlock, lock, createEntry, rotatePhrase } = useAppData();
   const [flow, setFlowRaw] = useState<Flow>('journals');
   const [modal, setModal] = useState(false);
   const [rotateOpen, setRotateOpen] = useState(false);
@@ -220,11 +234,14 @@ export function App(): VNode {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
-  // Locked until a mnemonic unlocks an in-memory identity (nothing is persisted).
+  // Locked until a mnemonic — or the passphrase over a sealed seed — unlocks an
+  // in-memory identity. Hold rendering until the keystore check resolves so a
+  // device with a sealed seed starts on the unlock view, not a welcome flash.
   if (status === 'locked') {
+    if (hasVault === null) return <div style={{ height: '100%', background: 'var(--paper)' }} />;
     return (
       <div style={{ height: '100%' }}>
-        <Onboarding desk={desk} onEnter={(mnemonic) => void signIn(mnemonic)} />
+        <Onboarding desk={desk} hasVault={hasVault} onEnter={(mnemonic, passphrase) => void signIn(mnemonic, passphrase)} onUnlock={unlock} />
       </div>
     );
   }
@@ -313,7 +330,7 @@ export function App(): VNode {
   if (desk) {
     return (
       <div style={{ height: '100%', display: 'flex', background: 'var(--paper)', position: 'relative' }}>
-        <Sidebar flow={flow} setFlow={navTo} journals={journals} onOpenJournal={openJournal} dark={dark} toggleDark={toggleDark} status={status} onRotate={() => setRotateOpen(true)} onTemplates={() => setTemplatesOpen(true)} onSearch={() => setSearchOpen(true)} />
+        <Sidebar flow={flow} setFlow={navTo} journals={journals} onOpenJournal={openJournal} dark={dark} toggleDark={toggleDark} status={status} onRotate={() => setRotateOpen(true)} onTemplates={() => setTemplatesOpen(true)} onSearch={() => setSearchOpen(true)} onLock={lock} />
         <div style={{ flex: 1, minWidth: 0 }}>{screen}</div>
         {searchSheet}
         {modal && <NewJournalSheet desk templates={templates.filter((t) => !t.deleted)} onClose={() => setModal(false)} onCreate={onCreateJournal} />}
@@ -332,7 +349,7 @@ export function App(): VNode {
       {showNav && <MobileNav flow={flow === 'journal' ? 'journals' : flow} setFlow={navTo} onCompose={() => newEntry(flow === 'journal' ? openJournalObj?.id : undefined)} onSettings={() => setSettingsOpen(true)} onSearch={() => setSearchOpen(true)} />}
       {searchSheet}
       {modal && <NewJournalSheet desk={false} templates={templates.filter((t) => !t.deleted)} onClose={() => setModal(false)} onCreate={onCreateJournal} />}
-      {settingsOpen && <MobileSettingsSheet onClose={() => setSettingsOpen(false)} dark={dark} toggleDark={toggleDark} onRotate={() => setRotateOpen(true)} onTemplates={() => setTemplatesOpen(true)} />}
+      {settingsOpen && <MobileSettingsSheet onClose={() => setSettingsOpen(false)} dark={dark} toggleDark={toggleDark} onRotate={() => setRotateOpen(true)} onTemplates={() => setTemplatesOpen(true)} onLock={lock} />}
       {templatesOpen && <TemplatesSheet desk={false} onClose={() => setTemplatesOpen(false)} onUse={(t) => { setTemplatesOpen(false); newEntryFromTemplate(t); }} />}
       {rotateOpen && <RotatePhraseSheet desk={false} onClose={() => setRotateOpen(false)} rotate={rotatePhrase} />}
     </div>

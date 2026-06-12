@@ -5,7 +5,7 @@ import { Btn } from '../ui/primitives';
 import { Wordmark } from '../ui/Wordmark';
 import { generateMnemonic, mnemonicWords, validateMnemonic, wordsToMnemonic } from '../crypto/mnemonic';
 
-type View = 'welcome' | 'create' | 'confirm' | 'restore' | 'unlock';
+type View = 'welcome' | 'create' | 'confirm' | 'restore' | 'passphrase' | 'unlock';
 
 // Visually hidden but NOT display:none/visibility:hidden, so password-manager
 // extensions still see and fill it. 1×1 px + opacity keeps it past their
@@ -53,8 +53,16 @@ const hStyle = (desk: boolean): JSX.CSSProperties => ({
 });
 const pStyle: JSX.CSSProperties = { fontFamily: 'var(--ui)', fontSize: 14, lineHeight: 1.55, color: 'var(--ink-2)', margin: 0 };
 
-export function Onboarding({ desk, onEnter }: { desk: boolean; onEnter: (mnemonic: string) => void }): VNode {
-  const [view, setView] = useState<View>('welcome');
+export function Onboarding({ desk, hasVault, onEnter, onUnlock }: {
+  desk: boolean;
+  /** True when an Argon2id-sealed seed exists on this device → start on unlock. */
+  hasVault: boolean;
+  /** With `passphrase`, the seed is sealed at rest; without, nothing persists. */
+  onEnter: (mnemonic: string, passphrase?: string) => void;
+  /** Rejects on a wrong passphrase — the unlock view shows the error inline. */
+  onUnlock: (passphrase: string) => Promise<void>;
+}): VNode {
+  const [view, setView] = useState<View>(hasVault ? 'unlock' : 'welcome');
   const [revealed, setRevealed] = useState(false);
   const [copied, setCopied] = useState(false);
   // A real, freshly generated recovery phrase for this onboarding session.
@@ -117,8 +125,29 @@ export function Onboarding({ desk, onEnter }: { desk: boolean; onEnter: (mnemoni
     setRestoreWords(Array.from({ length: 12 }, (_, k) => tokens[k] ?? ''));
   };
 
-  // unlock step
-  const [pin, setPin] = useState('');
+  // passphrase step (after create/restore): the phrase that view will hand to
+  // onEnter, where it came from (for Back), and the optional device passphrase.
+  const [pendingMnemonic, setPendingMnemonic] = useState('');
+  const [setupReturn, setSetupReturn] = useState<View>('confirm');
+  const [pass1, setPass1] = useState('');
+  const [pass2, setPass2] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  // unlock step (returning device with a sealed seed)
+  const [unlockPass, setUnlockPass] = useState('');
+  const [unlockBusy, setUnlockBusy] = useState(false);
+  const [unlockError, setUnlockError] = useState('');
+
+  // Both fields deliberately opt out of password managers: the saved credential
+  // for this app is the recovery phrase ("mneme journal"), and a manager
+  // offering or capturing the device passphrase here would corrupt that entry.
+  const noManager = { autocomplete: 'off', 'data-1p-ignore': true, 'data-lpignore': 'true' } as const;
+
+  const goToPassphrase = (mnemonicToEnter: string, from: View): void => {
+    setPendingMnemonic(mnemonicToEnter);
+    setSetupReturn(from);
+    setView('passphrase');
+  };
 
   const maxW = desk ? 460 : '100%';
 
@@ -182,7 +211,7 @@ export function Onboarding({ desk, onEnter }: { desk: boolean; onEnter: (mnemoni
         style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, position: 'relative' }}
       >
         <ManagerCredential phrase={mnemonic} />
-        <BackRow onClick={() => setView('welcome')} step="Step 1 of 2" />
+        <BackRow onClick={() => setView('welcome')} step="Step 1 of 3" />
         <h2 style={hStyle(desk)}>Your recovery phrase</h2>
         <p style={pStyle}>
           These twelve words <strong style={{ color: 'var(--ink)' }}>are</strong> your journal. Write them down in order and keep them somewhere safe — they’re the only way back in.
@@ -237,7 +266,7 @@ export function Onboarding({ desk, onEnter }: { desk: boolean; onEnter: (mnemoni
   if (view === 'confirm') {
     return wrap(
       <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
-        <BackRow onClick={() => setView('create')} step="Step 2 of 2" />
+        <BackRow onClick={() => setView('create')} step="Step 2 of 3" />
         <h2 style={hStyle(desk)}>Confirm a few words</h2>
         <p style={pStyle}>Just to be sure it’s saved. Tap the correct word for each position.</p>
 
@@ -277,10 +306,10 @@ export function Onboarding({ desk, onEnter }: { desk: boolean; onEnter: (mnemoni
           size="lg"
           full
           icon={allCorrect ? 'check' : undefined}
-          onClick={() => allCorrect && onEnter(mnemonic)}
+          onClick={() => allCorrect && goToPassphrase(mnemonic, 'confirm')}
           style={{ marginTop: 18, opacity: allCorrect ? 1 : 0.55, pointerEvents: allCorrect ? 'auto' : 'none' }}
         >
-          {allCorrect ? 'Open my journal' : 'Select all three words'}
+          {allCorrect ? 'Continue' : 'Select all three words'}
         </Btn>
       </div>,
       { top: true },
@@ -291,12 +320,13 @@ export function Onboarding({ desk, onEnter }: { desk: boolean; onEnter: (mnemoni
   if (view === 'restore') {
     return wrap(
       <form
-        onSubmit={(e) => { e.preventDefault(); if (restoreValid) onEnter(restoreMnemonic); }}
+        onSubmit={(e) => { e.preventDefault(); if (restoreValid) goToPassphrase(restoreMnemonic, 'restore'); }}
         style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, position: 'relative' }}
       >
         {/* Account context for password managers; the visible phrase field below is their fill target. */}
         <input type="text" name="username" autocomplete="username" value="mneme journal" readOnly tabIndex={-1} aria-hidden="true" style={managerOnly} />
-        <BackRow onClick={() => setView('welcome')} step="Restore" />
+        {/* Back returns to unlock when this device has a sealed seed (that's where the user came from). */}
+        <BackRow onClick={() => setView(hasVault ? 'unlock' : 'welcome')} step="Restore" />
         <h2 style={{ ...hStyle(desk), flexShrink: 0 }}>Enter your phrase</h2>
         <p style={{ ...pStyle, flexShrink: 0 }}>Type the twelve words from any device where this journal already lives. Order matters.</p>
 
@@ -362,7 +392,7 @@ export function Onboarding({ desk, onEnter }: { desk: boolean; onEnter: (mnemoni
             type="submit"
             style={{ marginTop: 16, opacity: restoreValid ? 1 : 0.55, pointerEvents: restoreValid ? 'auto' : 'none' }}
           >
-            {restoreFilled < 12 ? `${restoreFilled} / 12 words` : restoreValid ? 'Restore journal' : 'Phrase not valid'}
+            {restoreFilled < 12 ? `${restoreFilled} / 12 words` : restoreValid ? 'Continue' : 'Phrase not valid'}
           </Btn>
         </div>
       </form>,
@@ -370,10 +400,76 @@ export function Onboarding({ desk, onEnter }: { desk: boolean; onEnter: (mnemoni
     );
   }
 
-  // ─────────────── UNLOCK (returning device) ───────────────
-  const dots = 4;
+  // ─────────────── PASSPHRASE (optional at-rest seal) ───────────────
+  if (view === 'passphrase') {
+    const minLen = 8;
+    const valid = pass1.length >= minLen && pass1 === pass2;
+    const mismatch = pass2.length > 0 && pass1 !== pass2;
+    return wrap(
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (!valid || busy) return;
+          setBusy(true);
+          onEnter(pendingMnemonic, pass1);
+        }}
+        style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}
+      >
+        <BackRow onClick={() => !busy && setView(setupReturn)} step={setupReturn === 'confirm' ? 'Step 3 of 3' : 'Last step'} />
+        <h2 style={hStyle(desk)}>Stay signed in on this device?</h2>
+        <p style={pStyle}>
+          Set a passphrase and your key stays here, encrypted, so opening the app only asks for the passphrase. Skip it and nothing is stored — you’ll enter your twelve words on every cold start.
+        </p>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 18 }}>
+          <PassField value={pass1} placeholder={`Passphrase (at least ${minLen} characters)`} onInput={setPass1} disabled={busy} noManager={noManager} />
+          <PassField value={pass2} placeholder="Repeat the passphrase" onInput={setPass2} disabled={busy} noManager={noManager} />
+        </div>
+        {mismatch && (
+          <p style={{ fontFamily: 'var(--ui)', fontSize: 12.5, color: 'var(--accent-ink)', margin: '8px 2px 0' }}>The two passphrases don’t match yet.</p>
+        )}
+
+        <Callout>
+          <Icon name="shield" size={16} color="var(--accent)" />
+          <span>
+            The passphrase only guards the copy on this device — it can’t recover your journal and it isn’t your recovery phrase. Anyone with this device gets as many guesses as they like, so pick something long.
+          </span>
+        </Callout>
+
+        <div style={{ flex: 1 }} />
+        <Btn
+          kind={valid ? 'primary' : 'ghost'}
+          size="lg"
+          full
+          type="submit"
+          style={{ marginTop: 16, opacity: valid && !busy ? 1 : 0.55, pointerEvents: valid && !busy ? 'auto' : 'none' }}
+        >
+          {busy ? 'Encrypting…' : 'Encrypt & stay signed in'}
+        </Btn>
+        <Btn kind="ghost" size="lg" full onClick={() => !busy && onEnter(pendingMnemonic)} style={{ marginTop: 10 }}>
+          Skip — ask for my phrase each time
+        </Btn>
+      </form>,
+      { top: true },
+    );
+  }
+
+  // ─────────────── UNLOCK (returning device with a sealed seed) ───────────────
   return wrap(
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', margin: 'auto 0', width: '100%' }}>
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (unlockBusy || unlockPass.length === 0) return;
+        setUnlockBusy(true);
+        setUnlockError('');
+        onUnlock(unlockPass).catch(() => {
+          setUnlockBusy(false);
+          setUnlockPass('');
+          setUnlockError('That passphrase didn’t unlock this device.');
+        });
+      }}
+      style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', margin: 'auto 0', width: '100%' }}
+    >
       <Wordmark size={24} />
       <div style={{ marginTop: 40, marginBottom: 6, color: 'var(--ink-2)' }}>
         <div style={{ width: 76, height: 76, borderRadius: 999, border: '1.5px solid var(--line)', background: 'var(--surface)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto' }}>
@@ -381,51 +477,61 @@ export function Onboarding({ desk, onEnter }: { desk: boolean; onEnter: (mnemoni
         </div>
       </div>
       <h2 style={{ fontFamily: 'var(--serif)', fontSize: 24, color: 'var(--ink)', margin: '18px 0 4px', fontWeight: 500 }}>Welcome back</h2>
-      <p style={{ fontFamily: 'var(--ui)', fontSize: 13.5, color: 'var(--ink-3)', margin: 0 }}>Enter your passcode or use Face ID</p>
+      <p style={{ fontFamily: 'var(--ui)', fontSize: 13.5, color: 'var(--ink-3)', margin: 0 }}>Enter the passphrase for this device</p>
 
-      <div style={{ display: 'flex', gap: 14, margin: '26px 0 22px' }}>
-        {Array.from({ length: dots }).map((_, i) => (
-          <div key={i} style={{ width: 14, height: 14, borderRadius: 999, background: i < pin.length ? 'var(--accent)' : 'transparent', border: `1.5px solid ${i < pin.length ? 'var(--accent)' : 'var(--line)'}`, transition: 'all .15s' }} />
-        ))}
-      </div>
-
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 64px)', gap: 14, justifyContent: 'center' }}>
-        {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => (
-          <KeypadKey key={n} onClick={() => setPin((p) => (p.length < dots ? p + n : p))}>{n}</KeypadKey>
-        ))}
-        <KeypadKey faint onClick={() => setView('restore')}><Icon name="eye" size={22} color="var(--ink-2)" /></KeypadKey>
-        <KeypadKey onClick={() => setPin((p) => (p.length < dots ? p + '0' : p))}>0</KeypadKey>
-        <KeypadKey faint onClick={() => setPin((p) => p.slice(0, -1))}><Icon name="left" size={22} color="var(--ink-2)" /></KeypadKey>
+      <div style={{ width: '100%', maxWidth: 340, marginTop: 26 }}>
+        <PassField value={unlockPass} placeholder="Passphrase" onInput={setUnlockPass} disabled={unlockBusy} noManager={noManager} autoFocus />
+        {unlockError && (
+          <p style={{ fontFamily: 'var(--ui)', fontSize: 12.5, color: 'var(--accent-ink)', margin: '10px 2px 0' }}>{unlockError}</p>
+        )}
+        <Btn
+          kind="primary"
+          size="lg"
+          full
+          type="submit"
+          style={{ marginTop: 14, opacity: unlockBusy || unlockPass.length === 0 ? 0.55 : 1, pointerEvents: unlockBusy || unlockPass.length === 0 ? 'none' : 'auto' }}
+        >
+          {unlockBusy ? 'Unlocking…' : 'Unlock'}
+        </Btn>
       </div>
 
       <button
+        type="button"
         onClick={() => setView('restore')}
         style={{ marginTop: 26, background: 'transparent', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, color: 'var(--accent-ink)', fontFamily: 'var(--ui)', fontSize: 14, fontWeight: 600 }}
       >
-        <Icon name="shield" size={18} color="var(--accent-ink)" /> Unlock with Face ID
+        <Icon name="shield" size={18} color="var(--accent-ink)" /> Use my recovery phrase instead
       </button>
-    </div>,
+    </form>,
   );
 }
 
 // ── small parts ─────────────────────────────────────────────
-function KeypadKey({ children, onClick, faint }: { children: ComponentChildren; onClick: () => void; faint?: boolean }): VNode {
+// A passphrase input in the restore-field style. `noManager` keeps password
+// managers away from it (the device passphrase must not overwrite the saved
+// recovery-phrase credential).
+function PassField({ value, placeholder, onInput, disabled, noManager, autoFocus }: {
+  value: string;
+  placeholder: string;
+  onInput: (v: string) => void;
+  disabled?: boolean;
+  noManager: Record<string, unknown>;
+  autoFocus?: boolean;
+}): VNode {
   return (
-    <button
-      onClick={onClick}
-      style={{
-        width: 64, height: 64, borderRadius: 999, cursor: 'pointer',
-        background: faint ? 'transparent' : 'var(--surface)',
-        border: faint ? 'none' : '1px solid var(--line)',
-        fontFamily: 'var(--ui)', fontSize: 24, fontWeight: 500, color: 'var(--ink)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all .12s',
-      }}
-      onMouseDown={(e) => (e.currentTarget.style.background = 'var(--accent-soft)')}
-      onMouseUp={(e) => (e.currentTarget.style.background = faint ? 'transparent' : 'var(--surface)')}
-      onMouseLeave={(e) => (e.currentTarget.style.background = faint ? 'transparent' : 'var(--surface)')}
-    >
-      {children}
-    </button>
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '0 12px', height: 44, borderRadius: 10, background: 'var(--surface)', border: '1px solid var(--line)' }}>
+      <Icon name="lock" size={15} color="var(--ink-3)" />
+      <input
+        type="password"
+        value={value}
+        placeholder={placeholder}
+        disabled={disabled}
+        autoFocus={autoFocus}
+        onInput={(e) => onInput((e.target as HTMLInputElement).value)}
+        {...noManager}
+        style={{ flex: 1, minWidth: 0, border: 'none', outline: 'none', background: 'transparent', fontFamily: 'var(--mono)', fontSize: 14, color: 'var(--ink)' }}
+      />
+    </div>
   );
 }
 

@@ -56,6 +56,7 @@ Binary fields are standard base64. Authenticated routes need
 | DELETE | `/v1/account` | ✅ | wipe the owner entirely (recovery-phrase rotation) |
 | GET  | `/admin` | – | admin dashboard page (404 unless `ADMIN_TOKEN` is set) |
 | GET  | `/admin/stats` | 🔑 | aggregate stats JSON (`Bearer <ADMIN_TOKEN>`) |
+| DELETE | `/admin/vaults/{id}` | 🔑 | operator vault wipe (`{"confirm":"delete"}` body required) |
 
 The full request/response shapes live in [`../docs/API.md`](../docs/API.md). Media endpoints
 answer `503` when `S3_ENDPOINT` is unset; with it set, chunks stream to S3/MinIO (the bucket is

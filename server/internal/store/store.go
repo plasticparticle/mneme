@@ -143,10 +143,14 @@ func (s *Store) ListOwnerMedia(ctx context.Context, ownerID string) ([]MediaBlob
 // challenges, entry_blobs, media_blobs, reminders, push_subs) cascades from it.
 // This is the server half of mnemonic rotation: after the client has re-pushed
 // everything under a fresh owner, the old owner's data must stop existing — the
-// leaked phrase keeps authenticating otherwise.
-func (s *Store) DeleteOwner(ctx context.Context, ownerID string) error {
-	_, err := s.pool.Exec(ctx, `DELETE FROM owners WHERE owner_id = $1`, ownerID)
-	return err
+// leaked phrase keeps authenticating otherwise. found=false when no such owner
+// existed (already idempotently gone).
+func (s *Store) DeleteOwner(ctx context.Context, ownerID string) (found bool, err error) {
+	tag, err := s.pool.Exec(ctx, `DELETE FROM owners WHERE owner_id = $1`, ownerID)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() == 1, nil
 }
 
 // PurgeExpired removes stale challenges and sessions. Safe to call periodically.

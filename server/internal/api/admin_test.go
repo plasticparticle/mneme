@@ -32,6 +32,38 @@ func TestAdminDisabledWithoutToken(t *testing.T) {
 			t.Errorf("GET %s = %d, want 404 (admin surface must not exist when unconfigured)", path, rec.Code)
 		}
 	}
+	rec := httptest.NewRecorder()
+	srv.Routes().ServeHTTP(rec, httptest.NewRequest(http.MethodDelete, "/admin/vaults/abc", strings.NewReader(`{"confirm":"delete"}`)))
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("DELETE /admin/vaults = %d, want 404 when admin is unconfigured", rec.Code)
+	}
+}
+
+func TestAdminDeleteVaultRequiresConfirmString(t *testing.T) {
+	srv := adminConfig("s3cret")
+	del := func(body string, withToken bool) int {
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodDelete, "/admin/vaults/some-owner-id", strings.NewReader(body))
+		if withToken {
+			req.Header.Set("Authorization", "Bearer s3cret")
+		}
+		srv.Routes().ServeHTTP(rec, req)
+		return rec.Code
+	}
+	if code := del(`{"confirm":"delete"}`, false); code != http.StatusUnauthorized {
+		t.Errorf("no token = %d, want 401", code)
+	}
+	// The typed confirmation is enforced server-side, before any store access —
+	// these run against a nil store and must fail on validation alone.
+	if code := del(`{}`, true); code != http.StatusBadRequest {
+		t.Errorf("missing confirm = %d, want 400", code)
+	}
+	if code := del(`{"confirm":"DELETE"}`, true); code != http.StatusBadRequest {
+		t.Errorf("wrong-case confirm = %d, want 400 (must be the literal lowercase string)", code)
+	}
+	if code := del(``, true); code != http.StatusBadRequest {
+		t.Errorf("empty body = %d, want 400", code)
+	}
 }
 
 func TestAdminStatsRejectsBadToken(t *testing.T) {

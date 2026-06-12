@@ -56,6 +56,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /admin", s.handleAdminPage)
 	mux.HandleFunc("GET /admin/{$}", s.handleAdminPage)
 	mux.Handle("GET /admin/stats", s.adminAuth(http.HandlerFunc(s.handleAdminStats)))
+	mux.Handle("DELETE /admin/vaults/{id}", s.adminAuth(http.HandlerFunc(s.handleAdminDeleteVault)))
 
 	return s.cors(s.logging(mux))
 }

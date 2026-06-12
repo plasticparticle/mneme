@@ -73,6 +73,36 @@
 
   footer { margin-top: 40px; color: var(--ink-soft); font-size: 12.5px; border-top: 1px solid var(--line); padding-top: 14px; }
   .hidden { display: none; }
+
+  .rowdel {
+    font: inherit; font-size: 12px; padding: 3px 9px; border-radius: 6px; cursor: pointer;
+    border: 1px solid var(--line); background: transparent; color: var(--ink-soft);
+  }
+  .rowdel:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* delete-confirmation modal */
+  #modalWrap {
+    position: fixed; inset: 0; background: rgba(30, 22, 16, .4); backdrop-filter: blur(2px);
+    display: flex; align-items: center; justify-content: center; z-index: 10;
+  }
+  #modal {
+    background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+    padding: 22px 24px; width: min(420px, 88vw);
+  }
+  #modal h3 { font-family: Georgia, "Newsreader", serif; font-weight: 500; margin: 0 0 10px; }
+  #modal p { color: var(--ink-soft); font-size: 13.5px; margin: 0 0 8px; }
+  #modal input {
+    font: inherit; width: 100%; box-sizing: border-box; padding: 9px 12px; margin: 10px 0 4px;
+    border: 1px solid var(--line); border-radius: 8px; background: var(--paper); color: var(--ink);
+  }
+  #modal .actions { display: flex; gap: 10px; margin-top: 14px; }
+  #modal button {
+    font: inherit; padding: 9px 16px; border-radius: 8px; cursor: pointer; border: 1px solid var(--line);
+    background: transparent; color: var(--ink); flex: 1;
+  }
+  #modalGo { background: var(--accent); border-color: var(--accent); color: #fff; flex: 2; }
+  #modalGo:disabled { opacity: .45; cursor: not-allowed; }
+  #modalErr { color: var(--accent); font-size: 13px; min-height: 1.2em; margin: 6px 0 0; }
 </style>
 </head>
 <body>
@@ -103,10 +133,27 @@
     <table>
       <thead><tr>
         <th>Vault</th><th>Created</th><th>Devices</th><th>Records</th>
-        <th>Record data</th><th>Media</th><th>Media data</th><th>Last activity</th>
+        <th>Record data</th><th>Media</th><th>Media data</th><th>Last activity</th><th></th>
       </tr></thead>
       <tbody id="vaultRows"></tbody>
     </table>
+
+    <div id="modalWrap" class="hidden">
+      <div id="modal">
+        <h3>Delete vault <span id="modalVault" class="mono"></span>?</h3>
+        <p>This permanently wipes every encrypted record, media object, reminder, device and
+           session this vault has on the relay. There is no undo and no backup.</p>
+        <p>It does <strong>not</strong> reach into anyone's devices — local copies stay where
+           they are, and the same recovery phrase can register again as an empty vault.</p>
+        <p>Type <strong class="mono">delete</strong> to confirm:</p>
+        <input id="modalInput" type="text" autocomplete="off" spellcheck="false" placeholder="delete">
+        <div id="modalErr"></div>
+        <div class="actions">
+          <button id="modalCancel" type="button">Cancel</button>
+          <button id="modalGo" type="button" disabled>Delete vault</button>
+        </div>
+      </div>
+    </div>
 
     <footer>
       Aggregates and storage metadata only. The relay holds opaque ciphertext — it cannot read
@@ -179,8 +226,53 @@
       <td class="mono">${fmtNum(v.media_objects)}</td>
       <td class="mono">${fmtBytes(v.media_bytes)}</td>
       <td>${fmtDate(v.last_activity)}</td>
-    </tr>`).join('') || '<tr><td colspan="8">No vaults yet.</td></tr>';
+      <td><button class="rowdel" data-owner="${v.owner_id}" data-label="${v.vault}">Delete</button></td>
+    </tr>`).join('') || '<tr><td colspan="9">No vaults yet.</td></tr>';
   }
+
+  // ── vault deletion (typed confirmation, enforced again server-side) ──
+  let delOwner = null;
+  function openDelete(owner, label) {
+    delOwner = owner;
+    $('modalVault').textContent = label;
+    $('modalInput').value = '';
+    $('modalErr').textContent = '';
+    $('modalGo').disabled = true;
+    $('modalWrap').classList.remove('hidden');
+    $('modalInput').focus();
+  }
+  function closeDelete() {
+    delOwner = null;
+    $('modalWrap').classList.add('hidden');
+  }
+  async function confirmDelete() {
+    if ($('modalInput').value.trim() !== 'delete' || !delOwner) return;
+    $('modalGo').disabled = true;
+    try {
+      const res = await fetch('/admin/vaults/' + encodeURIComponent(delOwner), {
+        method: 'DELETE',
+        headers: { Authorization: 'Bearer ' + sessionStorage.getItem(KEY), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ confirm: 'delete' }),
+      });
+      if (!res.ok && res.status !== 404) throw new Error('HTTP ' + res.status); // 404 = already gone
+      closeDelete();
+      load();
+    } catch (e) {
+      $('modalErr').textContent = 'deletion failed: ' + e.message;
+      $('modalGo').disabled = false;
+    }
+  }
+  $('vaultRows').addEventListener('click', e => {
+    const btn = e.target.closest('.rowdel');
+    if (btn) openDelete(btn.dataset.owner, btn.dataset.label);
+  });
+  $('modalInput').addEventListener('input', () => {
+    $('modalGo').disabled = $('modalInput').value.trim() !== 'delete';
+  });
+  $('modalInput').addEventListener('keydown', e => { if (e.key === 'Enter') confirmDelete(); });
+  $('modalGo').addEventListener('click', confirmDelete);
+  $('modalCancel').addEventListener('click', closeDelete);
+  $('modalWrap').addEventListener('click', e => { if (e.target === $('modalWrap')) closeDelete(); });
 
   function chart() {
     const metric = $('metricSel').value;

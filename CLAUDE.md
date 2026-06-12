@@ -39,7 +39,12 @@ project. Scaffolded so far:
   (truncated pseudonymous owner ids) and owner-less daily counters (`usage_daily`, migration 0002,
   deliberately no owner column; request/record/media/vault metrics buffered in-memory, flushed every
   30 s). It cannot count journals or tell media kinds apart — that data never reaches the relay
-  (docs/API.md "Admin", docs/SECURITY.md §2).
+  (docs/API.md "Admin", docs/SECURITY.md §2). **Vault deletion** exists on both sides, each behind a
+  typed-"delete" confirmation: the operator via `DELETE /admin/vaults/{id}` (confirm string enforced
+  server-side; dashboard row button + modal) and the user via the client's "Delete vault" sheet
+  (`ui/DeleteVault.tsx`, sidebar trash / mobile settings → `deleteVault` in `state/data.tsx`: relay
+  `DELETE /v1/account` first, then local OPFS destroy + seal clear, back to onboarding). A user
+  session can only ever delete its own vault — `/v1/account` takes no id.
 - **Infra** — `docker-compose.yml` (Postgres + MinIO + server), `server/Dockerfile`, `.devcontainer/`.
 
 Media (§10 step 5) is in for **video, audio, images, and file attachments**: video/audio record via

@@ -32,6 +32,7 @@ the auth model.
 | DELETE | `/v1/account` | ✅ | wipe the owner entirely (phrase rotation) |
 | GET | `/admin` | – | admin dashboard page (404 unless `ADMIN_TOKEN` is set) |
 | GET | `/admin/stats` | 🔑 | aggregate stats JSON (`Bearer <ADMIN_TOKEN>`) |
+| DELETE | `/admin/vaults/{id}` | 🔑 | operator vault wipe (requires `{"confirm":"delete"}` body) |
 
 Errors are `{ "error": "message" }` with an appropriate status (400/401/404/500). CORS preflight
 (`OPTIONS`) is answered for configured origins (`CORS_ORIGINS`).
@@ -209,6 +210,24 @@ Honest limits of an E2EE relay: "records" are encrypted oplog rows — entries, 
 metadata are **indistinguishable** on purpose. "Journals created" is not measurable at all (a journal
 is a client-side grouping inside the ciphertext), and media kinds (video/audio/image/file) are
 unknowable — the mime type never reaches the relay.
+
+### `DELETE /admin/vaults/{id}` → `204 No Content`
+
+Operator-initiated vault wipe (e.g. reclaiming storage from an abandoned vault). `{id}` is the full
+`owner_id` from `/admin/stats`. The body **must** be `{"confirm":"delete"}` — the typed confirmation
+is enforced server-side (400 without it), not just in the dashboard UI, so a stray request with a
+valid admin token cannot destroy a vault. 404 when the vault doesn't exist (or is already gone).
+
+Destroys exactly what self-service `DELETE /v1/account` destroys: entry blobs, the media index and
+its S3 chunks, reminders, push subscriptions, devices, and sessions. It does **not** reach into any
+device's local copy — the relay has no access to clients, by design — and the same recovery phrase
+can re-register afterwards as an empty vault (TOFU). The dashboard exposes this per vault row behind
+a type-"delete" modal.
+
+Authorization note: vault deletion is two strictly separated capabilities. A **user session** can
+only ever delete its own vault — `DELETE /v1/account` takes no vault id; the owner comes from the
+authenticated session. The **admin token** is required to delete by id; without it, `/admin/vaults/*`
+answers 401 (or 404 when the admin surface is disabled) before any lookup happens.
 
 ---
 

@@ -3,6 +3,7 @@ package api
 import (
 	"crypto/subtle"
 	_ "embed"
+	"log"
 	"net/http"
 	"time"
 )
@@ -70,7 +71,8 @@ func (s *Server) handleAdminStats(w http.ResponseWriter, r *http.Request) {
 	}
 
 	type vaultRow struct {
-		Vault        string     `json:"vault"` // truncated opaque id, not an identity
+		Vault        string     `json:"vault"`    // truncated opaque id for display, not an identity
+		OwnerID      string     `json:"owner_id"` // full opaque id — needed to address a vault for deletion
 		CreatedAt    time.Time  `json:"created_at"`
 		Devices      int64      `json:"devices"`
 		Records      int64      `json:"records"`
@@ -103,6 +105,7 @@ func (s *Server) handleAdminStats(w http.ResponseWriter, r *http.Request) {
 		t.MediaBytes += v.MediaBytes
 		rows = append(rows, vaultRow{
 			Vault:        vaultLabel(v.OwnerID),
+			OwnerID:      v.OwnerID,
 			CreatedAt:    v.CreatedAt.UTC(),
 			Devices:      v.Devices,
 			Records:      v.Records,
@@ -124,4 +127,38 @@ func (s *Server) handleAdminStats(w http.ResponseWriter, r *http.Request) {
 		"daily":   days,
 		"runtime": s.metrics.runtime(),
 	})
+}
+
+// DELETE /admin/vaults/{id} — operator-initiated vault wipe (e.g. reclaiming
+// quota from an abandoned vault). The body must carry the literal confirmation
+// string — enforced server-side, not just in the dashboard UI — so a stray
+// request with a valid token can't destroy a vault:
+//
+//	{"confirm": "delete"}
+//
+// Destroys the same data as self-service DELETE /v1/account. It does NOT touch
+// any device's local copy — the relay has no reach into clients, by design.
+func (s *Server) handleAdminDeleteVault(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Confirm string `json:"confirm"`
+	}
+	if !decodeJSON(w, r, &req) {
+		return
+	}
+	if req.Confirm != "delete" {
+		writeError(w, http.StatusBadRequest, `confirmation required: {"confirm":"delete"}`)
+		return
+	}
+	ownerID := r.PathValue("id")
+	found, err := s.wipeOwner(r.Context(), ownerID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "vault deletion failed")
+		return
+	}
+	if !found {
+		writeError(w, http.StatusNotFound, "no such vault")
+		return
+	}
+	log.Printf("admin: vault %s deleted", vaultLabel(ownerID))
+	w.WriteHeader(http.StatusNoContent)
 }

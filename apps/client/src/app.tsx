@@ -206,6 +206,28 @@ export function App(): VNode {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
+  // App never unmounts across a lock — the locked branch is an early return, so
+  // every open sheet/flow would otherwise survive into the next unlock (e.g.
+  // deleting a vault leaves the Delete-vault sheet armed, then re-shows it over
+  // the freshly created vault). Reset all transient UI when the vault locks so
+  // each unlock — same vault or a brand-new one — starts on a clean slate.
+  useEffect(() => {
+    if (status !== 'locked') return;
+    setFlowRaw('journals');
+    setModal(false);
+    setRotateOpen(false);
+    setDeleteVaultOpen(false);
+    setTemplatesOpen(false);
+    setPrefsOpen(false);
+    setSearchOpen(false);
+    setAiSettingsOpen(false);
+    setAskOpen(false);
+    setDeleteJournalId(null);
+    setOpenEntryId(null);
+    setOpenJournalId(null);
+    setEditorReturn('journals');
+  }, [status]);
+
   // Locked until a mnemonic — or the passphrase over a sealed seed — unlocks an
   // in-memory identity. Hold rendering until the keystore check resolves so a
   // device with a sealed seed starts on the unlock view, not a welcome flash.

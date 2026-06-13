@@ -35,16 +35,33 @@
 .mneme-prose h2 { font-size: calc(var(--editor-size) * 1.28); }
 .mneme-prose h3 { font-size: calc(var(--editor-size) * 1.12); }
 
+/* Headings bind to the text they introduce: extra space above (separating
+   sections), tighter below (the following block belongs to the heading). The
+   `:first-child` reset keeps the very first heading flush with the top. */
+.mneme-prose > h1 { margin-top: calc(var(--editor-gap) * 2); }
+.mneme-prose > h2 { margin-top: calc(var(--editor-gap) * 1.75); }
+.mneme-prose > h3 { margin-top: calc(var(--editor-gap) * 1.5); }
+.mneme-prose > h1 + *,
+.mneme-prose > h2 + *,
+.mneme-prose > h3 + * { margin-top: calc(var(--editor-gap) * 0.4); }
+.mneme-prose > :first-child { margin-top: 0; }
+
 .mneme-prose strong { font-weight: 700; }
 .mneme-prose em { font-style: italic; }
 
 .mneme-prose blockquote {
+  /* A quote is a set-apart block: balanced vertical padding so the accent rule
+     frames it evenly, and a touch more separation from the surrounding text
+     than a plain paragraph gets. */
   margin: 0;
-  padding: 4px 0 4px 20px;
+  padding: calc(var(--editor-gap) * 0.5) 0 calc(var(--editor-gap) * 0.5) 22px;
   border-left: 3px solid var(--accent);
   font-style: italic;
   color: var(--ink-2);
 }
+.mneme-prose > * + blockquote { margin-top: calc(var(--editor-gap) * 1.25); }
+.mneme-prose > blockquote + * { margin-top: calc(var(--editor-gap) * 1.25); }
+.mneme-prose blockquote > :first-child { margin-top: 0; }
 
 .mneme-prose ul,
 .mneme-prose ol {
@@ -153,10 +170,15 @@
   padding: 0.05em 0.15em;
 }
 .mneme-prose [data-type='block-math'] {
-  padding: 8px 12px;
+  padding: calc(var(--editor-gap) * 0.6) 12px;
   text-align: center;
   overflow-x: auto;
 }
+/* A display equation is set apart from the prose: more breathing room than a
+   plain paragraph gap, so its box (and the selected-node outline) doesn't
+   crowd the text above and below. */
+.mneme-prose > * + [data-type='block-math'] { margin-top: calc(var(--editor-gap) * 1.25); }
+.mneme-prose > [data-type='block-math'] + * { margin-top: calc(var(--editor-gap) * 1.25); }
 .mneme-prose .tiptap-mathematics-render--editable {
   cursor: pointer;
 }

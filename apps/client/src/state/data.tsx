@@ -19,7 +19,7 @@ import { pushEntries, pushTemplates, pullEntries, type JournalEntry, type MediaA
 import { uploadMedia, downloadMedia } from '../sync/media';
 import { rotateAccount, type RotationProgress } from '../sync/rotate';
 import { newEntryId, newMediaId, newTemplateId } from '../sync/ids';
-import { ENTRIES, JOURNALS, OPEN_ENTRY, type Journal } from '../data/sample';
+import { ENTRIES, JOURNALS, type Journal } from '../data/sample';
 import { seedBuiltinTemplates } from '../data/templates';
 import type { JSONContent } from '@tiptap/core';
 import { blocksToDoc, textToDoc, docToText, docMediaIds } from '../editor/doc';
@@ -141,21 +141,21 @@ const RECONNECT_INTERVAL_MS = 5_000;
 // twelve words, punishing exactly the users who chose the stricter setting.
 const AUTO_LOCK_MS = 15 * 60_000;
 
-// Seed the timeline from the design's sample entries so the UI looks lived-in.
+// Seed the timeline with the Tutorial walkthrough entries on a fresh vault.
 // These stay local (not pushed); only user-created entries sync to the relay.
 function seedEntries(): JournalEntry[] {
   return ENTRIES.map((e) => {
     const [h, m] = e.time.split(':').map(Number);
     const at = Date.UTC(2026, 5, e.day, h || 0, m || 0);
-    // e1 has a fully-written rich body in the design handoff; give it real
-    // TipTap content so the editor opens with lived-in formatting. The rest
-    // start from their one-line preview text.
-    const doc = e.id === OPEN_ENTRY.id ? blocksToDoc(OPEN_ENTRY.blocks) : textToDoc(e.preview);
+    // Tutorial entries carry rich block bodies (real TipTap content, so the
+    // editor opens with the features they describe); anything without blocks
+    // starts from its one-line preview text.
+    const doc = e.blocks ? blocksToDoc(e.blocks) : textToDoc(e.preview);
     return {
       id: e.id,
       journalId: e.journal,
       title: e.title,
-      bodyText: e.id === OPEN_ENTRY.id ? docToText(doc) : e.preview,
+      bodyText: e.blocks ? docToText(doc) : e.preview,
       bodyJson: JSON.stringify(doc),
       labels: e.labels,
       createdAt: at,

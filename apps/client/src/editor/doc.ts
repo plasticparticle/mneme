@@ -148,6 +148,8 @@ export function blocksToDoc(blocks: Block[]): JSONContent {
     if (b.type === 'p') content.push({ type: 'paragraph', content: [{ type: 'text', text: b.text }] });
     else if (b.type === 'h') content.push({ type: 'heading', attrs: { level: 2 }, content: [{ type: 'text', text: b.text }] });
     else if (b.type === 'quote') content.push({ type: 'blockquote', content: [{ type: 'paragraph', content: [{ type: 'text', text: b.text }] }] });
+    else if (b.type === 'code') content.push({ type: 'codeBlock', attrs: { language: b.lang ?? null }, content: [{ type: 'text', text: b.text }] });
+    else if (b.type === 'math') content.push({ type: 'blockMath', attrs: { latex: b.latex } });
     // photo/audio are media (§10 step 5) — represented in the preview only for now.
     else if (b.type === 'photo') content.push({ type: 'paragraph', content: [{ type: 'text', text: `🖼 ${b.caption}` }] });
     else if (b.type === 'audio') content.push({ type: 'paragraph', content: [{ type: 'text', text: `🎙 ${b.label} (${b.dur})` }] });

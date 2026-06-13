@@ -32,6 +32,8 @@ export interface Entry {
   preview: string;
   words: number;
   media: number;
+  /** Rich seed body; entries without one fall back to their preview text. */
+  blocks?: Block[];
 }
 
 export type Block =
@@ -40,20 +42,9 @@ export type Block =
   | { type: 'quote'; text: string }
   | { type: 'photo'; caption: string }
   | { type: 'check'; done: boolean; text: string }
-  | { type: 'audio'; label: string; dur: string };
-
-export interface OpenEntry {
-  id: string;
-  journal: string;
-  title: string;
-  dateLabel: string;
-  time: string;
-  place: string;
-  weather: string;
-  labels: string[];
-  words: number;
-  blocks: Block[];
-}
+  | { type: 'audio'; label: string; dur: string }
+  | { type: 'code'; lang?: string; text: string }
+  | { type: 'math'; latex: string };
 
 export const MNEMONIC: string[] = [
   'velvet', 'harbor', 'spiral', 'candle',
@@ -70,6 +61,7 @@ export const LABELS: Record<string, Label> = {
   idea:       { name: 'idea',       color: '#5A7BA6' }, // dusty blue
   family:     { name: 'family',     color: '#8E6A93' }, // mauve
   dream:      { name: 'dream',      color: '#6A6AA0' }, // indigo
+  tutorial:   { name: 'tutorial',   color: '#4E8B85' }, // dusty teal
 };
 
 const LABEL_COLORS = Object.values(LABELS).map((l) => l.color);
@@ -88,78 +80,99 @@ export function labelInfo(id: string): Label {
 // `count` and `last` here are placeholders: the live values are derived from real
 // entries in state/data.tsx (journalsWithCounts) and override whatever is set here.
 export const JOURNALS: Journal[] = [
-  { id: 'j-personal',  name: 'Personal',    subtitle: 'Daily reflections',   count: 0, color: '#B0563A', cover: 'lines', last: '' },
-  { id: 'j-travel',    name: 'Travel',      subtitle: 'Roads & rooms',       count: 0, color: '#4E8B85', cover: 'photo', last: '' },
-  { id: 'j-dreams',    name: 'Dreams',      subtitle: 'Nightnotes',          count: 0, color: '#6A6AA0', cover: 'dots',  last: '' },
-  { id: 'j-gratitude', name: 'Gratitude',   subtitle: 'Three small things',  count: 0, color: '#B08A2E', cover: 'plain', last: '' },
-  { id: 'j-work',      name: 'Field Notes', subtitle: 'Work & craft',        count: 0, color: '#5A7BA6', cover: 'grid',  last: '' },
+  { id: 'j-tutorial', name: 'Tutorial',   subtitle: 'How Mneme works',     count: 0, color: '#4E8B85', cover: 'grid',  last: '' },
+  { id: 'j-personal', name: 'My Journal', subtitle: 'Your first notebook', count: 0, color: '#B0563A', cover: 'lines', last: '' },
 ];
 
-// A believable June 2026 month for the calendar + lists.
+// The tutorial walkthrough — five entries covering the app, newest first.
 export const ENTRIES: Entry[] = [
   {
-    id: 'e1', journal: 'j-travel', day: 9, time: '9:41',
-    title: 'The long way home',
-    place: 'Lisbon · Alfama', weather: '☀ 24°', mood: 'unhurried',
-    labels: ['travel', 'reflection'],
-    preview: 'Took the 28 tram in the wrong direction on purpose. The whole city tips downhill toward the river…',
-    words: 312, media: 1,
-  },
-  {
-    id: 'e2', journal: 'j-personal', day: 9, time: '7:02',
-    title: 'Before the noise',
-    place: 'Home', weather: '☁ 18°', mood: 'quiet',
-    labels: ['morning'],
-    preview: 'Coffee, then the page. Trying to make this the first thing I touch, not the last.',
-    words: 96, media: 0,
-  },
-  {
-    id: 'e3', journal: 'j-dreams', day: 8, time: '3:18',
-    title: 'A house with one more room',
+    id: 'e1', journal: 'j-tutorial', day: 12, time: '9:00',
+    title: 'Basics',
     place: '', weather: '', mood: '',
-    labels: ['dream'],
-    preview: 'There was a door behind the bookshelf I had never noticed. Inside, all my old desks…',
-    words: 140, media: 0,
+    labels: ['tutorial'],
+    preview: 'Welcome to Mneme — a local-first, end-to-end encrypted journal. Start here.',
+    words: 220, media: 0,
+    blocks: [
+      { type: 'p', text: 'Welcome to Mneme — a local-first, end-to-end encrypted journal. Everything you write is encrypted on this device before it leaves it; the sync server only ever stores opaque blobs it cannot read.' },
+      { type: 'h', text: 'How things are organized' },
+      { type: 'p', text: 'Journals are notebooks. This Tutorial journal walks you through the features; "My Journal" is yours to fill — and you can create more from the journals screen. Every entry belongs to a journal, carries its own date and time (click the date in the entry header to change it), and takes free-form labels for filtering.' },
+      { type: 'h', text: 'First steps' },
+      { type: 'check', done: false, text: 'Press ⌘/Ctrl+K and search for "math" — search covers every journal' },
+      { type: 'check', done: false, text: 'Open the calendar to browse entries by day' },
+      { type: 'check', done: false, text: 'Start a new entry — the "Start from" picker offers templates' },
+      { type: 'check', done: false, text: 'Open Preferences for themes, writing stats, and vault settings' },
+      { type: 'quote', text: 'Tip: type "/" anywhere in an entry to open the command palette — blocks, media, math, and templates all live there.' },
+      { type: 'p', text: 'Done with the walkthrough? This Tutorial journal can be deleted at any time, and only exists on this device.' },
+    ],
   },
   {
-    id: 'e4', journal: 'j-gratitude', day: 7, time: '21:30',
-    title: 'Three small things',
-    place: 'Home', weather: '', mood: 'warm',
-    labels: ['family'],
-    preview: '1 — the smell of rain through the screen door. 2 — M. laughing at her own joke. 3 — leftovers.',
-    words: 58, media: 0,
+    id: 'e2', journal: 'j-tutorial', day: 11, time: '9:00',
+    title: 'Info on Data Security',
+    place: '', weather: '', mood: '',
+    labels: ['tutorial'],
+    preview: 'Your recovery phrase is your account. What is encrypted, what the server sees, and how to stay safe.',
+    words: 240, media: 0,
+    blocks: [
+      { type: 'p', text: 'Your twelve-word recovery phrase is your account. Every encryption key derives from it — there is no email, no password, and no reset flow.' },
+      { type: 'quote', text: 'If you lose the phrase, your data is unrecoverable — by design. Not even the server operator can read or restore it. Write the words down and keep them somewhere safe.' },
+      { type: 'h', text: 'What encryption covers' },
+      { type: 'p', text: 'Entry bodies — titles, text, formulas, embedded media — are encrypted on your device (XChaCha20-Poly1305) before they sync. The server relays and stores ciphertext only. It does see some metadata: how many records you have, their sizes, and when reminders fire. Content is protected; form is not.' },
+      { type: 'h', text: 'On this device' },
+      { type: 'p', text: 'By default the phrase is never stored — you re-enter it on a cold start. If you opt into "stay signed in", the key material is sealed under a passphrase you choose (Argon2id), the journal auto-locks after 15 minutes of inactivity, and you can lock it manually any time.' },
+      { type: 'p', text: 'Worried the phrase leaked? Preferences → Vault → "Replace recovery phrase" re-encrypts everything under a fresh one. "Delete vault" removes your data from the server and this device.' },
+    ],
   },
   {
-    id: 'e5', journal: 'j-personal', day: 5, time: '18:12',
-    title: 'On finishing things',
-    place: '', weather: '', mood: 'restless',
-    labels: ['reflection', 'idea'],
-    preview: 'The last 10% is a different skill than the first 90%. I keep starting to avoid ending.',
-    words: 204, media: 0,
+    id: 'e3', journal: 'j-tutorial', day: 10, time: '9:00',
+    title: 'Editing',
+    place: '', weather: '', mood: '',
+    labels: ['tutorial'],
+    preview: 'Rich text, checklists, tables, code blocks, media, and links between entries.',
+    words: 230, media: 0,
+    blocks: [
+      { type: 'p', text: 'Entries are rich text. Select text for formatting, or type "/" to open the slash palette — every block type lives there.' },
+      { type: 'h', text: 'Blocks' },
+      { type: 'check', done: true, text: 'Headings, lists, and quotes — the basics' },
+      { type: 'check', done: true, text: 'Checklists, like this one' },
+      { type: 'check', done: false, text: 'Tables — resizable, with row and column controls in the toolbar' },
+      { type: 'code', lang: 'python', text: '# Code blocks highlight automatically\ndef hello(name):\n    return f"hello, {name}"' },
+      { type: 'h', text: 'Media' },
+      { type: 'p', text: 'Drop images or files straight into the text, or record video and audio from the slash menu. Images group into galleries and open in a lightbox. Media is encrypted in chunks, like everything else.' },
+      { type: 'h', text: 'Links between entries' },
+      { type: 'p', text: 'Type [[ to link to another entry; entries that are linked to list their backlinks under "Linked from". And if you find yourself writing the same structure repeatedly, save it as a template (Templates, in the sidebar).' },
+    ],
   },
   {
-    id: 'e6', journal: 'j-work', day: 4, time: '11:05',
-    title: 'Field notes — the relay',
-    place: 'Studio', weather: '', mood: 'focused',
-    labels: ['idea'],
-    preview: 'The server should never be the interesting part. Keep it dumb. Let the edges hold the meaning.',
-    words: 176, media: 1,
+    id: 'e4', journal: 'j-tutorial', day: 9, time: '9:00',
+    title: 'Math Syntax',
+    place: '', weather: '', mood: '',
+    labels: ['tutorial'],
+    preview: 'Typeset LaTeX inline with $$…$$ or as a block with $$$…$$$ — rendered with KaTeX.',
+    words: 120, media: 0,
+    blocks: [
+      { type: 'p', text: 'Mneme typesets math with KaTeX. Wrap LaTeX in double dollar signs for inline math — typing $$E = mc^2$$ renders it in the line — or triple dollar signs ($$$…$$$) for a display block like this one:' },
+      { type: 'math', latex: 'x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}' },
+      { type: 'p', text: 'Click any rendered formula to edit it in a live-preview dialog. The "/" palette has Math commands too, and snippets for fractions, roots, sums, and integrals:' },
+      { type: 'math', latex: '\\int_0^\\infty e^{-x^2}\\,dx = \\frac{\\sqrt{\\pi}}{2}' },
+      { type: 'p', text: 'Formulas live inside the encrypted entry body, and their LaTeX source shows up in previews and search.' },
+    ],
   },
   {
-    id: 'e7', journal: 'j-travel', day: 2, time: '14:40',
-    title: 'Trains, mostly',
-    place: 'Porto → Lisbon', weather: '⛅ 21°', mood: 'drifting',
-    labels: ['travel'],
-    preview: 'Three hours of vineyards and tunnels. Wrote half of this with my eyes closed.',
-    words: 88, media: 1,
-  },
-  {
-    id: 'e8', journal: 'j-personal', day: 1, time: '8:00',
-    title: 'A clean first page',
-    place: 'Home', weather: '☀ 19°', mood: 'hopeful',
-    labels: ['morning', 'reflection'],
-    preview: 'New month. No resolutions, just attention. Show up, write the true thing, close the book.',
-    words: 132, media: 0,
+    id: 'e5', journal: 'j-tutorial', day: 8, time: '9:00',
+    title: 'Configuring AI',
+    place: '', weather: '', mood: '',
+    labels: ['tutorial'],
+    preview: 'The optional assistant is off by default. Choose a cloud or fully local backend in Preferences.',
+    words: 200, media: 0,
+    blocks: [
+      { type: 'p', text: 'Mneme ships with an optional AI assistant. It is off by default and entirely opt-in — nothing is sent anywhere until you configure it.' },
+      { type: 'h', text: 'Turning it on' },
+      { type: 'p', text: 'Open Preferences → Assistant and pick a backend. Anthropic: bring your own API key; requests go directly from your browser to the API — the entries used as context leave end-to-end encryption for that request. Ollama: runs fully on your machine; nothing leaves it.' },
+      { type: 'h', text: 'What you get' },
+      { type: 'p', text: '"Ask my journal" answers questions over your decrypted entries, and the "/" palette gains writing help for the current entry: Continue, Summarize, and Suggest title — each shows its result before anything is inserted.' },
+      { type: 'quote', text: 'Your API key is encrypted at rest on this device, and journal plaintext is never proxied through the sync server.' },
+    ],
   },
 ];
 
@@ -171,30 +184,6 @@ export const ENTRY_DAYS: Record<number, Entry[]> = (() => {
   });
   return m;
 })();
-
-// The fully-written entry shown in the editor (rich blocks).
-export const OPEN_ENTRY: OpenEntry = {
-  id: 'e1', journal: 'j-travel',
-  title: 'The long way home',
-  dateLabel: 'Tuesday, 9 June 2026',
-  time: '9:41',
-  place: 'Lisbon · Alfama',
-  weather: '☀ 24°',
-  labels: ['travel', 'reflection'],
-  words: 312,
-  blocks: [
-    { type: 'p', text: 'Took the 28 tram in the wrong direction on purpose. The whole city tips downhill toward the river, and the trick is to let it. I got off where the rails curve and the laundry hangs across the street like sentences someone forgot to finish.' },
-    { type: 'p', text: 'An old man was selling cherries from a crate. He weighed them in his hand instead of a scale, decided on a price, and was almost certainly wrong in my favor.' },
-    { type: 'quote', text: 'You do not see a place until you are a little lost in it.' },
-    { type: 'photo', caption: 'Alfama, looking down toward the Tejo' },
-    { type: 'h', text: 'Things I want to remember' },
-    { type: 'check', done: true,  text: 'The blue tiles on the church near the miradouro' },
-    { type: 'check', done: true,  text: 'Calling home from the steps, no reason' },
-    { type: 'check', done: false, text: 'The name of the cherry man — ask tomorrow' },
-    { type: 'audio', label: 'Voice note — the tram bell', dur: '0:48' },
-    { type: 'p', text: 'Walked back the long way, which is the whole point. Home is easy to find. The long way is the part you keep.' },
-  ],
-};
 
 export function findJournal(id: string): Journal | undefined {
   return JOURNALS.find((j) => j.id === id);

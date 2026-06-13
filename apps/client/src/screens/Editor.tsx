@@ -9,8 +9,9 @@ import { useAppData } from '../state/data';
 import type { JournalEntry, MediaAttachment, TemplateRecord } from '../sync/engine';
 import { useRichEditor } from '../editor/useRichEditor';
 import { insertMediaAttachment, insertImageGallery, docImages } from '../editor/media';
-import { EditorToolbar } from '../editor/Toolbar';
-import { parseBody, docMediaIds, docEntryLinks } from '../editor/doc';
+import { EditorToolbar, ModeToggle } from '../editor/Toolbar';
+import { parseBody, docToText, docMediaIds, docEntryLinks } from '../editor/doc';
+import { docToMarkdown, markdownToDoc } from '../editor/markdown';
 import { buildEntryLinkItems } from '../editor/wikilink';
 import { ConfirmDialog } from '../ui/ConfirmDialog';
 import { buildSlashCommands, createSlashHandle } from '../editor/slash';
@@ -59,12 +60,14 @@ function uploadKind(file: File): MediaAttachment['kind'] {
 function EntryEditor({
   entry,
   desk,
+  mode,
   onEditorReady,
   onWords,
   onOpenEntry,
 }: {
   entry: JournalEntry;
   desk: boolean;
+  mode: 'rich' | 'markdown';
   onEditorReady: (e: Editor | null) => void;
   onWords: (n: number) => void;
   onOpenEntry: (id: string) => void;
@@ -86,14 +89,48 @@ function EntryEditor({
   // you edit, before the debounce hands off to the global outbox.
   const [dirty, setDirty] = useState(false);
 
+  // ── Markdown-source mode (per-entry, session-only; `mode` is owned by the
+  // parent and resets to 'rich' on entry switch). While in markdown mode the
+  // TipTap editor stays mounted but hidden; the live source is a plain textarea.
+  const [mdSource, setMdSource] = useState(''); // seeds the textarea on each entry
+  const mdRef = useRef(''); // current textarea text
+  // The exact markdown the serializer produced on entry, plus the doc it came
+  // from — lets an untouched toggle restore the original JSON verbatim (lossless)
+  // instead of round-tripping through the parser.
+  const mdOrigin = useRef<{ md: string; json: string } | null>(null);
+
+  // Derive the stored body shape from the current markdown source. Unchanged
+  // source short-circuits to the original JSON so nothing is ever re-parsed.
+  const bodyFromMarkdown = (): { json: string; text: string } => {
+    const md = mdRef.current;
+    if (mdOrigin.current && md === mdOrigin.current.md) {
+      const json = mdOrigin.current.json;
+      try {
+        return { json, text: docToText(JSON.parse(json) as JSONContent) };
+      } catch {
+        /* fall through to a fresh parse */
+      }
+    }
+    const doc = markdownToDoc(md);
+    return { json: JSON.stringify(doc), text: docToText(doc) };
+  };
+
   const save = (): void => {
     setDirty(false);
+    if (modeRef.current === 'markdown') {
+      body.current = bodyFromMarkdown();
+      onWords(countWords(body.current.text));
+    }
     updateEntry(entry.id, { title: title.current, bodyJson: body.current.json, bodyText: body.current.text });
   };
+  // Always flush through the latest closure (the unmount flush fires after the
+  // last render, and must see the current mode + markdown edits).
+  const saveRef = useRef(save);
+  saveRef.current = save;
   const scheduleSave = (): void => {
     setDirty(true);
     if (saveTimer.current) clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(save, SAVE_DEBOUNCE_MS);
+    saveTimer.current = setTimeout(() => saveRef.current(), SAVE_DEBOUNCE_MS);
   };
 
   // Hidden pickers behind the "/" Image and File commands.
@@ -181,6 +218,9 @@ function EntryEditor({
 
   // The editor instance, reachable from callbacks created before it exists.
   const editorRef = useRef<Editor | null>(null);
+  // Latest mode, read by the (stable) save closure.
+  const modeRef = useRef(mode);
+  modeRef.current = mode;
 
   // Store the uploads, then embed them in the document at the cursor; the
   // entry update rides the normal autosave of the changed document. Images
@@ -253,12 +293,40 @@ function EntryEditor({
     onWords(countWords(body.current.text));
   }, [editor]);
 
-  // Flush any pending save on unmount (e.g. switching entries or leaving).
+  // Hand off whenever the parent flips the mode. Rich→markdown serializes the
+  // current doc into the textarea (remembering it for the lossless restore);
+  // markdown→rich parses the (possibly edited) source back into the editor.
+  const prevMode = useRef(mode);
+  useEffect(() => {
+    if (mode === prevMode.current) return;
+    prevMode.current = mode;
+    const ed = editorRef.current;
+    if (mode === 'markdown') {
+      const json = ed ? (ed.getJSON() as JSONContent) : initial;
+      const md = docToMarkdown(json);
+      mdOrigin.current = { md, json: JSON.stringify(json) };
+      mdRef.current = md;
+      setMdSource(md);
+    } else {
+      const next = bodyFromMarkdown();
+      body.current = next;
+      try {
+        ed?.commands.setContent(JSON.parse(next.json) as JSONContent, { emitUpdate: false });
+      } catch {
+        /* parse failure is impossible here — next.json came from us */
+      }
+      onWords(countWords(next.text));
+      scheduleSave();
+    }
+  }, [mode]);
+
+  // Flush any pending save on unmount (e.g. switching entries or leaving) — via
+  // the ref so markdown edits made right before unmount are committed.
   useEffect(
     () => () => {
       if (saveTimer.current) {
         clearTimeout(saveTimer.current);
-        save();
+        saveRef.current();
       }
     },
     [],
@@ -348,7 +416,30 @@ function EntryEditor({
         <SyncBadge dirty={dirty} />
       </div>
 
-      <div ref={mountRef} />
+      {/* TipTap stays mounted (hidden) in markdown mode so toggling back is instant. */}
+      <div ref={mountRef} style={{ display: mode === 'markdown' ? 'none' : 'block' }} />
+      {mode === 'markdown' && (
+        <textarea
+          // Remount per entry so the seed value re-applies when markdown mode opens.
+          key={`md-${entry.id}`}
+          defaultValue={mdSource}
+          onInput={(ev) => {
+            mdRef.current = (ev.target as HTMLTextAreaElement).value;
+            scheduleSave();
+          }}
+          spellcheck={false}
+          autocapitalize="off"
+          autocorrect="off"
+          placeholder="# Markdown source…"
+          style={{
+            width: '100%', minHeight: 320, boxSizing: 'border-box', resize: 'vertical',
+            border: '1px solid var(--line)', borderRadius: 12, background: 'var(--surface-2)',
+            color: 'var(--ink)', padding: '16px 18px', outline: 'none',
+            fontFamily: 'var(--mono)', fontSize: desk ? 14 : 13.5, lineHeight: 1.7,
+            whiteSpace: 'pre', overflowWrap: 'normal', overflowX: 'auto', tabSize: 2,
+          }}
+        />
+      )}
       <SlashMenu handle={slashHandle} />
       <SlashMenu handle={wikiHandle} />
       <MathDialog handle={mathHandle} editor={editor} />
@@ -529,6 +620,11 @@ export function EditorScreen({
   const entry = entries.find((e) => e.id === entryId) ?? null;
   const [editor, setEditor] = useState<Editor | null>(null);
   const [words, setWords] = useState(0);
+  // WYSIWYG vs markdown-source editing — per entry, session-only: it resets to
+  // rich text whenever a different entry opens (and on reload).
+  const [mode, setMode] = useState<'rich' | 'markdown'>('rich');
+  useEffect(() => setMode('rich'), [entryId]);
+  const toggleMode = (): void => setMode((m) => (m === 'rich' ? 'markdown' : 'rich'));
   // The journal stays the active context even while no entry is open (e.g.
   // right after a delete) — the list, header, and "new entry" keep targeting it.
   const lastJournalId = useRef<string | null>(null);
@@ -600,7 +696,10 @@ export function EditorScreen({
         {/* editor */}
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 24px', borderBottom: '1px solid var(--line)' }}>
-            <EditorToolbar editor={editor} />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+              {entry && <ModeToggle mode={mode} onToggle={toggleMode} />}
+              {mode === 'rich' && <EditorToolbar editor={editor} />}
+            </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
               <span style={{ fontFamily: 'var(--ui)', fontSize: 12.5, color: 'var(--ink-3)' }}>{words} words</span>
               <SyncBadge />
@@ -610,7 +709,7 @@ export function EditorScreen({
           <div style={{ flex: 1, overflow: 'auto' }}>
             {entry ? (
               <div style={{ maxWidth: 660, margin: '0 auto', padding: '40px 32px 80px' }}>
-                <EntryEditor key={entry.id} entry={entry} desk onEditorReady={setEditor} onWords={setWords} onOpenEntry={onSelectEntry} />
+                <EntryEditor key={entry.id} entry={entry} desk mode={mode} onEditorReady={setEditor} onWords={setWords} onOpenEntry={onSelectEntry} />
               </div>
             ) : (
               empty
@@ -644,17 +743,18 @@ export function EditorScreen({
       <div style={{ flex: 1, overflow: 'auto' }}>
         {entry ? (
           <div style={{ padding: '6px 22px 120px' }}>
-            <EntryEditor key={entry.id} entry={entry} desk={false} onEditorReady={setEditor} onWords={setWords} onOpenEntry={onSelectEntry} />
+            <EntryEditor key={entry.id} entry={entry} desk={false} mode={mode} onEditorReady={setEditor} onWords={setWords} onOpenEntry={onSelectEntry} />
           </div>
         ) : (
           empty
         )}
       </div>
 
-      {/* floating format toolbar */}
+      {/* floating format toolbar — the mode toggle rides alongside it */}
       {entry && (
-        <div style={{ position: 'absolute', left: 14, right: 14, bottom: 30, display: 'flex', justifyContent: 'center' }}>
-          <EditorToolbar editor={editor} floating />
+        <div style={{ position: 'absolute', left: 14, right: 14, bottom: 30, display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 8 }}>
+          <ModeToggle mode={mode} onToggle={toggleMode} floating />
+          {mode === 'rich' && <EditorToolbar editor={editor} floating />}
         </div>
       )}
     </div>

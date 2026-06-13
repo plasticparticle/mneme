@@ -47,6 +47,43 @@ function useEditorTick(editor: Editor | null): void {
   }, [editor]);
 }
 
+/** Switches the editor between rich-text (WYSIWYG) and markdown-source editing.
+ * Lives next to the formatting toolbar; the label shows the active mode. */
+export function ModeToggle({
+  mode,
+  onToggle,
+  floating,
+}: {
+  mode: 'rich' | 'markdown';
+  onToggle: () => void;
+  floating?: boolean;
+}): VNode {
+  const md = mode === 'markdown';
+  const h = floating ? 40 : 34;
+  return (
+    <button
+      title={md ? 'Switch to rich text editing' : 'Switch to markdown source'}
+      onMouseDown={(ev) => {
+        ev.preventDefault(); // don't steal the editor selection
+        onToggle();
+      }}
+      style={{
+        display: 'inline-flex', alignItems: 'center', gap: floating ? 0 : 6, flexShrink: 0,
+        height: h, padding: floating ? 0 : '0 11px', width: floating ? h : undefined,
+        justifyContent: 'center', borderRadius: floating ? 14 : 10, cursor: 'pointer',
+        border: '1px solid var(--line)',
+        background: md ? 'var(--accent-soft)' : 'var(--surface)',
+        color: md ? 'var(--accent-ink)' : 'var(--ink-2)',
+        boxShadow: floating ? '0 10px 30px rgba(40,28,18,.18)' : 'none',
+        fontFamily: 'var(--ui)', fontSize: 12.5, fontWeight: 600,
+      }}
+    >
+      <Icon name="code" size={floating ? 20 : 16} color={md ? 'var(--accent-ink)' : 'var(--ink-2)'} />
+      {!floating && (md ? 'Markdown' : 'Rich text')}
+    </button>
+  );
+}
+
 export function EditorToolbar({ editor, floating }: { editor: Editor | null; floating?: boolean }): VNode {
   useEditorTick(editor);
   const big = !!floating;

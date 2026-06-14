@@ -23,8 +23,8 @@ project. Scaffolded so far:
   `platform/keystore.ts`; passphrase unlock on cold start, 15-min inactivity auto-lock + manual
   "Lock journal", phrase rotation re-seals the new seed, and a mnemonic sign-in without a passphrase
   clears the seal). Entries are **durable**: a
-  per-owner wa-sqlite DB on OPFS (`src/db/`, forward-only client migrations, currently v4 —
-  entries, media, templates, media tombstones; plaintext by §5a design) is the local source of
+  per-owner wa-sqlite DB on OPFS (`src/db/`, forward-only client migrations, currently v6 —
+  entries, media, templates, media tombstones, journals, interview types; plaintext by §5a design) is the local source of
   truth, seeded once with sample content and merged with synced entries; dirty-flag outboxes let
   edits, deletes, and media uploads survive offline restarts. The editor is real **TipTap**
   (`src/editor/`: toolbar, `/` slash palette, inline media nodes). Entry bodies are
@@ -128,6 +128,25 @@ table) and "Study notes" — fresh vaults only, since builtin seeding is all-or-
 check: `pnpm --filter client exec tsx scripts/labbook-repro.ts` (jsdom, no relay needed).
 Deliberately NOT built: compliance-grade ELN features — signed immutable records fight LWW + E2EE.
 
+**Location / travel maps** (§10 feature-completion): an entry can embed a **single pinned place or a
+from→to journey** with a **frozen map** and an optional **travel photo**. A new block-atom node
+`locationMap` (`editor/location.tsx`) holds `{from, to, zoom, map, photo}` inside bodyJson exactly
+like the media nodes — coordinates/labels stay in the encrypted body; the relay only ever sees random
+media ids. The map is rendered **once** at insert time: `location/staticmap.ts` composites
+OpenStreetMap raster tiles onto a canvas (`crossOrigin='anonymous'` keeps it un-tainted), draws
+pin(s) + a route line, and the result is stored as a normal `kind:'image'` media row — so opening the
+entry later (or on another device) decrypts that image and makes **no further third-party requests**.
+Endpoints come from address search (`location/geocode.ts` → OSM Nominatim, the one per-insert leak),
+browser geolocation, or raw `lat,lng` (the latter two leak nothing). Composer dialog
+`ui/LocationPicker.tsx` (`/` "Location" command), with privacy copy mirroring the AI cloud card.
+`docMediaIds` counts the snapshot + photo so entry/journal deletion purges them local + relay;
+`docToText`/`DocPreview` surface the place names. The node is registered conditionally (needs media
+handlers, reused from `state/data.tsx`). Regression check:
+`pnpm --filter client exec tsx scripts/location-repro.ts` (jsdom: projection math + node + doc
+helpers; the canvas/tile compositor is verified manually). See docs/SECURITY.md §2 "Location
+snapshots". Deliberately NOT built: live/pan-zoom maps, road-routed directions (the line is
+straight), offline self-hosted tiles.
+
 **Opt-in AI assistant** (client-only; off by default; docs/SECURITY.md §2 "opt-in AI assistant"):
 `src/ai/` holds a two-backend provider abstraction — Anthropic (BYO API key, direct browser→API
 calls via the dangerous-direct-browser-access CORS header) and Ollama (fully local) — behind one
@@ -147,8 +166,37 @@ drop on lock, re-seal under the new seed on phrase rotation, cleared on vault de
 vault's record fails the AEAD tag → unconfigured). Wire-path check:
 `pnpm --filter client exec tsx scripts/ai-roundtrip.ts` (Ollama chat step skips when not running).
 
+**Guided interview + AI entry writing** (extends the opt-in assistant; off unless AI is enabled) is
+in: the AI now *writes* entries, not just reads them. **"Daily interview"** (`ui/GuidedInterview.tsx`,
+desktop sidebar row / mobile Preferences, gated on `aiSettings.enabled` like Ask-my-journal) runs a
+short Q&A — the model asks one question at a time, then **synthesizes a draft entry the user reviews
+before saving** (no agentic tool-calling; the text-streaming `AiProvider.chat` is unchanged). A
+**Freeform draft** option in the same sheet turns a one-line brief into an entry through the same
+review→save path. Saved entries are tagged with the interview type's **name as a label**, and
+starting an interview feeds the model the recent same-label entries (`ai/interview.ts`
+`buildInterviewHistory`) so repeated runs stay continuous ("history-aware"). Synthesis emits simple
+Markdown that a new **`editor/doc.ts markdownToDoc`** (headings/lists/quotes/paragraphs, plain-text
+runs) turns into a real entry doc; prompts live in `ai/prompts.ts`. **Interview types** are built-in
+**and** user-created, and sync exactly like templates — a new encrypted record kind (`kind:
+'interviewType'` inside the ciphertext, `sync/engine.ts`) so **no server changes**: same once-per-
+device pristine/builtin seeding (`data/interviews.ts`), supersede-on-sync, dirty-flag outbox, local
+`interview_types` table (schema **v6**), and phrase-rotation carry alongside templates. Manager sheet
+`ui/InterviewTypes.tsx` (Preferences → Assistant, or "Manage interview types" inside the picker).
+Wire-path check: `pnpm --filter client exec tsx scripts/interview-types-roundtrip.ts` (relay running).
+
+**Day One import** (§10 step 7, the first import path) is in: Preferences → Vault → "Import from
+Day One" (`ui/ImportDayOne.tsx`) takes a Day One **JSON export .zip** and rebuilds it locally as
+encrypted entries. `src/import/` does the work — `dayone.ts` unzips (fflate) and resolves each
+entry's media moments to bytes, `markdown.ts` is a scoped Markdown→ProseMirror converter (headings,
+marks, lists/tasks, quotes, fenced code, `dayone-moment://` media refs → placeholder nodes),
+`run.ts` orchestrates: Day One journals become Mneme notebooks (matched by name, else created),
+each entry is created then media is encrypted+attached via the normal `addMedia` path (consecutive
+images group into a gallery) and the original `creationDate`/tags are written back. **No special
+relay path** — imported records encrypt and sync exactly like hand-authored ones; the zip never
+leaves the device. Wire-path check: `pnpm --filter client exec tsx scripts/dayone-import.ts`.
+
 Not yet: FTS5 (blocked on a custom wa-sqlite wasm build), push transport + reminders UI (step 6),
-export/import (step 7), Tauri shells (step 8) and their OS-keychain at-rest storage (§6).
+export + non-Day-One import (step 7), Tauri shells (step 8) and their OS-keychain at-rest storage (§6).
 
 ### Frontend design source
 The product visual design is a **handoff bundle from Claude Design** (claude.ai/design), available at:

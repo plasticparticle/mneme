@@ -9,7 +9,9 @@ import { useAppData } from '../state/data';
 import type { JournalEntry, MediaAttachment, TemplateRecord } from '../sync/engine';
 import { useRichEditor } from '../editor/useRichEditor';
 import { insertMediaAttachment, insertImageGallery, docImages } from '../editor/media';
-import { EditorToolbar, ModeToggle } from '../editor/Toolbar';
+import { insertLocation } from '../editor/location';
+import { LocationPicker, type LocationInsert } from '../ui/LocationPicker';
+import { EditorToolbar, ModeSegmented } from '../editor/Toolbar';
 import { parseBody, docToText, docMediaIds, docEntryLinks } from '../editor/doc';
 import { docToMarkdown, markdownToDoc } from '../editor/markdown';
 import { buildEntryLinkItems } from '../editor/wikilink';
@@ -74,6 +76,8 @@ function EntryEditor({
 }): VNode {
   const { entries, updateEntry, addMedia, removeMedia, mediaBlob, aiSettings } = useAppData();
   const [capturing, setCapturing] = useState<'video' | 'audio' | null>(null);
+  // The location composer behind the "/" Location command.
+  const [locating, setLocating] = useState(false);
   // The template picker behind the "/" Template command.
   const [pickingTemplate, setPickingTemplate] = useState(false);
   // The confirm-before-insert dialog behind the "/" AI commands.
@@ -148,6 +152,7 @@ function EntryEditor({
         onAudio: () => setCapturing('audio'),
         onImage: () => imageInput.current?.click(),
         onFile: () => fileInput.current?.click(),
+        onLocation: () => setLocating(true),
         onTemplate: () => setPickingTemplate(true),
         // The dialog is the handle's listener; pos null means insert at the cursor.
         onMath: (kind) => mathHandle.listener?.({ kind, latex: '', pos: null }),
@@ -244,6 +249,7 @@ function EntryEditor({
     placeholder: 'Begin where you are…',
     slash: { handle: slashHandle, commands: slashCommands },
     media: mediaHandlers,
+    location: mediaHandlers,
     math: mathHandle,
     wiki,
     onFiles: (files) => void uploadFiles(files),
@@ -264,6 +270,18 @@ function EntryEditor({
   const attach = async (kind: MediaAttachment['kind'], blob: Blob, durationMs: number): Promise<void> => {
     const att = await addMedia(entry.id, kind, blob, { durationMs });
     if (att && editor) insertMediaAttachment(editor, att);
+  };
+
+  // Store the frozen map snapshot (+ optional travel photo) as media, then embed
+  // the location card at the cursor. The map render already happened in the
+  // dialog; here we only persist the bytes and write the node.
+  const addLocation = async (data: LocationInsert): Promise<void> => {
+    const mapAtt = await addMedia(entry.id, 'image', data.map.blob, { name: 'map', width: data.map.width, height: data.map.height });
+    if (!mapAtt) return;
+    const photoAtt = data.photo
+      ? await addMedia(entry.id, 'image', data.photo, { name: data.photo.name, ...(await imageSize(data.photo)) })
+      : null;
+    if (editor) insertLocation(editor, { from: data.from, to: data.to, zoom: data.zoom, map: mapAtt, photo: photoAtt });
   };
 
   // Drop the chosen template's blocks in at the cursor (the "/" Template
@@ -383,7 +401,7 @@ function EntryEditor({
   }, [entries]);
 
   return (
-    <div>
+    <div style={mode === 'markdown' ? { flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' } : undefined}>
       <LabelField
         labels={entry.labels}
         suggestions={labelSuggestions}
@@ -432,7 +450,7 @@ function EntryEditor({
           autocorrect="off"
           placeholder="# Markdown source…"
           style={{
-            width: '100%', minHeight: 320, boxSizing: 'border-box', resize: 'vertical',
+            width: '100%', flex: 1, minHeight: 320, boxSizing: 'border-box', resize: 'none',
             border: '1px solid var(--line)', borderRadius: 12, background: 'var(--surface-2)',
             color: 'var(--ink)', padding: '16px 18px', outline: 'none',
             fontFamily: 'var(--mono)', fontSize: desk ? 14 : 13.5, lineHeight: 1.7,
@@ -492,6 +510,17 @@ function EntryEditor({
         />
       )}
 
+      {locating && (
+        <LocationPicker
+          desk={desk}
+          onClose={() => setLocating(false)}
+          onInsert={(data) => {
+            void addLocation(data);
+            setLocating(false);
+          }}
+        />
+      )}
+
       {pickingTemplate && (
         <TemplatesSheet
           desk={desk}
@@ -533,7 +562,21 @@ function EntryEditor({
 // ⋯ menu in the editor header — holds the destructive entry actions. Deleting
 // tombstones the entry (syncs to every device) and removes its recordings from
 // this device and the relay, so it always confirms first.
-function EntryMenu({ desk, entry, onDeleted }: { desk: boolean; entry: JournalEntry | null; onDeleted: () => void }): VNode {
+function EntryMenu({
+  desk,
+  entry,
+  onDeleted,
+  mode,
+  onToggleMode,
+}: {
+  desk: boolean;
+  entry: JournalEntry | null;
+  onDeleted: () => void;
+  /** When provided, the menu hosts the rich-text ⇄ markdown switch (used on mobile,
+   * where the segmented control doesn't fit the header). */
+  mode?: 'rich' | 'markdown';
+  onToggleMode?: () => void;
+}): VNode {
   const { deleteEntry } = useAppData();
   const [open, setOpen] = useState(false);
   const [confirming, setConfirming] = useState(false);
@@ -564,7 +607,22 @@ function EntryMenu({ desk, entry, onDeleted }: { desk: boolean; entry: JournalEn
       {open && entry && (
         <>
           <div onClick={() => setOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 65 }} />
-          <div style={{ position: 'absolute', top: 'calc(100% + 6px)', right: 0, zIndex: 66, minWidth: 180, background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 12, boxShadow: '0 10px 30px rgba(30,20,12,.18)', padding: 5 }}>
+          <div style={{ position: 'absolute', top: 'calc(100% + 6px)', right: 0, zIndex: 66, minWidth: 196, background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 12, boxShadow: '0 10px 30px rgba(30,20,12,.18)', padding: 5 }}>
+            {onToggleMode && (
+              <>
+                <button
+                  onClick={() => {
+                    setOpen(false);
+                    onToggleMode();
+                  }}
+                  style={{ display: 'flex', alignItems: 'center', gap: 9, width: '100%', textAlign: 'left', padding: '9px 11px', borderRadius: 8, border: 'none', background: 'transparent', cursor: 'pointer', fontFamily: 'var(--ui)', fontSize: 13.5, fontWeight: 600, color: 'var(--ink)' }}
+                >
+                  <Icon name={mode === 'markdown' ? 'feather' : 'code'} size={15} color="var(--ink-2)" />
+                  {mode === 'markdown' ? 'Edit as rich text' : 'Edit as Markdown'}
+                </button>
+                <div style={{ height: 1, background: 'var(--line)', margin: '5px 6px' }} />
+              </>
+            )}
             <button
               onClick={() => {
                 setOpen(false);
@@ -696,8 +754,8 @@ export function EditorScreen({
         {/* editor */}
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 24px', borderBottom: '1px solid var(--line)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
-              {entry && <ModeToggle mode={mode} onToggle={toggleMode} />}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
+              {entry && <ModeSegmented mode={mode} onChange={setMode} />}
               {mode === 'rich' && <EditorToolbar editor={editor} />}
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
@@ -708,7 +766,7 @@ export function EditorScreen({
           </div>
           <div style={{ flex: 1, overflow: 'auto' }}>
             {entry ? (
-              <div style={{ maxWidth: 660, margin: '0 auto', padding: '40px 32px 80px' }}>
+              <div style={{ maxWidth: 660, margin: '0 auto', padding: '40px 32px 80px', boxSizing: 'border-box', ...(mode === 'markdown' ? { minHeight: '100%', display: 'flex', flexDirection: 'column' } : {}) }}>
                 <EntryEditor key={entry.id} entry={entry} desk mode={mode} onEditorReady={setEditor} onWords={setWords} onOpenEntry={onSelectEntry} />
               </div>
             ) : (
@@ -736,13 +794,13 @@ export function EditorScreen({
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <ConnChip compact />
           <button title="New entry" onClick={() => onNew(entry?.journalId)} style={{ width: 36, height: 36, borderRadius: 999, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'transparent', border: 'none', cursor: 'pointer' }}><Icon name="plus" size={20} color="var(--accent-ink)" /></button>
-          <EntryMenu desk={false} entry={entry} onDeleted={handleDeleted} />
+          <EntryMenu desk={false} entry={entry} onDeleted={handleDeleted} mode={mode} onToggleMode={toggleMode} />
         </div>
       </div>
 
       <div style={{ flex: 1, overflow: 'auto' }}>
         {entry ? (
-          <div style={{ padding: '6px 22px 120px' }}>
+          <div style={{ padding: '6px 22px 120px', boxSizing: 'border-box', ...(mode === 'markdown' ? { minHeight: '100%', display: 'flex', flexDirection: 'column' } : {}) }}>
             <EntryEditor key={entry.id} entry={entry} desk={false} mode={mode} onEditorReady={setEditor} onWords={setWords} onOpenEntry={onSelectEntry} />
           </div>
         ) : (
@@ -750,11 +808,11 @@ export function EditorScreen({
         )}
       </div>
 
-      {/* floating format toolbar — the mode toggle rides alongside it */}
-      {entry && (
-        <div style={{ position: 'absolute', left: 14, right: 14, bottom: 30, display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 8 }}>
-          <ModeToggle mode={mode} onToggle={toggleMode} floating />
-          {mode === 'rich' && <EditorToolbar editor={editor} floating />}
+      {/* floating format toolbar — formatting only; the mode switch lives in the
+          ⋯ entry menu, and the bar steps aside entirely in markdown mode. */}
+      {entry && mode === 'rich' && (
+        <div style={{ position: 'absolute', left: 14, right: 14, bottom: 30, display: 'flex', justifyContent: 'center' }}>
+          <EditorToolbar editor={editor} floating />
         </div>
       )}
     </div>

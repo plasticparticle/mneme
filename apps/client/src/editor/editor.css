@@ -160,6 +160,15 @@
   outline-offset: 2px;
 }
 
+/* Location/map cards (editor/location.tsx node view) */
+.mneme-prose .mneme-location-node {
+  margin: calc(var(--editor-gap) * 1.1) 0;
+}
+.mneme-prose .mneme-location-node.ProseMirror-selectednode > div {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 /* Math (KaTeX) nodes — @tiptap/extension-mathematics */
 .mneme-prose [data-type='inline-math'],
 .mneme-prose [data-type='block-math'] {

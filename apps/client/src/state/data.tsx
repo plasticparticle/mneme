@@ -15,12 +15,13 @@ import { sealSeed, sealWithKey, openSeed, type WrapKey } from '../crypto/seedloc
 import { loadSealedSeed, storeSealedSeed, clearSealedSeed, loadAiSettingsRecord, storeAiSettingsRecord, clearAiSettingsRecord } from '../platform/keystore';
 import { sealAiSettings, openAiSettings } from '../ai/settings';
 import type { AiSettings } from '../ai/types';
-import { pushEntries, pushTemplates, pullEntries, type JournalEntry, type MediaAttachment, type TemplateRecord } from '../sync/engine';
+import { pushEntries, pushTemplates, pushInterviewTypes, pullEntries, type JournalEntry, type MediaAttachment, type TemplateRecord, type InterviewType } from '../sync/engine';
 import { uploadMedia, downloadMedia } from '../sync/media';
 import { rotateAccount, type RotationProgress } from '../sync/rotate';
 import { newEntryId, newMediaId, newTemplateId } from '../sync/ids';
 import { ENTRIES, JOURNALS, type Journal } from '../data/sample';
 import { seedBuiltinTemplates } from '../data/templates';
+import { seedBuiltinInterviews } from '../data/interviews';
 import type { JSONContent } from '@tiptap/core';
 import { blocksToDoc, textToDoc, docToText, docMediaIds } from '../editor/doc';
 import { LocalDb, destroyOwnerDb, type MediaRecord } from '../db';
@@ -50,6 +51,9 @@ interface AppData {
   // Entry templates — built-in seeds and user-created records alike, tombstones
   // included (callers filter on `deleted`).
   templates: TemplateRecord[];
+  // Guided-interview types — built-in seeds and user-created records alike,
+  // tombstones included (callers filter on `deleted`). Sync like templates.
+  interviewTypes: InterviewType[];
   // AI assistant configuration (client-only feature; the relay is never involved).
   // null while locked or when the feature was never set up — every AI surface
   // hides itself in that case. Decrypted from its sealed IndexedDB record on
@@ -88,6 +92,10 @@ interface AppData {
   updateTemplate(id: string, patch: { name?: string; bodyText?: string; bodyJson?: string }): void;
   /** Tombstones the template (built-ins included) so the deletion reaches other devices. */
   deleteTemplate(id: string): void;
+  createInterviewType(input: { name: string; intro?: string; prompt?: string }): InterviewType;
+  updateInterviewType(id: string, patch: { name?: string; intro?: string; prompt?: string }): void;
+  /** Tombstones the interview type (built-ins included) so the deletion reaches other devices. */
+  deleteInterviewType(id: string): void;
   /**
    * Persist a freshly-recorded clip or uploaded file locally and queue its
    * background upload. Returns the attachment metadata for the caller to embed
@@ -223,6 +231,7 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
   // unlock; the sample notebooks seed once per device like entries/templates.
   const [journals, setJournals] = useState<Journal[]>([]);
   const [templates, setTemplates] = useState<TemplateRecord[]>([]);
+  const [interviewTypes, setInterviewTypes] = useState<InterviewType[]>([]);
   const [aiSettings, setAiSettings] = useState<AiSettings | null>(null);
 
   const session = useRef<Session | null>(null);
@@ -238,6 +247,8 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
   const pending = useRef<Map<string, JournalEntry>>(new Map());
   // Template outbox: created/edited/tombstoned templates not yet on the relay.
   const pendingTemplates = useRef<Map<string, TemplateRecord>>(new Map());
+  // Interview-type outbox: created/edited/tombstoned types not yet on the relay.
+  const pendingInterviewTypes = useRef<Map<string, InterviewType>>(new Map());
   // Media upload outbox: recordings (with bytes) not yet fully on the relay.
   const pendingMedia = useRef<Map<string, MediaRecord>>(new Map());
   // Media deletion queue: confirmed deletes the relay hasn't acknowledged yet
@@ -264,6 +275,7 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
       setPendingCount(
         pending.current.size +
           pendingTemplates.current.size +
+          pendingInterviewTypes.current.size +
           pendingMedia.current.size +
           pendingMediaDeletes.current.size,
       ),
@@ -309,12 +321,17 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
   const flush = useCallback(async () => {
     const s = session.current;
     if (!s) return;
-    if (pending.current.size === 0 && pendingTemplates.current.size === 0) {
+    if (
+      pending.current.size === 0 &&
+      pendingTemplates.current.size === 0 &&
+      pendingInterviewTypes.current.size === 0
+    ) {
       void flushMedia(); // no dirty records, but recordings may still be queued
       return;
     }
     const batch = [...pending.current.values()];
     const tplBatch = [...pendingTemplates.current.values()];
+    const itvBatch = [...pendingInterviewTypes.current.values()];
     setSaving(true);
     try {
       const applied = await pushEntries(relay, s.token, s.identity.dataKey, batch);
@@ -324,6 +341,9 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
       const appliedTpl = await pushTemplates(relay, s.token, s.identity.dataKey, tplBatch);
       for (const id of appliedTpl) pendingTemplates.current.delete(id);
       if (dbReady.current) void db.markTemplatesSynced(tplBatch.filter((t) => appliedTpl.has(t.id)));
+      const appliedItv = await pushInterviewTypes(relay, s.token, s.identity.dataKey, itvBatch);
+      for (const id of appliedItv) pendingInterviewTypes.current.delete(id);
+      if (dbReady.current) void db.markInterviewTypesSynced(itvBatch.filter((t) => appliedItv.has(t.id)));
       syncPendingCount();
       setStatusLive('online');
     } catch {
@@ -358,6 +378,21 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
           );
           if (superseded.size === 0) return merged;
           if (dbReady.current) void db.dropTemplates([...superseded]);
+          return merged.filter((t) => !superseded.has(t.id));
+        });
+      }
+      if (res.interviewTypes.length) {
+        if (dbReady.current) void db.mergeRemoteInterviewTypes(res.interviewTypes);
+        setInterviewTypes((prev) => {
+          const merged = mergeByLWW(prev, res.interviewTypes);
+          // Same built-in supersede pass as templates: a synced copy of a built-in
+          // retires this device's untouched seed of the same slug (different ids).
+          const syncedSlugs = new Set(res.interviewTypes.filter((t) => t.builtin).map((t) => t.builtin));
+          const superseded = new Set(
+            merged.filter((t) => t.pristine && t.builtin && syncedSlugs.has(t.builtin)).map((t) => t.id),
+          );
+          if (superseded.size === 0) return merged;
+          if (dbReady.current) void db.dropInterviewTypes([...superseded]);
           return merged.filter((t) => !superseded.has(t.id));
         });
       }
@@ -432,6 +467,13 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
           await db.seedTemplates(localTpl);
         }
         setTemplates(localTpl);
+        // Interview types: same once-per-device built-in seeding as templates.
+        let localItv = await db.allInterviewTypes();
+        if ((await db.interviewTypeCount()) === 0) {
+          localItv = seedBuiltinInterviews(Date.now());
+          await db.seedInterviewTypes(localItv);
+        }
+        setInterviewTypes(localItv);
         // Journals: same once-per-device seeding (a tombstoned sample notebook
         // keeps its row, so deleting one sticks across unlocks).
         let localJournals = await db.allJournals();
@@ -443,6 +485,7 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
         // Rebuild the outboxes from work left unsynced by a previous offline session.
         for (const e of await db.dirtyEntries()) pending.current.set(e.id, e);
         for (const t of await db.dirtyTemplates()) pendingTemplates.current.set(t.id, t);
+        for (const t of await db.dirtyInterviewTypes()) pendingInterviewTypes.current.set(t.id, t);
         for (const m of await db.unsyncedMedia()) pendingMedia.current.set(m.id, m);
         for (const id of await db.mediaTombstones()) pendingMediaDeletes.current.add(id);
         syncPendingCount();
@@ -451,6 +494,7 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
         dbReady.current = false;
         setEntries((prev) => (prev.length ? prev : seedEntries()));
         setTemplates((prev) => (prev.length ? prev : seedBuiltinTemplates(Date.now())));
+        setInterviewTypes((prev) => (prev.length ? prev : seedBuiltinInterviews(Date.now())));
         setJournals((prev) => (prev.length ? prev : JOURNALS));
       }
       try {
@@ -517,12 +561,14 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
     cursor.current = 0;
     pending.current.clear();
     pendingTemplates.current.clear();
+    pendingInterviewTypes.current.clear();
     pendingMedia.current.clear();
     pendingMediaDeletes.current.clear();
     if (dbReady.current) db.close();
     dbReady.current = false;
     setEntries([]);
     setTemplates([]);
+    setInterviewTypes([]);
     setAiSettings(null); // the decrypted API key leaves memory with the keys
     setJournals([]);
     setPendingCount(0);
@@ -649,6 +695,65 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
         const next: TemplateRecord = { ...cur, deleted: true, pristine: false, updatedAt: now };
         if (dbReady.current) void db.putLocalTemplate(next);
         pendingTemplates.current.set(id, next);
+        syncPendingCount();
+        void flush();
+        return mergeByLWW(prev, [next]);
+      });
+    },
+    [db, flush, syncPendingCount],
+  );
+
+  const createInterviewType: AppData['createInterviewType'] = useCallback(
+    (input) => {
+      const now = Date.now();
+      const t: InterviewType = {
+        id: newTemplateId(),
+        name: input.name,
+        intro: input.intro ?? '',
+        prompt: input.prompt ?? '',
+        createdAt: now,
+        updatedAt: now,
+      };
+      setInterviewTypes((prev) => mergeByLWW(prev, [t]));
+      if (dbReady.current) void db.putLocalInterviewType(t);
+      pendingInterviewTypes.current.set(t.id, t);
+      syncPendingCount();
+      void flush();
+      return t;
+    },
+    [db, flush, syncPendingCount],
+  );
+
+  const updateInterviewType: AppData['updateInterviewType'] = useCallback(
+    (id, patch) => {
+      const now = Date.now();
+      setInterviewTypes((prev) => {
+        const cur = prev.find((t) => t.id === id);
+        if (!cur) return prev;
+        // The first edit of a built-in seed turns it into a real synced record
+        // (pristine cleared); the builtin slug rides along so other devices retire it.
+        const next: InterviewType = { ...cur, ...patch, pristine: false, updatedAt: now };
+        if (dbReady.current) void db.putLocalInterviewType(next);
+        pendingInterviewTypes.current.set(id, next);
+        syncPendingCount();
+        void flush();
+        return mergeByLWW(prev, [next]);
+      });
+    },
+    [db, flush, syncPendingCount],
+  );
+
+  const deleteInterviewType: AppData['deleteInterviewType'] = useCallback(
+    (id) => {
+      const now = Date.now();
+      setInterviewTypes((prev) => {
+        const cur = prev.find((t) => t.id === id);
+        if (!cur) return prev;
+        // Tombstone (built-ins included) so the deletion out-syncs other devices'
+        // copies — and, via the builtin slug, their pristine seeds too.
+        const next: InterviewType = { ...cur, deleted: true, pristine: false, updatedAt: now };
+        if (dbReady.current) void db.putLocalInterviewType(next);
+        pendingInterviewTypes.current.set(id, next);
         syncPendingCount();
         void flush();
         return mergeByLWW(prev, [next]);
@@ -856,6 +961,7 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
           newMnemonic,
           localDirty: [...pending.current.values()],
           localDirtyTemplates: [...pendingTemplates.current.values()],
+          localDirtyInterviewTypes: [...pendingInterviewTypes.current.values()],
           localMediaBytes: (id) => Promise.resolve(mediaById.get(id)?.data ?? null),
           onProgress,
         });
@@ -867,12 +973,14 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
         cursor.current = 0;
         pending.current.clear();
         pendingTemplates.current.clear();
+        pendingInterviewTypes.current.clear();
         pendingMedia.current.clear();
 
         // Everything the relay holds lands non-dirty; local-only rows (e.g. the
-        // sample timeline and pristine template seeds) move across unchanged.
+        // sample timeline and pristine template/interview seeds) move across unchanged.
         const all = mergeByLWW(entries, result.entries);
         const allTpl = mergeByLWW(templates, result.templates);
+        const allItv = mergeByLWW(interviewTypes, result.interviewTypes);
 
         // Re-home the local DB under the new owner_id, then destroy the old
         // per-owner directory — it holds plaintext under a possibly-leaked identity.
@@ -885,6 +993,8 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
             // is on the new relay account already, so it lands non-dirty.
             await db.seedTemplates(allTpl.filter((t) => t.pristine));
             await db.mergeRemoteTemplates(allTpl.filter((t) => !t.pristine));
+            await db.seedInterviewTypes(allItv.filter((t) => t.pristine));
+            await db.mergeRemoteInterviewTypes(allItv.filter((t) => !t.pristine));
             // Journals are local-only — carry the current set into the new DB
             // (marked as seeded, so the samples don't re-appear on top).
             await db.seedJournals(journals);
@@ -930,6 +1040,7 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
 
         setEntries(all);
         setTemplates(allTpl);
+        setInterviewTypes(allItv);
         syncPendingCount();
         setStatus('online'); // re-arms the background loop against the new account
       } catch (e) {
@@ -939,7 +1050,7 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
         throw e;
       }
     },
-    [relay, db, entries, templates, journals, aiSettings, syncPendingCount],
+    [relay, db, entries, templates, interviewTypes, journals, aiSettings, syncPendingCount],
   );
 
   // Permanently delete the vault. Relay first — only after the server confirms
@@ -1013,6 +1124,6 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
   // and the outbox can push them) but every consumer sees only live entries.
   const liveEntries = useMemo(() => entries.filter((e) => !e.deleted), [entries]);
 
-  const value: AppData = { status, hasVault, ownerId, pendingCount, saving, bootstrapping, entries: liveEntries, journals: journalsWithCounts, templates, aiSettings, saveAiSettings, signIn, unlock, lock, createEntry, updateEntry, deleteEntry, newJournal, deleteJournal, createTemplate, updateTemplate, deleteTemplate, addMedia, removeMedia, mediaBlob, rotatePhrase, deleteVault };
+  const value: AppData = { status, hasVault, ownerId, pendingCount, saving, bootstrapping, entries: liveEntries, journals: journalsWithCounts, templates, interviewTypes, aiSettings, saveAiSettings, signIn, unlock, lock, createEntry, updateEntry, deleteEntry, newJournal, deleteJournal, createTemplate, updateTemplate, deleteTemplate, createInterviewType, updateInterviewType, deleteInterviewType, addMedia, removeMedia, mediaBlob, rotatePhrase, deleteVault };
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

@@ -92,7 +92,27 @@ export const MIGRATIONS: string[] = [
     deleted     INTEGER NOT NULL DEFAULT 0
   );
   `,
-  // ── v6 (FUTURE) — FTS5 full-text index (§3 mandates FTS5 for search) ──
+  // ── v6 — guided-interview types (§10 step 7 sibling) ──
+  // Interview types sync as encrypted blobs through the entry oplog exactly like
+  // templates (the record kind lives inside the ciphertext). Same builtin/pristine
+  // semantics; `prompt` is the question strategy the AI follows during an interview,
+  // `intro` the one-line blurb shown in the picker.
+  `
+  CREATE TABLE interview_types (
+    id          TEXT PRIMARY KEY,           -- random 128-bit hex, never date-encoded (§3)
+    name        TEXT NOT NULL DEFAULT '',
+    intro       TEXT NOT NULL DEFAULT '',   -- one-line picker description
+    prompt      TEXT NOT NULL DEFAULT '',   -- the question strategy (system-prompt fragment)
+    builtin     TEXT,                       -- built-in slug, NULL for user types
+    pristine    INTEGER NOT NULL DEFAULT 0, -- 1 → untouched built-in seed (local-only)
+    created_at  INTEGER NOT NULL,           -- ms since epoch
+    updated_at  INTEGER NOT NULL,           -- ms — also the LWW clock (§3)
+    deleted     INTEGER NOT NULL DEFAULT 0,
+    dirty       INTEGER NOT NULL DEFAULT 0  -- 1 → still waiting in the sync outbox
+  );
+  CREATE INDEX interview_types_dirty ON interview_types(dirty) WHERE dirty = 1;
+  `,
+  // ── v7 (FUTURE) — FTS5 full-text index (§3 mandates FTS5 for search) ──
   // The published wa-sqlite 1.0.0 wasm builds are compiled WITHOUT the FTS5
   // module, so creating this table fails today ("no such module: fts5"). When we
   // ship an FTS5-enabled wasm, append the migration below as a forward-only step

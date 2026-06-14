@@ -57,9 +57,30 @@ export interface TemplateRecord {
   deleted?: boolean;
 }
 
+// A guided-interview type (built-in or user-created). Syncs through the same oplog
+// as entries and templates — the `kind` lives INSIDE the ciphertext, so the relay
+// cannot tell an interview-type blob from an entry blob. Same builtin-slug + pristine
+// semantics as TemplateRecord. The `prompt` is the question strategy the AI follows.
+export interface InterviewType {
+  id: string; // random 128-bit hex (newTemplateId) — never date-encoded (§3)
+  name: string;
+  /** One-line description shown in the picker. */
+  intro: string;
+  /** The question strategy that drives the interview (system-prompt fragment). */
+  prompt: string;
+  /** Built-in slug ('daily-checkin', …); survives edits/tombstones so other devices retire their seed. */
+  builtin?: string;
+  /** Local-only: an untouched built-in seed. Never serialized; cleared on first edit. */
+  pristine?: boolean;
+  createdAt: number; // ms
+  updatedAt: number; // ms — also the lww_clock
+  deleted?: boolean;
+}
+
 // What actually gets encrypted (everything except the cleartext id/clock/deleted flag).
-// `kind` is absent on entries (the original wire shape) and 'template' on templates;
-// decoding routes on it, so pre-template blobs keep decoding as entries.
+// `kind` is absent on entries (the original wire shape), 'template' on templates, and
+// 'interviewType' on interview types; decoding routes on it, so pre-template blobs keep
+// decoding as entries.
 interface EntryBody {
   kind?: undefined;
   journalId: string;
@@ -82,7 +103,17 @@ interface TemplateBody {
   updatedAt: number;
 }
 
-type RecordBody = EntryBody | TemplateBody;
+interface InterviewTypeBody {
+  kind: 'interviewType';
+  name: string;
+  intro: string;
+  prompt: string;
+  builtin?: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+type RecordBody = EntryBody | TemplateBody | InterviewTypeBody;
 
 export function encryptEntry(dataKey: Uint8Array, e: JournalEntry): Uint8Array {
   const body: EntryBody = {
@@ -149,9 +180,40 @@ export async function pushTemplates(
   return new Set(resp.results.filter((r) => r.applied).map((r) => r.entry_id));
 }
 
+export function toPushInterviewType(dataKey: Uint8Array, t: InterviewType): PushEntry {
+  const body: InterviewTypeBody = {
+    kind: 'interviewType',
+    name: t.name,
+    intro: t.intro,
+    prompt: t.prompt,
+    builtin: t.builtin,
+    createdAt: t.createdAt,
+    updatedAt: t.updatedAt,
+  };
+  return {
+    entry_id: t.id,
+    lww_clock: t.updatedAt,
+    ciphertext: toBase64(encrypt(dataKey, utf8(JSON.stringify(body)))),
+    deleted: t.deleted ?? false,
+  };
+}
+
+/** Push interview types through the same oplog; returns the accepted ids. */
+export async function pushInterviewTypes(
+  relay: RelayClient,
+  token: string,
+  dataKey: Uint8Array,
+  types: InterviewType[],
+): Promise<Set<string>> {
+  if (types.length === 0) return new Set();
+  const resp = await relay.push(token, types.map((t) => toPushInterviewType(dataKey, t)));
+  return new Set(resp.results.filter((r) => r.applied).map((r) => r.entry_id));
+}
+
 export interface PullResult {
   entries: JournalEntry[];
   templates: TemplateRecord[];
+  interviewTypes: InterviewType[];
   cursor: number;
   more: boolean;
 }
@@ -166,6 +228,7 @@ export async function pullEntries(
   const resp = await relay.pull(token, since);
   const entries: JournalEntry[] = [];
   const templates: TemplateRecord[] = [];
+  const interviewTypes: InterviewType[] = [];
   for (const item of resp.entries) {
     const body = JSON.parse(fromUtf8(decrypt(dataKey, fromBase64(item.ciphertext)))) as RecordBody;
     if (body.kind === 'template') {
@@ -174,6 +237,17 @@ export async function pullEntries(
         name: body.name,
         bodyText: body.bodyText,
         bodyJson: body.bodyJson,
+        builtin: body.builtin,
+        createdAt: body.createdAt,
+        updatedAt: body.updatedAt,
+        deleted: item.deleted,
+      });
+    } else if (body.kind === 'interviewType') {
+      interviewTypes.push({
+        id: item.entry_id,
+        name: body.name,
+        intro: body.intro,
+        prompt: body.prompt,
         builtin: body.builtin,
         createdAt: body.createdAt,
         updatedAt: body.updatedAt,
@@ -194,5 +268,5 @@ export async function pullEntries(
       });
     }
   }
-  return { entries, templates, cursor: resp.cursor, more: resp.more };
+  return { entries, templates, interviewTypes, cursor: resp.cursor, more: resp.more };
 }

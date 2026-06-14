@@ -98,6 +98,17 @@ function renderNode(n: JSONContent, i: number): ComponentChildren {
         </div>
       );
     }
+    case 'locationMap': {
+      // Display-only marker; previews never resolve the snapshot bytes.
+      const from = (n.attrs?.from as { label?: unknown } | undefined)?.label;
+      const to = (n.attrs?.to as { label?: unknown } | undefined)?.label;
+      const label = `📍 ${typeof from === 'string' && from ? from : 'Location'}${typeof to === 'string' && to ? ` → ${to}` : ''}`;
+      return (
+        <div key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: 'var(--ui)', fontSize: '0.82em', color: 'var(--ink-3)', border: '1px dashed var(--line)', borderRadius: 9, padding: '4px 10px' }}>
+          {label}
+        </div>
+      );
+    }
     default:
       return <span key={i}>{kids}</span>;
   }

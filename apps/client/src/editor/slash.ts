@@ -48,6 +48,7 @@ export function buildSlashCommands(
     onTemplate?: () => void;
     onMath?: (kind: MathKind) => void;
     onLink?: () => void;
+    onLocation?: () => void;
     onAi?: (action: AiEditorAction) => void;
   } = {},
 ): SlashCommand[] {
@@ -132,6 +133,15 @@ export function buildSlashCommands(
       run: (e, r) => {
         e.chain().focus().deleteRange(r).run();
         opts.onTemplate?.();
+      },
+    });
+  }
+  if (opts.onLocation) {
+    commands.push({
+      title: 'Location', hint: 'Map a place or trip', icon: 'pin', keywords: 'map place travel trip journey gps coordinates address from to location route',
+      run: (e, r) => {
+        e.chain().focus().deleteRange(r).run();
+        opts.onLocation?.();
       },
     });
   }

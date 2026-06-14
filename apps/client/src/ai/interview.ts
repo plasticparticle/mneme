@@ -1,0 +1,51 @@
+// History for the guided interview: the entries this vault has already produced
+// from one interview type, so the question phase can refer back and the run feels
+// continuous week to week. Selection is purely over the decrypted in-memory
+// entries (matched by the type-name label that GuidedInterview applies on save);
+// nothing here touches the network.
+import type { JournalEntry } from '../sync/engine';
+import { parseBody, docToText } from '../editor/doc';
+
+// Past entries are only context for question-asking, so cap each one tightly and
+// keep the whole block small — the model needs gist, not full re-reading.
+const HISTORY_ENTRY_CAP = 1_500;
+export const HISTORY_BUDGET_CHARS = 6_000;
+
+export interface InterviewHistory {
+  text: string;
+  count: number;
+}
+
+function isoDate(ts: number): string {
+  const d = new Date(ts);
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
+/**
+ * Flatten the most recent same-type entries (newest first) into a budgeted block.
+ * `label` is the interview type's name, which GuidedInterview stores as an entry
+ * label on save — that label is how past runs of the same type are found.
+ */
+export function buildInterviewHistory(entries: JournalEntry[], label: string, budgetChars = HISTORY_BUDGET_CHARS): InterviewHistory {
+  const past = entries
+    .filter((e) => !e.deleted && e.labels.includes(label))
+    .sort((a, b) => b.createdAt - a.createdAt);
+
+  const blocks: string[] = [];
+  let used = 0;
+  for (const e of past) {
+    let text: string;
+    try {
+      text = docToText(parseBody(e.bodyJson, e.bodyText)).trim();
+    } catch {
+      text = e.bodyText;
+    }
+    if (text.length > HISTORY_ENTRY_CAP) text = `${text.slice(0, HISTORY_ENTRY_CAP)}\n[…]`;
+    const block = `### ${e.title || 'Untitled'}\nDate: ${isoDate(e.createdAt)}\n\n${text}`;
+    if (used + block.length > budgetChars) break;
+    blocks.push(block);
+    used += block.length;
+  }
+  return { text: blocks.join('\n---\n\n'), count: blocks.length };
+}

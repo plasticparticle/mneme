@@ -10,6 +10,7 @@ import type { EditorView } from '@tiptap/pm/view';
 import { buildExtensions, docToText } from './doc';
 import { slashExtension, type SlashCommand, type SlashHandle } from './slash';
 import { mediaAttachmentNode, mediaGalleryNode, type MediaNodeHandlers } from './media';
+import { locationNode, type LocationNodeHandlers } from './location';
 import type { MathHandle } from './math';
 import { wikiLinkSuggestion, type WikiLinkHandlers } from './wikilink';
 
@@ -27,6 +28,8 @@ export function useRichEditor(opts: {
   slash?: { handle: SlashHandle; commands: SlashCommand[] };
   /** Enables inline media nodes (required to open docs containing them). */
   media?: MediaNodeHandlers;
+  /** Enables the location/map node (required to open docs containing one). */
+  location?: LocationNodeHandlers;
   /** Enables click-to-edit on math nodes; the caller renders <MathDialog handle={...}>. */
   math?: MathHandle;
   /** Enables entry links: live titles + click-to-navigate, and (optionally) the
@@ -69,6 +72,7 @@ export function useRichEditor(opts: {
         ...buildExtensions(opts.placeholder, opts.math, opts.wiki?.handlers),
         ...(opts.slash ? [slashExtension(opts.slash.handle, opts.slash.commands)] : []),
         ...(opts.media ? [mediaAttachmentNode(opts.media), mediaGalleryNode(opts.media)] : []),
+        ...(opts.location ? [locationNode(opts.location)] : []),
         ...(opts.wiki?.suggest ? [wikiLinkSuggestion(opts.wiki.suggest.handle, opts.wiki.suggest.items)] : []),
       ],
       content: opts.initial,

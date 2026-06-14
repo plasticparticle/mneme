@@ -1,0 +1,368 @@
+// Guided interview — the AI conducts a short Q&A (or a one-line freeform brief),
+// then synthesizes a journal entry the user reviews before anything is saved.
+//
+// Two AI phases share one streaming path (ai/prompts.ts): the question phase
+// (interviewSystemPrompt drives one-question-at-a-time turns, primed with the
+// same-type history from ai/interview.ts so it feels continuous) and the
+// synthesis phase (interviewSynthesisPrompt rewrites the whole transcript into a
+// first-person entry as simple Markdown). On save, markdownToDoc turns that into
+// a real entry tagged with the interview type's name — that label is what
+// buildInterviewHistory matches next time. The transcript lives in component
+// state only; like Ask-my-journal, nothing about the conversation is persisted
+// or synced — only the entry the user chooses to save is.
+import type { JSX, VNode } from 'preact';
+import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
+import { Icon } from './Icon';
+import { Btn } from './primitives';
+import { useAppData } from '../state/data';
+import type { InterviewType } from '../sync/engine';
+import { makeProvider } from '../ai/provider';
+import {
+  interviewSystemPrompt,
+  interviewSynthesisPrompt,
+  interviewSynthesisUserMessage,
+  freeformDraftPrompt,
+} from '../ai/prompts';
+import { buildInterviewHistory, HISTORY_BUDGET_CHARS } from '../ai/interview';
+import { markdownToDoc, docToText } from '../editor/doc';
+import { DocPreview } from '../editor/DocPreview';
+import { toAiError, type AiMessage } from '../ai/types';
+
+const pStyle: JSX.CSSProperties = { fontFamily: 'var(--ui)', fontSize: 13, lineHeight: 1.55, color: 'var(--ink-2)', margin: 0 };
+
+// The seed turn that makes the model open with its first question (Anthropic
+// requires the conversation to start with a user message). Hidden from the UI.
+const SEED: AiMessage = { role: 'user', content: 'Please begin the interview with your first question.' };
+
+type Phase = 'pick' | 'interview' | 'brief' | 'review';
+
+export function GuidedInterviewSheet({
+  desk,
+  onClose,
+  onOpenEntry,
+  onManageTypes,
+}: {
+  desk: boolean;
+  onClose: () => void;
+  /** Open the freshly-saved entry in the editor. */
+  onOpenEntry: (id: string) => void;
+  /** Hand off to the interview-types manager (the sheet closes first). */
+  onManageTypes: () => void;
+}): VNode | null {
+  const { entries, journals, interviewTypes, aiSettings, createEntry } = useAppData();
+  const [phase, setPhase] = useState<Phase>('pick');
+  // The chosen interview type; null while picking or during a freeform draft.
+  const [type, setType] = useState<InterviewType | null>(null);
+  // Full API history including the hidden SEED turn; the UI renders messages.slice(1).
+  const [messages, setMessages] = useState<AiMessage[]>([]);
+  const [input, setInput] = useState('');
+  const [draft, setDraft] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const abortRef = useRef<AbortController | null>(null);
+  const logRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  const provider = useMemo(() => (aiSettings?.enabled ? makeProvider(aiSettings) : null), [aiSettings]);
+  const alive = useMemo(() => interviewTypes.filter((t) => !t.deleted), [interviewTypes]);
+
+  useEffect(() => () => abortRef.current?.abort(), []);
+  useEffect(() => {
+    logRef.current?.scrollTo({ top: logRef.current.scrollHeight });
+  }, [messages, phase]);
+  useEffect(() => {
+    if (phase === 'interview' || phase === 'brief') inputRef.current?.focus();
+  }, [phase]);
+
+  if (!provider || !aiSettings) return null;
+
+  const errorText = (e: unknown): string => {
+    const err = toAiError(e);
+    if (err.hint === 'aborted') return '';
+    return err.hint === 'auth'
+      ? 'The API key was rejected — check it in AI settings.'
+      : err.hint === 'refused'
+        ? 'The model declined to respond.'
+        : provider.local
+          ? 'Could not reach Ollama — is it running? (ollama serve)'
+          : `Request failed: ${err.message}`;
+  };
+
+  // Stream one assistant turn onto `messages` (the interview Q&A). On
+  // failure/abort the error is surfaced and the empty assistant bubble dropped.
+  const askTurn = async (system: string, history: AiMessage[]): Promise<void> => {
+    setMessages([...history, { role: 'assistant', content: '' }]);
+    setError('');
+    setBusy(true);
+    const ac = new AbortController();
+    abortRef.current = ac;
+    try {
+      await provider.chat({
+        system,
+        messages: history,
+        maxTokens: 512,
+        signal: ac.signal,
+        onToken: (t) =>
+          setMessages((prev) => {
+            const next = [...prev];
+            const last = next[next.length - 1];
+            next[next.length - 1] = { ...last, content: last.content + t };
+            return next;
+          }),
+      });
+    } catch (e) {
+      const msg = errorText(e);
+      if (msg) setError(msg);
+      // Drop an empty assistant bubble; keep any partial question.
+      setMessages((prev) => (prev[prev.length - 1]?.content === '' ? prev.slice(0, -1) : prev));
+    } finally {
+      setBusy(false);
+      abortRef.current = null;
+    }
+  };
+
+  const startInterview = (t: InterviewType): void => {
+    setType(t);
+    setPhase('interview');
+    const history = buildInterviewHistory(entries, t.name, provider.local ? Math.round(HISTORY_BUDGET_CHARS / 2) : HISTORY_BUDGET_CHARS);
+    void askTurn(interviewSystemPrompt(t, history.text), [SEED]);
+  };
+
+  const sendAnswer = (): void => {
+    const a = input.trim();
+    if (!a || busy || !type) return;
+    setInput('');
+    const history = buildInterviewHistory(entries, type.name, provider.local ? Math.round(HISTORY_BUDGET_CHARS / 2) : HISTORY_BUDGET_CHARS);
+    void askTurn(interviewSystemPrompt(type, history.text), [...messages, { role: 'user', content: a }]);
+  };
+
+  // Stream the synthesized entry (Markdown) into `draft` and move to review.
+  const synthesize = async (system: string, history: AiMessage[]): Promise<void> => {
+    setPhase('review');
+    setDraft('');
+    setError('');
+    setBusy(true);
+    const ac = new AbortController();
+    abortRef.current = ac;
+    try {
+      await provider.chat({
+        system,
+        messages: history,
+        maxTokens: 1536,
+        signal: ac.signal,
+        onToken: (t) => setDraft((prev) => prev + t),
+      });
+    } catch (e) {
+      const msg = errorText(e);
+      if (msg) setError(msg);
+    } finally {
+      setBusy(false);
+      abortRef.current = null;
+    }
+  };
+
+  // Finish the Q&A → synthesize from the real exchange (drop the hidden SEED).
+  const finishInterview = (): void => {
+    if (!type) return;
+    const qa = messages.slice(1).filter((m) => m.content.trim());
+    void synthesize(interviewSynthesisPrompt(type), [...qa, { role: 'user', content: interviewSynthesisUserMessage() }]);
+  };
+
+  const submitBrief = (): void => {
+    const brief = input.trim();
+    if (!brief || busy) return;
+    setInput('');
+    void synthesize(freeformDraftPrompt(), [{ role: 'user', content: brief }]);
+  };
+
+  const save = (): void => {
+    const text = draft.trim();
+    if (!text) return;
+    const doc = markdownToDoc(text);
+    const entry = createEntry({
+      // Same default notebook as a normal new entry (app.tsx newEntry).
+      journalId: journals[0]?.id ?? 'j-personal',
+      bodyJson: JSON.stringify(doc),
+      bodyText: docToText(doc),
+      // Tag with the interview type's name so future runs of the same type can
+      // find this entry as history (ai/interview.ts buildInterviewHistory).
+      labels: type ? [type.name] : [],
+    });
+    onOpenEntry(entry.id);
+    onClose();
+  };
+
+  // The transcript bubbles (interview phase) — SEED hidden.
+  const visibleTurns = messages.slice(1);
+  const canFinish = type !== null && visibleTurns.some((m) => m.role === 'user') && !busy;
+
+  const header = (title: string): VNode => (
+    <div style={{ padding: desk ? '18px 22px 12px' : '14px 20px 10px', borderBottom: '1px solid var(--line)' }}>
+      {!desk && <div style={{ width: 38, height: 4, borderRadius: 9, background: 'var(--line)', margin: '0 auto 12px' }} />}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+        <Icon name="mic" size={17} color="var(--accent)" />
+        <h3 style={{ fontFamily: 'var(--serif)', fontSize: 18, fontWeight: 500, color: 'var(--ink)', margin: 0, flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{title}</h3>
+        <span style={{ fontFamily: 'var(--mono)', fontSize: 10, letterSpacing: 0.4, textTransform: 'uppercase', color: provider.local ? 'var(--accent-ink)' : 'var(--ink-3)', background: provider.local ? 'var(--accent-soft)' : 'var(--paper)', border: `1px solid ${provider.local ? 'var(--accent-line)' : 'var(--line)'}`, borderRadius: 6, padding: '2px 7px' }}>
+          {provider.local ? 'on this device' : 'sent to Anthropic'}
+        </span>
+        <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, color: 'var(--ink-3)' }} aria-label="Close">
+          <Icon name="x" size={16} />
+        </button>
+      </div>
+    </div>
+  );
+
+  // ── phase: pick an interview type or freeform ──
+  const pickBody = (
+    <div style={{ flex: 1, overflowY: 'auto', padding: desk ? '16px 22px' : '14px 18px', display: 'flex', flexDirection: 'column', gap: 9 }}>
+      <p style={{ ...pStyle, marginBottom: 4 }}>
+        Pick an interview. I'll ask a few questions, then write your answers up as a journal entry you can review before saving.
+      </p>
+      {alive.map((t) => (
+        <button
+          key={t.id}
+          onClick={() => startInterview(t)}
+          style={{ textAlign: 'left', cursor: 'pointer', padding: '12px 14px', borderRadius: 12, background: 'var(--paper)', border: '1px solid var(--line)', display: 'flex', flexDirection: 'column', gap: 3 }}
+          onMouseEnter={(e) => (e.currentTarget.style.borderColor = 'var(--accent-line)')}
+          onMouseLeave={(e) => (e.currentTarget.style.borderColor = 'var(--line)')}
+        >
+          <span style={{ fontFamily: 'var(--serif)', fontSize: 15.5, fontWeight: 500, color: 'var(--ink)' }}>{t.name || 'Untitled'}</span>
+          {t.intro && <span style={{ ...pStyle, fontSize: 12.5, color: 'var(--ink-3)' }}>{t.intro}</span>}
+        </button>
+      ))}
+      <button
+        onClick={() => { setType(null); setInput(''); setPhase('brief'); }}
+        style={{ textAlign: 'left', cursor: 'pointer', padding: '12px 14px', borderRadius: 12, background: 'var(--surface-2)', border: '1px dashed var(--line)', display: 'flex', flexDirection: 'column', gap: 3 }}
+      >
+        <span style={{ fontFamily: 'var(--serif)', fontSize: 15.5, fontWeight: 500, color: 'var(--ink)' }}>Freeform draft</span>
+        <span style={{ ...pStyle, fontSize: 12.5, color: 'var(--ink-3)' }}>Describe an entry in a sentence and I'll draft it — no questions.</span>
+      </button>
+      <button
+        onClick={() => { onClose(); onManageTypes(); }}
+        style={{ alignSelf: 'flex-start', marginTop: 4, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--ink-3)', fontFamily: 'var(--ui)', fontSize: 12.5, display: 'inline-flex', alignItems: 'center', gap: 6 }}
+      >
+        <Icon name="list" size={14} /> Manage interview types
+      </button>
+    </div>
+  );
+
+  // ── phase: interview Q&A ──
+  const interviewBody = (
+    <>
+      <div ref={logRef} style={{ flex: 1, overflowY: 'auto', padding: desk ? '16px 22px' : '14px 18px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {visibleTurns.map((m, i) => (
+          <div
+            key={i}
+            style={{
+              alignSelf: m.role === 'user' ? 'flex-end' : 'flex-start',
+              maxWidth: '85%', padding: '10px 14px', borderRadius: 14,
+              background: m.role === 'user' ? 'var(--accent-soft)' : 'var(--paper)',
+              border: `1px solid ${m.role === 'user' ? 'var(--accent-line)' : 'var(--line)'}`,
+              fontFamily: m.role === 'user' ? 'var(--ui)' : 'var(--serif)',
+              fontSize: m.role === 'user' ? 13.5 : 15, lineHeight: 1.6, color: 'var(--ink)', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere',
+            }}
+          >
+            {m.content || (busy && i === visibleTurns.length - 1 ? '…' : '')}
+          </div>
+        ))}
+        {error && <p style={{ ...pStyle, color: 'var(--accent-ink)' }}>{error}</p>}
+      </div>
+      <div style={{ borderTop: '1px solid var(--line)', padding: desk ? '12px 22px 16px' : '10px 18px 18px', display: 'flex', flexDirection: 'column', gap: 9 }}>
+        <form onSubmit={(e) => { e.preventDefault(); sendAnswer(); }} style={{ display: 'flex', gap: 9, alignItems: 'flex-end' }}>
+          <textarea
+            ref={inputRef}
+            value={input}
+            rows={1}
+            onInput={(e) => setInput((e.target as HTMLTextAreaElement).value)}
+            onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendAnswer(); } }}
+            placeholder="Your answer…"
+            style={{ flex: 1, resize: 'none', fontFamily: 'var(--ui)', fontSize: 14, lineHeight: 1.5, color: 'var(--ink)', padding: '11px 14px', borderRadius: 12, background: 'var(--paper)', border: '1px solid var(--line)', outline: 'none', maxHeight: 120 }}
+          />
+          {busy ? (
+            <Btn kind="ghost" size="md" onClick={() => abortRef.current?.abort()}>Stop</Btn>
+          ) : (
+            <Btn kind="primary" size="md" type="submit" style={{ opacity: input.trim() ? 1 : 0.55 }}>Send</Btn>
+          )}
+        </form>
+        <Btn kind="ghost" size="md" onClick={() => canFinish && finishInterview()} style={{ opacity: canFinish ? 1 : 0.5 }}>
+          Finish &amp; write entry
+        </Btn>
+      </div>
+    </>
+  );
+
+  // ── phase: freeform brief ──
+  const briefBody = (
+    <>
+      <div style={{ flex: 1, overflowY: 'auto', padding: desk ? '16px 22px' : '14px 18px' }}>
+        <p style={{ ...pStyle }}>What should this entry be about? One or two sentences is plenty — I'll draft the rest in your voice.</p>
+      </div>
+      <div style={{ borderTop: '1px solid var(--line)', padding: desk ? '12px 22px 16px' : '10px 18px 18px' }}>
+        <form onSubmit={(e) => { e.preventDefault(); submitBrief(); }} style={{ display: 'flex', gap: 9, alignItems: 'flex-end' }}>
+          <textarea
+            ref={inputRef}
+            value={input}
+            rows={2}
+            onInput={(e) => setInput((e.target as HTMLTextAreaElement).value)}
+            onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submitBrief(); } }}
+            placeholder="e.g. My hike up the coast trail this morning…"
+            style={{ flex: 1, resize: 'none', fontFamily: 'var(--ui)', fontSize: 14, lineHeight: 1.5, color: 'var(--ink)', padding: '11px 14px', borderRadius: 12, background: 'var(--paper)', border: '1px solid var(--line)', outline: 'none', maxHeight: 160 }}
+          />
+          <Btn kind="primary" size="md" type="submit" style={{ opacity: input.trim() ? 1 : 0.55 }}>Draft</Btn>
+        </form>
+      </div>
+    </>
+  );
+
+  // ── phase: review the synthesized draft ──
+  const reviewBody = (
+    <>
+      <div style={{ flex: 1, overflowY: 'auto', padding: desk ? '16px 22px' : '14px 18px' }}>
+        {draft ? (
+          <DocPreview json={JSON.stringify(markdownToDoc(draft))} text={draft} />
+        ) : (
+          <p style={{ ...pStyle, color: 'var(--ink-3)' }}>{busy ? 'Writing your entry…' : error ? '' : '(nothing written)'}</p>
+        )}
+        {error && <p style={{ ...pStyle, color: 'var(--accent-ink)', marginTop: 12 }}>{error}</p>}
+      </div>
+      <div style={{ borderTop: '1px solid var(--line)', padding: desk ? '12px 22px 16px' : '10px 18px 18px', display: 'flex', gap: 10 }}>
+        {busy ? (
+          <Btn kind="ghost" size="md" onClick={() => abortRef.current?.abort()} style={{ flex: 1 }}>Stop</Btn>
+        ) : (
+          <>
+            <Btn kind="ghost" size="md" onClick={onClose} style={{ flex: 1 }}>Discard</Btn>
+            <Btn kind="primary" size="md" onClick={save} style={{ flex: 2, opacity: draft.trim() ? 1 : 0.55 }}>
+              Save entry
+            </Btn>
+          </>
+        )}
+      </div>
+    </>
+  );
+
+  const title =
+    phase === 'pick' ? 'Guided interview'
+    : phase === 'brief' ? 'Freeform draft'
+    : phase === 'review' ? (type ? type.name : 'Your draft')
+    : type?.name || 'Interview';
+
+  const panel = (
+    <div
+      onClick={(e) => e.stopPropagation()}
+      style={{ width: desk ? 'min(440px, 40vw)' : '100%', flexShrink: 0, height: desk ? '100%' : '88%', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', background: 'var(--surface)', borderRadius: desk ? 0 : '24px 24px 0 0', border: desk ? 'none' : '1px solid var(--line)', borderLeft: '1px solid var(--line)', boxShadow: desk ? 'none' : '0 20px 60px rgba(30,20,12,.3)', overflow: 'hidden' }}
+    >
+      {header(title)}
+      {phase === 'pick' ? pickBody : phase === 'interview' ? interviewBody : phase === 'brief' ? briefBody : reviewBody}
+    </div>
+  );
+
+  if (desk) return panel;
+  return (
+    <div
+      onClick={onClose}
+      style={{ position: 'absolute', inset: 0, zIndex: 60, background: 'rgba(30,22,16,.34)', backdropFilter: 'blur(2px)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}
+    >
+      {panel}
+    </div>
+  );
+}

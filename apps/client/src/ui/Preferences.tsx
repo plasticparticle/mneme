@@ -1,10 +1,12 @@
-// Preferences overlay — the one settings surface: appearance mode
-// (light/dark/system), theme skin + accent, writing stats, the assistant
-// entry points, and the vault (identity, lock, phrase rotation, deletion).
+// Preferences overlay — the one settings surface, organized into four tabs:
+// Appearance (light/dark/system mode + theme skin + accent), Writing (local
+// stats), Assistant (templates / ask / AI settings), and Vault (identity,
+// lock, phrase rotation, deletion). Desktop shows a left nav rail beside a
+// scrolling content pane; mobile shows a segmented tab bar atop the sheet.
 // Appearance state is device-local localStorage and never syncs; the vault
 // rows just hand off to their existing sheets (RotatePhrase, DeleteVault…).
 import type { VNode } from 'preact';
-import { useMemo } from 'preact/hooks';
+import { useMemo, useState } from 'preact/hooks';
 import { Icon, type IconName } from './Icon';
 import { ConnectionDot, connLabel } from './primitives';
 import { useAppData, type SyncStatus } from '../state/data';
@@ -18,9 +20,21 @@ const MODES: { id: ThemeMode; label: string; icon: IconName }[] = [
   { id: 'system', label: 'System', icon: 'monitor' },
 ];
 
-function SectionLabel({ children }: { children: string }): VNode {
+type TabId = 'appearance' | 'writing' | 'assistant' | 'vault';
+// `short` is the mobile segmented label — full words don't fit four-across on a
+// phone, so the desktop rail uses `label` and the bottom sheet uses `short`.
+const TABS: { id: TabId; label: string; short: string; icon: IconName }[] = [
+  { id: 'appearance', label: 'Appearance', short: 'Look', icon: 'eye' },
+  { id: 'writing', label: 'Writing', short: 'Writing', icon: 'book' },
+  { id: 'assistant', label: 'Assistant', short: 'Assist', icon: 'feather' },
+  { id: 'vault', label: 'Vault', short: 'Vault', icon: 'shield' },
+];
+
+/** Group heading inside a tab pane; `first` drops the top margin so a pane
+    doesn't open with a double gap above its first group. */
+function SectionLabel({ children, first }: { children: string; first?: boolean }): VNode {
   return (
-    <div style={{ fontFamily: 'var(--ui)', fontSize: 11, fontWeight: 700, letterSpacing: 0.7, textTransform: 'uppercase', color: 'var(--ink-3)', margin: '18px 2px 8px' }}>
+    <div style={{ fontFamily: 'var(--ui)', fontSize: 11, fontWeight: 700, letterSpacing: 0.7, textTransform: 'uppercase', color: 'var(--ink-3)', margin: first ? '0 2px 8px' : '20px 2px 8px' }}>
       {children}
     </div>
   );
@@ -58,7 +72,7 @@ function Row({ icon, label, value, danger, onClick }: {
   );
 }
 
-export function PreferencesSheet({ desk, theme, onClose, ownerId, status, onLock, onRotate, onDeleteVault, onAiSettings, onTemplates, onAsk }: {
+export function PreferencesSheet({ desk, theme, onClose, ownerId, status, onLock, onRotate, onImport, onDeleteVault, onAiSettings, onTemplates, onAsk, onInterview, onInterviewTypes }: {
   desk: boolean;
   theme: ThemeControls;
   onClose: () => void;
@@ -66,14 +80,20 @@ export function PreferencesSheet({ desk, theme, onClose, ownerId, status, onLock
   status: SyncStatus;
   onLock: () => void;
   onRotate: () => void;
+  onImport: () => void;
   onDeleteVault: () => void;
   onAiSettings: () => void;
   /** Mobile-only journal entry points (desktop reaches these from the sidebar). */
   onTemplates?: () => void;
   /** null hides the row (assistant disabled); undefined = desktop, sidebar has it. */
   onAsk?: (() => void) | null;
+  /** Mobile-only (desktop has the sidebar button); null hides it when assistant is off. */
+  onInterview?: (() => void) | null;
+  /** Interview-types manager — reached from Preferences on both desktop and mobile; null when assistant is off. */
+  onInterviewTypes?: (() => void) | null;
 }): VNode {
   const { entries } = useAppData();
+  const [tab, setTab] = useState<TabId>('appearance');
   // Vault rows hand off to full-screen sheets — close this overlay first.
   const handOff = (fn: () => void) => () => {
     onClose();
@@ -96,26 +116,9 @@ export function PreferencesSheet({ desk, theme, onClose, ownerId, status, onLock
     };
   }, [entries]);
 
-  const card = (
-    <div
-      onClick={(e) => e.stopPropagation()}
-      style={
-        desk
-          ? { width: 480, maxWidth: '100%', maxHeight: '86vh', overflowY: 'auto', boxSizing: 'border-box', background: 'var(--surface)', borderRadius: 20, border: '1px solid var(--line)', padding: '22px 24px 24px', boxShadow: '0 20px 60px rgba(30,20,12,.3)' }
-          : { width: '100%', maxHeight: '88vh', overflowY: 'auto', boxSizing: 'border-box', background: 'var(--surface)', borderRadius: '24px 24px 0 0', border: '1px solid var(--line)', padding: '14px 22px calc(env(safe-area-inset-bottom, 0px) + 26px)', boxShadow: '0 -20px 60px rgba(30,20,12,.25)' }
-      }
-    >
-      {!desk && <div style={{ width: 38, height: 4, borderRadius: 9, background: 'var(--line)', margin: '0 auto 14px' }} />}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
-        <h3 style={{ fontFamily: 'var(--serif)', fontSize: 20, fontWeight: 500, color: 'var(--ink)', margin: 0 }}>Preferences</h3>
-        {desk && (
-          <button onClick={onClose} title="Close" style={{ width: 30, height: 30, borderRadius: 8, border: 'none', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <Icon name="x" size={17} color="var(--ink-3)" />
-          </button>
-        )}
-      </div>
-
-      <SectionLabel>Appearance</SectionLabel>
+  const appearance = (
+    <div>
+      <SectionLabel first>Mode</SectionLabel>
       <div style={{ display: 'flex', gap: 8 }}>
         {MODES.map((m) => {
           const active = theme.mode === m.id;
@@ -184,8 +187,12 @@ export function PreferencesSheet({ desk, theme, onClose, ownerId, status, onLock
           );
         })}
       </div>
+    </div>
+  );
 
-      <SectionLabel>Your writing</SectionLabel>
+  const writing = (
+    <div>
+      <SectionLabel first>Your writing</SectionLabel>
       <div style={{ display: 'grid', gridTemplateColumns: desk ? 'repeat(3, 1fr)' : 'repeat(2, 1fr)', gap: 8 }}>
         <StatTile value={compactCount(stats.entries)} label="Entries" />
         <StatTile value={compactCount(stats.words)} label="Words" />
@@ -194,18 +201,28 @@ export function PreferencesSheet({ desk, theme, onClose, ownerId, status, onLock
         <StatTile value={String(stats.longest)} label="Longest streak" />
         <StatTile value={compactCount(stats.days)} label="Days journaled" />
       </div>
-      <p style={{ fontFamily: 'var(--ui)', fontSize: 11.5, color: 'var(--ink-3)', margin: '10px 2px 0', lineHeight: 1.5 }}>
+      <p style={{ fontFamily: 'var(--ui)', fontSize: 11.5, color: 'var(--ink-3)', margin: '12px 2px 0', lineHeight: 1.5 }}>
         Counted locally from your decrypted entries — the server never sees any of this.
       </p>
+    </div>
+  );
 
-      <SectionLabel>Assistant & journal</SectionLabel>
+  const assistant = (
+    <div>
+      <SectionLabel first>Assistant &amp; journal</SectionLabel>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {onTemplates && <Row icon="copy" label="Templates" onClick={handOff(onTemplates)} />}
         {onAsk && <Row icon="feather" label="Ask my journal" onClick={handOff(onAsk)} />}
+        {onInterview && <Row icon="mic" label="Daily interview" onClick={handOff(onInterview)} />}
+        {onInterviewTypes && <Row icon="list" label="Interview types" onClick={handOff(onInterviewTypes)} />}
         <Row icon="feather" label="AI assistant" onClick={handOff(onAiSettings)} />
       </div>
+    </div>
+  );
 
-      <SectionLabel>Vault</SectionLabel>
+  const vault = (
+    <div>
+      <SectionLabel first>Vault</SectionLabel>
       <div title={ownerId ? `Vault ID: ${ownerId}` : undefined} style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '11px 13px', borderRadius: 12, border: '1px solid var(--line)', background: 'var(--paper)', marginBottom: 8 }}>
         <div style={{ width: 34, height: 34, borderRadius: 999, flexShrink: 0, background: 'linear-gradient(145deg, var(--accent), var(--accent-ink))', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontFamily: 'var(--serif)', fontSize: 16, fontWeight: 600 }}>V</div>
         <div style={{ flex: 1, minWidth: 0 }}>
@@ -225,9 +242,87 @@ export function PreferencesSheet({ desk, theme, onClose, ownerId, status, onLock
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         <Row icon="lock" label="Lock journal" onClick={handOff(onLock)} />
+        <Row icon="download" label="Import from Day One" onClick={handOff(onImport)} />
         <Row icon="shield" label="Replace recovery phrase" onClick={handOff(onRotate)} />
+      </div>
+      {/* Destructive action set apart from the routine vault rows. */}
+      <div style={{ marginTop: 16, paddingTop: 16, borderTop: '1px solid var(--line)' }}>
         <Row icon="trash" label="Delete vault" danger onClick={handOff(onDeleteVault)} />
       </div>
+    </div>
+  );
+
+  const panes: Record<TabId, VNode> = { appearance, writing, assistant, vault };
+
+  // Desktop: a left nav rail beside the content pane. Mobile: a segmented tab
+  // bar above it. The header + tabs stay fixed; only the pane scrolls.
+  const rail = (
+    <nav style={{ display: 'flex', flexDirection: 'column', gap: 2, width: 158, flexShrink: 0, paddingRight: 14, borderRight: '1px solid var(--line)' }}>
+      {TABS.map((t) => {
+        const active = tab === t.id;
+        return (
+          <button
+            key={t.id}
+            onClick={() => setTab(t.id)}
+            style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left', cursor: 'pointer', padding: '10px 12px', borderRadius: 10, border: 'none', background: active ? 'var(--accent-soft)' : 'transparent', color: active ? 'var(--accent-ink)' : 'var(--ink-2)', fontFamily: 'var(--ui)', fontSize: 13, fontWeight: active ? 700 : 600 }}
+          >
+            <Icon name={t.icon} size={16} color={active ? 'var(--accent)' : 'var(--ink-3)'} />
+            {t.label}
+          </button>
+        );
+      })}
+    </nav>
+  );
+
+  const segmented = (
+    <div style={{ display: 'flex', gap: 4, background: 'var(--paper)', border: '1px solid var(--line)', borderRadius: 13, padding: 4, marginBottom: 14 }}>
+      {TABS.map((t) => {
+        const active = tab === t.id;
+        return (
+          <button
+            key={t.id}
+            onClick={() => setTab(t.id)}
+            style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, padding: '8px 0 6px', borderRadius: 9, cursor: 'pointer', border: 'none', background: active ? 'var(--surface)' : 'transparent', boxShadow: active ? '0 1px 3px rgba(30,20,12,.12)' : 'none', color: active ? 'var(--accent-ink)' : 'var(--ink-3)', fontFamily: 'var(--ui)', fontSize: 10.5, fontWeight: active ? 700 : 600 }}
+          >
+            <Icon name={t.icon} size={16} color={active ? 'var(--accent)' : 'var(--ink-3)'} />
+            {t.short}
+          </button>
+        );
+      })}
+    </div>
+  );
+
+  const header = (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, flexShrink: 0 }}>
+      <h3 style={{ fontFamily: 'var(--serif)', fontSize: 20, fontWeight: 500, color: 'var(--ink)', margin: 0 }}>Preferences</h3>
+      {desk && (
+        <button onClick={onClose} title="Close" style={{ width: 30, height: 30, borderRadius: 8, border: 'none', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <Icon name="x" size={17} color="var(--ink-3)" />
+        </button>
+      )}
+    </div>
+  );
+
+  const card = desk ? (
+    <div
+      onClick={(e) => e.stopPropagation()}
+      style={{ width: 620, maxWidth: '100%', height: 'min(560px, 86vh)', boxSizing: 'border-box', background: 'var(--surface)', borderRadius: 20, border: '1px solid var(--line)', padding: '22px 24px 24px', boxShadow: '0 20px 60px rgba(30,20,12,.3)', display: 'flex', flexDirection: 'column' }}
+    >
+      {header}
+      <div style={{ display: 'flex', gap: 20, flex: 1, minHeight: 0 }}>
+        {rail}
+        <div style={{ flex: 1, minWidth: 0, overflowY: 'auto', paddingRight: 4 }}>{panes[tab]}</div>
+      </div>
+    </div>
+  ) : (
+    <div
+      onClick={(e) => e.stopPropagation()}
+      style={{ width: '100%', maxHeight: '88vh', boxSizing: 'border-box', background: 'var(--surface)', borderRadius: '24px 24px 0 0', border: '1px solid var(--line)', padding: '14px 22px calc(env(safe-area-inset-bottom, 0px) + 26px)', boxShadow: '0 -20px 60px rgba(30,20,12,.25)', display: 'flex', flexDirection: 'column' }}
+    >
+      <div style={{ width: 38, height: 4, borderRadius: 9, background: 'var(--line)', margin: '0 auto 14px', flexShrink: 0 }} />
+      {header}
+      {segmented}
+      <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>{panes[tab]}</div>
     </div>
   );
 

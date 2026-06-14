@@ -47,40 +47,48 @@ function useEditorTick(editor: Editor | null): void {
   }, [editor]);
 }
 
-/** Switches the editor between rich-text (WYSIWYG) and markdown-source editing.
- * Lives next to the formatting toolbar; the label shows the active mode. */
-export function ModeToggle({
+/** Two-segment switch between rich-text (WYSIWYG) and markdown-source editing.
+ * The active segment is raised; sits at the head of the desktop editor header. */
+export function ModeSegmented({
   mode,
-  onToggle,
-  floating,
+  onChange,
 }: {
   mode: 'rich' | 'markdown';
-  onToggle: () => void;
-  floating?: boolean;
+  onChange: (mode: 'rich' | 'markdown') => void;
 }): VNode {
-  const md = mode === 'markdown';
-  const h = floating ? 40 : 34;
+  const segment = (value: 'rich' | 'markdown', icon: IconName, label: string): VNode => {
+    const active = mode === value;
+    return (
+      <button
+        title={active ? `Editing as ${label}` : `Switch to ${label}`}
+        onMouseDown={(ev) => {
+          ev.preventDefault(); // don't steal the editor selection
+          if (!active) onChange(value);
+        }}
+        style={{
+          display: 'inline-flex', alignItems: 'center', gap: 6, height: 28, padding: '0 11px',
+          borderRadius: 8, border: 'none', cursor: active ? 'default' : 'pointer',
+          background: active ? 'var(--surface)' : 'transparent',
+          color: active ? 'var(--accent-ink)' : 'var(--ink-3)',
+          boxShadow: active ? '0 1px 2px rgba(40,28,18,.14)' : 'none',
+          fontFamily: 'var(--ui)', fontSize: 12.5, fontWeight: 600, whiteSpace: 'nowrap',
+        }}
+      >
+        <Icon name={icon} size={15} color={active ? 'var(--accent-ink)' : 'var(--ink-3)'} />
+        {label}
+      </button>
+    );
+  };
   return (
-    <button
-      title={md ? 'Switch to rich text editing' : 'Switch to markdown source'}
-      onMouseDown={(ev) => {
-        ev.preventDefault(); // don't steal the editor selection
-        onToggle();
-      }}
+    <div
       style={{
-        display: 'inline-flex', alignItems: 'center', gap: floating ? 0 : 6, flexShrink: 0,
-        height: h, padding: floating ? 0 : '0 11px', width: floating ? h : undefined,
-        justifyContent: 'center', borderRadius: floating ? 14 : 10, cursor: 'pointer',
-        border: '1px solid var(--line)',
-        background: md ? 'var(--accent-soft)' : 'var(--surface)',
-        color: md ? 'var(--accent-ink)' : 'var(--ink-2)',
-        boxShadow: floating ? '0 10px 30px rgba(40,28,18,.18)' : 'none',
-        fontFamily: 'var(--ui)', fontSize: 12.5, fontWeight: 600,
+        display: 'inline-flex', alignItems: 'center', gap: 2, padding: 3, flexShrink: 0,
+        borderRadius: 11, background: 'var(--surface-2)', border: '1px solid var(--line)',
       }}
     >
-      <Icon name="code" size={floating ? 20 : 16} color={md ? 'var(--accent-ink)' : 'var(--ink-2)'} />
-      {!floating && (md ? 'Markdown' : 'Rich text')}
-    </button>
+      {segment('rich', 'feather', 'Rich text')}
+      {segment('markdown', 'code', 'Markdown')}
+    </div>
   );
 }
 

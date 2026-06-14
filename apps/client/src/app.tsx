@@ -15,18 +15,21 @@ import { CalendarScreen } from './screens/Calendar';
 import { EditorScreen } from './screens/Editor';
 import { RotatePhraseSheet } from './ui/RotatePhrase';
 import { DeleteVaultSheet } from './ui/DeleteVault';
+import { ImportDayOneSheet } from './ui/ImportDayOne';
 import { TemplatesSheet } from './ui/Templates';
 import { SearchSheet } from './ui/Search';
 import { PreferencesSheet } from './ui/Preferences';
 import { DeleteJournalSheet } from './ui/DeleteJournal';
 import { AiSettingsSheet } from './ui/AiSettings';
 import { AskJournalSheet } from './ui/AskJournal';
+import { GuidedInterviewSheet } from './ui/GuidedInterview';
+import { InterviewTypesSheet } from './ui/InterviewTypes';
 
 // 'journal' is the mobile-only drill-in: the entry list of one notebook.
 type Flow = 'journals' | 'journal' | 'calendar' | 'editor';
 
 // ── DESKTOP sidebar ─────────────────────────────────────────
-function Sidebar({ flow, setFlow, journals, onOpenJournal, status, ownerId, onTemplates, onSearch, onPreferences, onAsk }: {
+function Sidebar({ flow, setFlow, journals, onOpenJournal, status, ownerId, onTemplates, onSearch, onPreferences, onAsk, onInterview }: {
   flow: Flow;
   setFlow: (f: Flow) => void;
   journals: Journal[];
@@ -38,6 +41,8 @@ function Sidebar({ flow, setFlow, journals, onOpenJournal, status, ownerId, onTe
   onPreferences: () => void;
   /** null while the AI assistant is disabled — the row hides itself. */
   onAsk: (() => void) | null;
+  /** null while the AI assistant is disabled — the row hides itself. */
+  onInterview: (() => void) | null;
 }): VNode {
   const nav = (key: Flow, icon: IconName, label: string): VNode => {
     const active = flow === key;
@@ -90,6 +95,16 @@ function Sidebar({ flow, setFlow, journals, onOpenJournal, status, ownerId, onTe
             onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
           >
             <Icon name="feather" size={19} /> Ask my journal
+          </button>
+        )}
+        {onInterview && (
+          <button
+            onClick={onInterview}
+            style={{ display: 'flex', alignItems: 'center', gap: 11, width: '100%', textAlign: 'left', cursor: 'pointer', padding: '9px 11px', borderRadius: 10, border: 'none', background: 'transparent', color: 'var(--ink-2)', fontFamily: 'var(--ui)', fontSize: 14, fontWeight: 500 }}
+            onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface)')}
+            onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+          >
+            <Icon name="mic" size={19} /> Daily interview
           </button>
         )}
       </div>
@@ -180,11 +195,14 @@ export function App(): VNode {
   const [modal, setModal] = useState(false);
   const [rotateOpen, setRotateOpen] = useState(false);
   const [deleteVaultOpen, setDeleteVaultOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [templatesOpen, setTemplatesOpen] = useState(false);
   const [prefsOpen, setPrefsOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [aiSettingsOpen, setAiSettingsOpen] = useState(false);
   const [askOpen, setAskOpen] = useState(false);
+  const [interviewOpen, setInterviewOpen] = useState(false);
+  const [interviewTypesOpen, setInterviewTypesOpen] = useState(false);
   // Which notebook the typed-"delete" confirmation sheet is for (null → closed).
   const [deleteJournalId, setDeleteJournalId] = useState<string | null>(null);
   // Which entry the editor is currently editing (null → editor shows its empty state).
@@ -217,11 +235,14 @@ export function App(): VNode {
     setModal(false);
     setRotateOpen(false);
     setDeleteVaultOpen(false);
+    setImportOpen(false);
     setTemplatesOpen(false);
     setPrefsOpen(false);
     setSearchOpen(false);
     setAiSettingsOpen(false);
     setAskOpen(false);
+    setInterviewOpen(false);
+    setInterviewTypesOpen(false);
     setDeleteJournalId(null);
     setOpenEntryId(null);
     setOpenJournalId(null);
@@ -362,18 +383,21 @@ export function App(): VNode {
   if (desk) {
     return (
       <div style={{ height: '100%', display: 'flex', background: 'var(--paper)', position: 'relative' }}>
-        <Sidebar flow={flow} setFlow={navTo} journals={journals} onOpenJournal={openJournal} status={status} ownerId={ownerId} onTemplates={() => setTemplatesOpen(true)} onSearch={() => setSearchOpen(true)} onPreferences={() => setPrefsOpen(true)} onAsk={aiSettings?.enabled ? () => setAskOpen(true) : null} />
+        <Sidebar flow={flow} setFlow={navTo} journals={journals} onOpenJournal={openJournal} status={status} ownerId={ownerId} onTemplates={() => setTemplatesOpen(true)} onSearch={() => setSearchOpen(true)} onPreferences={() => setPrefsOpen(true)} onAsk={aiSettings?.enabled ? () => setAskOpen(true) : null} onInterview={aiSettings?.enabled ? () => setInterviewOpen(true) : null} />
         <div style={{ flex: 1, minWidth: 0 }}>{screen}</div>
-        {/* Non-modal companion: a flex sibling, so the app stays usable beside it. */}
+        {/* Non-modal companions: flex siblings, so the app stays usable beside them. */}
         {askOpen && <AskJournalSheet desk onClose={() => setAskOpen(false)} />}
+        {interviewOpen && <GuidedInterviewSheet desk onClose={() => setInterviewOpen(false)} onOpenEntry={openEntry} onManageTypes={() => setInterviewTypesOpen(true)} />}
         {searchSheet}
         {deleteJournalSheet}
-        {prefsOpen && <PreferencesSheet desk theme={theme} onClose={() => setPrefsOpen(false)} ownerId={ownerId} status={status} onLock={lock} onRotate={() => setRotateOpen(true)} onDeleteVault={() => setDeleteVaultOpen(true)} onAiSettings={() => setAiSettingsOpen(true)} />}
+        {prefsOpen && <PreferencesSheet desk theme={theme} onClose={() => setPrefsOpen(false)} ownerId={ownerId} status={status} onLock={lock} onRotate={() => setRotateOpen(true)} onImport={() => setImportOpen(true)} onDeleteVault={() => setDeleteVaultOpen(true)} onAiSettings={() => setAiSettingsOpen(true)} onInterviewTypes={aiSettings?.enabled ? () => setInterviewTypesOpen(true) : null} />}
         {modal && <NewJournalSheet desk templates={templates.filter((t) => !t.deleted)} onClose={() => setModal(false)} onCreate={onCreateJournal} />}
         {templatesOpen && <TemplatesSheet desk onClose={() => setTemplatesOpen(false)} onUse={(t) => { setTemplatesOpen(false); newEntryFromTemplate(t); }} />}
         {rotateOpen && <RotatePhraseSheet desk onClose={() => setRotateOpen(false)} rotate={rotatePhrase} />}
         {deleteVaultOpen && <DeleteVaultSheet desk onClose={() => setDeleteVaultOpen(false)} deleteVault={deleteVault} />}
+        {importOpen && <ImportDayOneSheet desk onClose={() => setImportOpen(false)} />}
         {aiSettingsOpen && <AiSettingsSheet desk onClose={() => setAiSettingsOpen(false)} />}
+        {interviewTypesOpen && <InterviewTypesSheet desk onClose={() => setInterviewTypesOpen(false)} />}
       </div>
     );
   }
@@ -390,12 +414,15 @@ export function App(): VNode {
       {searchSheet}
       {deleteJournalSheet}
       {modal && <NewJournalSheet desk={false} templates={templates.filter((t) => !t.deleted)} onClose={() => setModal(false)} onCreate={onCreateJournal} />}
-      {prefsOpen && <PreferencesSheet desk={false} theme={theme} onClose={() => setPrefsOpen(false)} ownerId={ownerId} status={status} onLock={lock} onRotate={() => setRotateOpen(true)} onDeleteVault={() => setDeleteVaultOpen(true)} onAiSettings={() => setAiSettingsOpen(true)} onTemplates={() => setTemplatesOpen(true)} onAsk={aiSettings?.enabled ? () => setAskOpen(true) : null} />}
+      {prefsOpen && <PreferencesSheet desk={false} theme={theme} onClose={() => setPrefsOpen(false)} ownerId={ownerId} status={status} onLock={lock} onRotate={() => setRotateOpen(true)} onImport={() => setImportOpen(true)} onDeleteVault={() => setDeleteVaultOpen(true)} onAiSettings={() => setAiSettingsOpen(true)} onTemplates={() => setTemplatesOpen(true)} onAsk={aiSettings?.enabled ? () => setAskOpen(true) : null} onInterview={aiSettings?.enabled ? () => setInterviewOpen(true) : null} onInterviewTypes={aiSettings?.enabled ? () => setInterviewTypesOpen(true) : null} />}
       {templatesOpen && <TemplatesSheet desk={false} onClose={() => setTemplatesOpen(false)} onUse={(t) => { setTemplatesOpen(false); newEntryFromTemplate(t); }} />}
       {rotateOpen && <RotatePhraseSheet desk={false} onClose={() => setRotateOpen(false)} rotate={rotatePhrase} />}
       {deleteVaultOpen && <DeleteVaultSheet desk={false} onClose={() => setDeleteVaultOpen(false)} deleteVault={deleteVault} />}
+      {importOpen && <ImportDayOneSheet desk={false} onClose={() => setImportOpen(false)} />}
       {aiSettingsOpen && <AiSettingsSheet desk={false} onClose={() => setAiSettingsOpen(false)} />}
       {askOpen && <AskJournalSheet desk={false} onClose={() => setAskOpen(false)} />}
+      {interviewOpen && <GuidedInterviewSheet desk={false} onClose={() => setInterviewOpen(false)} onOpenEntry={openEntry} onManageTypes={() => setInterviewTypesOpen(true)} />}
+      {interviewTypesOpen && <InterviewTypesSheet desk={false} onClose={() => setInterviewTypesOpen(false)} />}
     </div>
   );
 }

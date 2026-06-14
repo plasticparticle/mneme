@@ -80,6 +80,20 @@ seed, `ai/settings.ts` — only openable while unlocked, re-sealed on phrase rot
 vault deletion); chat transcripts are memory-only and never persisted or synced. The one invariant
 that must never break: **journal plaintext must never be routed through the relay as an AI proxy.**
 
+### Location snapshots — a one-time, per-insert exception
+
+The editor can embed a **location/map** in an entry (`apps/client/src/location/`, `editor/location.tsx`).
+Like the AI assistant, **the relay gains no new visibility** — it still only ever stores the encrypted
+entry body and an opaque encrypted image blob. The deliberate exception is at *creation time only*: to
+turn an address into coordinates the client calls **OpenStreetMap Nominatim** (the typed address
+leaves the device), and to draw the map it fetches **OpenStreetMap raster tiles** (the chosen
+coordinates leak to the tile CDN, as tile indices). Mitigations: this is opt-in per insert with the
+consequence stated in the composer UI; current-location and raw-coordinate entry avoid the geocoder
+entirely; and the map is **frozen into a static image** at insert time, so opening the entry later — or
+on another device — decrypts that stored image and makes **no further third-party requests**. There is
+no live/streaming map. (No CSP is currently enforced; if one is added it must allow
+`img-src https://tile.openstreetmap.org` and `connect-src https://nominatim.openstreetmap.org`.)
+
 ---
 
 ## 3. Cryptographic building blocks

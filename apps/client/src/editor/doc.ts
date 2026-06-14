@@ -86,6 +86,12 @@ export function docToText(doc: JSONContent): string {
     if (node.type === 'entryLink' && typeof node.attrs?.label === 'string') {
       out.push(`🔗 ${node.attrs.label}`);
     }
+    // Location cards surface their place names so previews/search match them.
+    if (node.type === 'locationMap') {
+      const from = (node.attrs?.from as { label?: unknown } | undefined)?.label;
+      const to = (node.attrs?.to as { label?: unknown } | undefined)?.label;
+      if (typeof from === 'string') out.push(`📍 ${from}${typeof to === 'string' && to ? ` → ${to}` : ''}`);
+    }
     if (node.content) node.content.forEach(walk);
     // Block-level nodes get a separating newline so previews read naturally
     // (inline math and entry links sit mid-sentence, so they stay on their line).
@@ -107,6 +113,13 @@ export function docMediaIds(doc: JSONContent): string[] {
         if (typeof img?.id === 'string' && img.id) ids.push(img.id);
       }
     }
+    // A location card references its frozen map snapshot (and optional photo) as
+    // regular media rows — count them so deletion purges them local + relay.
+    if (node.type === 'locationMap') {
+      for (const m of [node.attrs?.map, node.attrs?.photo] as { id?: unknown }[]) {
+        if (typeof m?.id === 'string' && m.id) ids.push(m.id);
+      }
+    }
     node.content?.forEach(walk);
   };
   walk(doc);
@@ -124,6 +137,98 @@ export function docEntryLinks(doc: JSONContent): string[] {
   };
   walk(doc);
   return ids;
+}
+
+// Strip the inline emphasis markers a model tends to emit; this doc path produces
+// plain-text runs only (the schema's bold/italic/code marks aren't populated here).
+function stripInline(s: string): string {
+  return s
+    .replace(/\*\*(.+?)\*\*/g, '$1')
+    .replace(/__(.+?)__/g, '$1')
+    .replace(/(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/g, '$1')
+    .replace(/(?<!_)_(?!_)(.+?)(?<!_)_(?!_)/g, '$1')
+    .replace(/`(.+?)`/g, '$1')
+    .trim();
+}
+
+/**
+ * Parse a small Markdown subset — the shape the AI surfaces emit — into a
+ * ProseMirror doc: `#`/`##`/`###` headings (capped at the schema's level 3),
+ * `-`/`*` bullet lists, `1.` ordered lists, `>` blockquotes, and blank-line-
+ * separated paragraphs. Inline emphasis markers are stripped to plain text.
+ * Reused by every AI-written entry (guided interview + freeform draft).
+ */
+export function markdownToDoc(md: string): JSONContent {
+  const lines = md.replace(/\r\n?/g, '\n').split('\n');
+  const content: JSONContent[] = [];
+  let para: string[] = [];
+  let bullets: JSONContent[] = [];
+  let ordered: JSONContent[] = [];
+  let quote: string[] = [];
+
+  const runs = (s: string): JSONContent[] => (s ? [{ type: 'text', text: s }] : []);
+  const item = (s: string): JSONContent => ({ type: 'listItem', content: [{ type: 'paragraph', content: runs(s) }] });
+  const flushPara = (): void => {
+    if (para.length) content.push({ type: 'paragraph', content: runs(para.join(' ')) });
+    para = [];
+  };
+  const flushBullets = (): void => {
+    if (bullets.length) content.push({ type: 'bulletList', content: bullets });
+    bullets = [];
+  };
+  const flushOrdered = (): void => {
+    if (ordered.length) content.push({ type: 'orderedList', attrs: { start: 1 }, content: ordered });
+    ordered = [];
+  };
+  const flushQuote = (): void => {
+    if (quote.length)
+      content.push({ type: 'blockquote', content: quote.map((q) => ({ type: 'paragraph', content: runs(q) })) });
+    quote = [];
+  };
+  const flushAll = (): void => {
+    flushPara();
+    flushBullets();
+    flushOrdered();
+    flushQuote();
+  };
+
+  for (const raw of lines) {
+    const t = raw.trim();
+    if (!t) {
+      flushAll();
+      continue;
+    }
+    const heading = /^(#{1,6})\s+(.*)$/.exec(t);
+    const bullet = /^[-*]\s+(.*)$/.exec(t);
+    const num = /^\d+[.)]\s+(.*)$/.exec(t);
+    const bq = /^>\s?(.*)$/.exec(t);
+    if (heading) {
+      flushAll();
+      content.push({ type: 'heading', attrs: { level: Math.min(3, heading[1].length) }, content: runs(stripInline(heading[2])) });
+    } else if (bullet) {
+      flushPara();
+      flushOrdered();
+      flushQuote();
+      bullets.push(item(stripInline(bullet[1])));
+    } else if (num) {
+      flushPara();
+      flushBullets();
+      flushQuote();
+      ordered.push(item(stripInline(num[1])));
+    } else if (bq) {
+      flushPara();
+      flushBullets();
+      flushOrdered();
+      quote.push(stripInline(bq[1]));
+    } else {
+      flushBullets();
+      flushOrdered();
+      flushQuote();
+      para.push(stripInline(t));
+    }
+  }
+  flushAll();
+  return { type: 'doc', content: content.length ? content : [{ type: 'paragraph' }] };
 }
 
 /** Convert the design's sample blocks into a ProseMirror doc (for lived-in seed content). */

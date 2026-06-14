@@ -3,7 +3,7 @@
 // the JournalEntry shape the rest of the app already speaks. This is the durable
 // local store; the in-memory list in state/data.tsx is a reactive mirror of it.
 import type { DbRequest, DbResponse, SqlParam, SqlValue } from './protocol';
-import type { JournalEntry, MediaAttachment, TemplateRecord } from '../sync/engine';
+import type { InterviewType, JournalEntry, MediaAttachment, TemplateRecord } from '../sync/engine';
 import type { CoverPattern, Journal } from '../data/sample';
 
 // Distributive omit so each variant of the DbRequest union keeps its own fields
@@ -91,6 +91,46 @@ const TPL_PLACEHOLDERS = '(?,?,?,?,?,?,?,?,?,?)';
 
 const TPL_UPSERT_SET =
   `name=excluded.name, body_text=excluded.body_text, body_json=excluded.body_json, ` +
+  `builtin=excluded.builtin, pristine=excluded.pristine, created_at=excluded.created_at, ` +
+  `updated_at=excluded.updated_at, deleted=excluded.deleted, dirty=excluded.dirty`;
+
+// ── interview-type rows (schema v6) ──
+
+const ITV_COLS = 'id, name, intro, prompt, builtin, pristine, created_at, updated_at, deleted, dirty';
+
+function rowToInterviewType(r: SqlValue[]): InterviewType {
+  return {
+    id: r[0] as string,
+    name: (r[1] as string) ?? '',
+    intro: (r[2] as string) ?? '',
+    prompt: (r[3] as string) ?? '',
+    builtin: (r[4] as string | null) ?? undefined,
+    pristine: !!(r[5] as number),
+    createdAt: r[6] as number,
+    updatedAt: r[7] as number,
+    deleted: !!(r[8] as number),
+  };
+}
+
+function interviewTypeParams(t: InterviewType, dirty: 0 | 1, pristine: 0 | 1): SqlParam[] {
+  return [
+    t.id,
+    t.name ?? '',
+    t.intro ?? '',
+    t.prompt ?? '',
+    t.builtin ?? null,
+    pristine,
+    t.createdAt,
+    t.updatedAt,
+    t.deleted ? 1 : 0,
+    dirty,
+  ];
+}
+
+const ITV_PLACEHOLDERS = '(?,?,?,?,?,?,?,?,?,?)';
+
+const ITV_UPSERT_SET =
+  `name=excluded.name, intro=excluded.intro, prompt=excluded.prompt, ` +
   `builtin=excluded.builtin, pristine=excluded.pristine, created_at=excluded.created_at, ` +
   `updated_at=excluded.updated_at, deleted=excluded.deleted, dirty=excluded.dirty`;
 
@@ -351,6 +391,87 @@ export class LocalDb {
     if (!ids.length) return;
     const statements = ids.map((id) => ({
       sql: `DELETE FROM templates WHERE id = ? AND pristine = 1`,
+      params: [id] as SqlParam[],
+    }));
+    const res = await this.#send({ kind: 'batch', statements });
+    if (!res.ok) throw new Error(res.error);
+  }
+
+  // ── interview types (schema v6) ──
+
+  /** All non-deleted interview types, oldest first (built-in seeds before user types). */
+  async allInterviewTypes(): Promise<InterviewType[]> {
+    const rows = await this.#query(
+      `SELECT ${ITV_COLS} FROM interview_types WHERE deleted = 0 ORDER BY created_at ASC`,
+    );
+    return rows.map(rowToInterviewType);
+  }
+
+  /** Total interview-type rows including tombstones — 0 means this device was never seeded. */
+  async interviewTypeCount(): Promise<number> {
+    const rows = await this.#query(`SELECT COUNT(*) FROM interview_types`);
+    return (rows[0]?.[0] as number) ?? 0;
+  }
+
+  /** Interview types still awaiting a relay push (rebuilds the outbox after a reload). */
+  async dirtyInterviewTypes(): Promise<InterviewType[]> {
+    const rows = await this.#query(`SELECT ${ITV_COLS} FROM interview_types WHERE dirty = 1`);
+    return rows.map(rowToInterviewType);
+  }
+
+  /** A local create/edit/delete: wins on this device, loses pristine, joins the outbox. */
+  async putLocalInterviewType(t: InterviewType): Promise<void> {
+    await this.#run(
+      `INSERT INTO interview_types (${ITV_COLS}) VALUES ${ITV_PLACEHOLDERS} ` +
+        `ON CONFLICT(id) DO UPDATE SET ${ITV_UPSERT_SET}`,
+      interviewTypeParams(t, 1, 0),
+    );
+  }
+
+  /** Lay down built-in seeds (pristine, non-dirty). Existing rows — tombstones included — win. */
+  async seedInterviewTypes(types: InterviewType[]): Promise<void> {
+    if (!types.length) return;
+    const statements = types.map((t) => ({
+      sql: `INSERT OR IGNORE INTO interview_types (${ITV_COLS}) VALUES ${ITV_PLACEHOLDERS}`,
+      params: interviewTypeParams(t, 0, 1),
+    }));
+    const res = await this.#send({ kind: 'batch', statements });
+    if (!res.ok) throw new Error(res.error);
+  }
+
+  /** Merge relay interview types under last-write-wins: only newer versions overwrite (§3). */
+  async mergeRemoteInterviewTypes(types: InterviewType[]): Promise<void> {
+    if (!types.length) return;
+    const statements = types.map((t) => ({
+      sql:
+        `INSERT INTO interview_types (${ITV_COLS}) VALUES ${ITV_PLACEHOLDERS} ` +
+        `ON CONFLICT(id) DO UPDATE SET ${ITV_UPSERT_SET} WHERE excluded.updated_at > interview_types.updated_at`,
+      params: interviewTypeParams(t, 0, 0),
+    }));
+    const res = await this.#send({ kind: 'batch', statements });
+    if (!res.ok) throw new Error(res.error);
+  }
+
+  /** Clear the dirty flag for versions the relay acknowledged (precise on updated_at). */
+  async markInterviewTypesSynced(types: InterviewType[]): Promise<void> {
+    if (!types.length) return;
+    const statements = types.map((t) => ({
+      sql: `UPDATE interview_types SET dirty = 0 WHERE id = ? AND updated_at = ?`,
+      params: [t.id, t.updatedAt] as SqlParam[],
+    }));
+    const res = await this.#send({ kind: 'batch', statements });
+    if (!res.ok) throw new Error(res.error);
+  }
+
+  /**
+   * Hard-delete pristine built-in seeds that another device's edit/delete of the
+   * same built-in has superseded (the seeds were local-only, so no tombstone is
+   * needed — the superseding record itself keeps the slug occupied).
+   */
+  async dropInterviewTypes(ids: string[]): Promise<void> {
+    if (!ids.length) return;
+    const statements = ids.map((id) => ({
+      sql: `DELETE FROM interview_types WHERE id = ? AND pristine = 1`,
       params: [id] as SqlParam[],
     }));
     const res = await this.#send({ kind: 'batch', statements });

@@ -242,8 +242,12 @@ export function PreferencesSheet({ desk, theme, onClose, ownerId, status, onLock
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         <Row icon="lock" label="Lock journal" onClick={handOff(onLock)} />
-        <Row icon="download" label="Import from Day One" onClick={handOff(onImport)} />
         <Row icon="shield" label="Replace recovery phrase" onClick={handOff(onRotate)} />
+      </div>
+      {/* Data in/out — its own section (export will join import here). */}
+      <SectionLabel>Data</SectionLabel>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <Row icon="download" label="Import from Day One" onClick={handOff(onImport)} />
       </div>
       {/* Destructive action set apart from the routine vault rows. */}
       <div style={{ marginTop: 16, paddingTop: 16, borderTop: '1px solid var(--line)' }}>

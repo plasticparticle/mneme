@@ -263,6 +263,27 @@ export function SyncNotice({ title, body }: { title?: string; body?: string } = 
   );
 }
 
+/**
+ * Sync progress bar for the main navigation: a thin track that fills as the
+ * outbox drains (records done = syncTotal − pendingCount). Renders nothing while
+ * the vault is fully synced, so it appears only during an active run (e.g. a bulk
+ * import catching up). `flush` drops the rounded corners for a full-bleed edge.
+ */
+export function SyncProgressBar({ flush = false }: { flush?: boolean } = {}): VNode | null {
+  const { status, pendingCount, syncTotal } = useAppData();
+  if (status !== 'online' || syncTotal <= 0 || pendingCount <= 0) return null;
+  const done = syncTotal - pendingCount;
+  const pct = Math.max(3, Math.min(100, (done / syncTotal) * 100));
+  return (
+    <div
+      title={`Syncing — ${done} of ${syncTotal} done`}
+      style={{ height: flush ? 3 : 4, background: 'var(--line)', borderRadius: flush ? 0 : 999, overflow: 'hidden' }}
+    >
+      <div class="mneme-pulse" style={{ height: '100%', width: `${pct}%`, background: 'var(--accent)', borderRadius: 'inherit', transition: 'width .3s ease' }} />
+    </div>
+  );
+}
+
 // ── Journal cover swatch ────────────────────────────────────
 export interface CoverSpec {
   color: string;

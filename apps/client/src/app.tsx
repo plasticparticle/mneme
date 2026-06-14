@@ -2,7 +2,7 @@ import type { VNode } from 'preact';
 import { useEffect, useState } from 'preact/hooks';
 import { Icon, type IconName } from './ui/Icon';
 import { Wordmark } from './ui/Wordmark';
-import { ConnectionDot, connLabel } from './ui/primitives';
+import { ConnectionDot, connLabel, SyncProgressBar } from './ui/primitives';
 import { useIsDesktop } from './hooks/useMediaQuery';
 import { useTheme } from './hooks/useTheme';
 import { useAppData, type SyncStatus } from './state/data';
@@ -150,6 +150,7 @@ function Sidebar({ flow, setFlow, journals, activeJournalId, onNew, onOpenJourna
       {/* Footer: the identity row IS the preferences button — every vault
           action (lock, rotate, delete, AI, appearance) lives in the dialog. */}
       <div style={{ borderTop: '1px solid var(--line)', paddingTop: 10, marginTop: 8 }}>
+        {syncing && <div style={{ marginBottom: 10 }}><SyncProgressBar /></div>}
         <button
           title="Preferences"
           onClick={onPreferences}
@@ -170,7 +171,7 @@ function Sidebar({ flow, setFlow, journals, activeJournalId, onNew, onOpenJourna
               ) : (
                 <ConnectionDot status={status} size={7} />
               )}
-              <span style={{ fontFamily: 'var(--mono)', fontSize: 10.5, color: 'var(--ink-3)' }}>{syncing ? `syncing ${pendingCount}…` : connLabel(status).toLowerCase()}</span>
+              <span style={{ fontFamily: 'var(--mono)', fontSize: 10.5, color: 'var(--ink-3)' }}>{syncing ? `syncing${pendingCount > 0 ? ` ${pendingCount}` : ''}…` : connLabel(status).toLowerCase()}</span>
             </div>
           </div>
           <Icon name="settings" size={17} color="var(--ink-3)" />
@@ -199,6 +200,8 @@ function MobileNav({ flow, setFlow, onCompose, onSettings, onSearch }: {
   );
   return (
     <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: 40, paddingBottom: 22, paddingTop: 8, display: 'flex', alignItems: 'center', background: 'var(--surface-glass)', backdropFilter: 'blur(14px)', WebkitBackdropFilter: 'blur(14px)', borderTop: '1px solid var(--line)' }}>
+      {/* Sync progress rides the top edge of the bar — self-hides when fully synced. */}
+      <div style={{ position: 'absolute', left: 0, right: 0, top: 0 }}><SyncProgressBar flush /></div>
       {item(flow === 'journals', 'books', 'Journals', () => setFlow('journals'))}
       {item(flow === 'calendar', 'cal', 'Calendar', () => setFlow('calendar'))}
       <div style={{ flex: 1, display: 'flex', justifyContent: 'center' }}>

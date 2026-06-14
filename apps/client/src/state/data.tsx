@@ -45,6 +45,10 @@ interface AppData {
   // per-journal "Syncing…" badge so a bulk import shows which notebooks are still
   // catching up. Media-only tails are reflected in `pendingCount`, not here.
   pendingJournalIds: Set<string>;
+  // High-water mark of the outbox since it was last empty — the denominator for a
+  // sync progress bar (records done = syncTotal − pendingCount). Resets to 0 the
+  // moment everything is flushed, so the bar shows up only during an active run.
+  syncTotal: number;
   // True while a push to the relay is in flight.
   saving: boolean;
   // True from sign-in until the first sync attempt finishes (pull done or
@@ -250,6 +254,10 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
   const [ownerId, setOwnerId] = useState<string | null>(null);
   const [pendingCount, setPendingCount] = useState(0);
   const [pendingJournalIds, setPendingJournalIds] = useState<Set<string>>(new Set());
+  // High-water mark of the outbox for the progress bar; the ref is the live value
+  // the (dep-free) syncPendingCount callback reads, mirrored into state for the UI.
+  const syncPeak = useRef(0);
+  const [syncTotal, setSyncTotal] = useState(0);
   const [saving, setSaving] = useState(false);
   const [bootstrapping, setBootstrapping] = useState(false);
   const [entries, setEntries] = useState<JournalEntry[]>([]);
@@ -297,13 +305,21 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
 
   // Mirror the (mutable) outbox depth into reactive state so the UI can react.
   const syncPendingCount = useCallback(() => {
-    setPendingCount(
+    const total =
       pending.current.size +
-        pendingTemplates.current.size +
-        pendingInterviewTypes.current.size +
-        pendingMedia.current.size +
-        pendingMediaDeletes.current.size,
-    );
+      pendingTemplates.current.size +
+      pendingInterviewTypes.current.size +
+      pendingMedia.current.size +
+      pendingMediaDeletes.current.size;
+    setPendingCount(total);
+    // Track the run's high-water mark: grow it as more is queued, reset to 0 once
+    // the outbox drains so the progress bar is the denominator for "this run".
+    if (total === 0) {
+      if (syncPeak.current !== 0) { syncPeak.current = 0; setSyncTotal(0); }
+    } else if (total > syncPeak.current) {
+      syncPeak.current = total;
+      setSyncTotal(total);
+    }
     // Per-notebook view of the entry outbox for the journal-card sync badge.
     const js = new Set<string>();
     for (const e of pending.current.values()) js.add(e.journalId);
@@ -1189,6 +1205,6 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
   // and the outbox can push them) but every consumer sees only live entries.
   const liveEntries = useMemo(() => entries.filter((e) => !e.deleted), [entries]);
 
-  const value: AppData = { status, hasVault, ownerId, pendingCount, pendingJournalIds, saving, bootstrapping, entries: liveEntries, journals: journalsWithCounts, templates, interviewTypes, aiSettings, saveAiSettings, signIn, unlock, lock, createEntry, updateEntry, deleteEntry, newJournal, updateJournal, deleteJournal, createTemplate, updateTemplate, deleteTemplate, createInterviewType, updateInterviewType, deleteInterviewType, addMedia, removeMedia, mediaBlob, mediaThumb, rotatePhrase, deleteVault };
+  const value: AppData = { status, hasVault, ownerId, pendingCount, pendingJournalIds, syncTotal, saving, bootstrapping, entries: liveEntries, journals: journalsWithCounts, templates, interviewTypes, aiSettings, saveAiSettings, signIn, unlock, lock, createEntry, updateEntry, deleteEntry, newJournal, updateJournal, deleteJournal, createTemplate, updateTemplate, deleteTemplate, createInterviewType, updateInterviewType, deleteInterviewType, addMedia, removeMedia, mediaBlob, mediaThumb, rotatePhrase, deleteVault };
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

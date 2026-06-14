@@ -6,11 +6,17 @@ import { useAppData } from '../state/data';
 import { EntryThumbs, entryImages } from '../ui/EntryThumbs';
 
 const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const MON_FULL = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 // Compact list date: append the year only when the entry isn't from the current
 // year, so recent entries stay clean while older ones aren't ambiguous.
 function listDate(d: Date): string {
   const label = `${MON[d.getMonth()]} ${d.getDate()}`;
   return d.getFullYear() === new Date().getFullYear() ? label : `${label}, ${d.getFullYear()}`;
+}
+// The month/year a list separator groups by — entries are bucketed by their
+// (displayed) entry date.
+function monthKey(d: Date): string {
+  return `${d.getFullYear()}-${d.getMonth()}`;
 }
 
 // Mobile-only drill-in: the entries of one notebook. Desktop never routes here —
@@ -29,7 +35,7 @@ export function JournalEntriesScreen({ journal, onBack, onOpenEntry, onNew, onEd
   const { entries, mediaThumb } = useAppData();
   const list = entries
     .filter((e) => e.journalId === journal.id)
-    .sort((a, b) => b.updatedAt - a.updatedAt);
+    .sort((a, b) => b.createdAt - a.createdAt);
 
   return (
     <div style={{ height: '100%', overflow: 'auto', background: 'var(--paper)', paddingBottom: 110 }}>
@@ -65,26 +71,40 @@ export function JournalEntriesScreen({ journal, onBack, onOpenEntry, onNew, onEd
         {syncing && list.length === 0 && <div style={{ margin: '18px 0 0' }}><SyncNotice /></div>}
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10, margin: '18px 0' }}>
-          {list.map((e) => {
-            const d = new Date(e.createdAt);
-            const images = entryImages(e);
-            return (
-              <button
-                key={e.id}
-                onClick={() => onOpenEntry(e.id)}
-                style={{ textAlign: 'left', cursor: 'pointer', padding: '13px 15px', borderRadius: 14, background: 'var(--surface)', border: '1px solid var(--line)', borderLeft: `3px solid ${journal.color}` }}
-              >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 10 }}>
-                  <span style={{ fontFamily: 'var(--serif)', fontSize: 16.5, fontWeight: 500, color: 'var(--ink)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{e.title || 'Untitled'}</span>
-                  <span style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--ink-3)', flexShrink: 0 }}>{listDate(d)}</span>
-                </div>
-                {e.bodyText && (
-                  <p style={{ fontFamily: 'var(--ui)', fontSize: 13, color: 'var(--ink-2)', margin: '4px 0 0', lineHeight: 1.45, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>{e.bodyText}</p>
-                )}
-                <EntryThumbs images={images} resolve={(att) => mediaThumb(e.id, att)} size={40} />
-              </button>
-            );
-          })}
+          {(() => {
+            let lastMonth = '';
+            return list.flatMap((e) => {
+              const d = new Date(e.createdAt);
+              const images = entryImages(e);
+              const key = monthKey(d);
+              const sep = key !== lastMonth;
+              lastMonth = key;
+              return [
+                sep && (
+                  <div key={`m-${key}`} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 2px 2px' }}>
+                    <span style={{ fontFamily: 'var(--mono)', fontSize: 11.5, fontWeight: 700, letterSpacing: 0.8, textTransform: 'uppercase', color: 'var(--ink-2)', whiteSpace: 'nowrap' }}>
+                      {MON_FULL[d.getMonth()]} {d.getFullYear()}
+                    </span>
+                    <span style={{ flex: 1, height: 1, background: 'var(--line)' }} />
+                  </div>
+                ),
+                <button
+                  key={e.id}
+                  onClick={() => onOpenEntry(e.id)}
+                  style={{ textAlign: 'left', cursor: 'pointer', padding: '13px 15px', borderRadius: 14, background: 'var(--surface)', border: '1px solid var(--line)', borderLeft: `3px solid ${journal.color}` }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 10 }}>
+                    <span style={{ fontFamily: 'var(--serif)', fontSize: 16.5, fontWeight: 500, color: 'var(--ink)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{e.title || 'Untitled'}</span>
+                    <span style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--ink-3)', flexShrink: 0 }}>{listDate(d)}</span>
+                  </div>
+                  {e.bodyText && (
+                    <p style={{ fontFamily: 'var(--ui)', fontSize: 13, color: 'var(--ink-2)', margin: '4px 0 0', lineHeight: 1.45, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>{e.bodyText}</p>
+                  )}
+                  <EntryThumbs images={images} resolve={(att) => mediaThumb(e.id, att)} size={40} />
+                </button>,
+              ];
+            });
+          })()}
 
           {list.length === 0 && !syncing && (
             <button

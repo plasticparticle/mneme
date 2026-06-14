@@ -32,11 +32,17 @@ import { JournalPicker, JournalSheet } from '../ui/JournalPicker';
 import '../editor/editor.css';
 
 const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const MON_FULL = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 // Compact list date: append the year only when the entry isn't from the current
 // year, so recent entries stay clean while older ones aren't ambiguous.
 function listDate(d: Date): string {
   const label = `${MON[d.getMonth()]} ${d.getDate()}`;
   return d.getFullYear() === new Date().getFullYear() ? label : `${label}, ${d.getFullYear()}`;
+}
+// The month/year a list separator groups by — entries are bucketed by their
+// (displayed) entry date.
+function monthKey(d: Date): string {
+  return `${d.getFullYear()}-${d.getMonth()}`;
 }
 const SAVE_DEBOUNCE_MS = 600;
 
@@ -752,7 +758,7 @@ export function EditorScreen({
     // last one open — survives a delete); only a fresh editor with no journal
     // context yet falls back to the whole vault.
     const scoped = journalId ? entries.filter((x) => x.journalId === journalId) : entries;
-    const list = [...scoped].sort((a, b) => b.updatedAt - a.updatedAt);
+    const list = [...scoped].sort((a, b) => b.createdAt - a.createdAt);
     return (
       <div style={{ height: '100%', display: 'flex', background: 'var(--paper)' }}>
         {/* entry list */}
@@ -768,22 +774,39 @@ export function EditorScreen({
             <button title="New entry" onClick={() => onNew(journalId ?? undefined)} style={{ width: 34, height: 34, borderRadius: 10, border: '1px solid var(--line)', background: 'var(--surface)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}><Icon name="plus" size={18} color="var(--accent-ink)" /></button>
           </div>
           <div style={{ flex: 1, overflow: 'auto', padding: '0 12px 14px', display: 'flex', flexDirection: 'column', gap: 4 }}>
-            {list.map((x) => {
-              const j = journalById(x.journalId);
-              const active = x.id === entryId;
-              const d = new Date(x.createdAt);
-              const images = entryImages(x);
-              return (
-                <button key={x.id} onClick={() => onSelectEntry(x.id)} style={{ textAlign: 'left', cursor: 'pointer', padding: '12px 13px', borderRadius: 12, border: 'none', background: active ? 'var(--surface)' : 'transparent', borderLeft: `2.5px solid ${active ? j?.color ?? 'transparent' : 'transparent'}` }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
-                    <span style={{ fontFamily: 'var(--serif)', fontSize: 15.5, fontWeight: 500, color: 'var(--ink)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{x.title || 'Untitled'}</span>
-                    <span style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--ink-3)', flexShrink: 0 }}>{listDate(d)}</span>
-                  </div>
-                  <p style={{ fontFamily: 'var(--ui)', fontSize: 12.5, color: 'var(--ink-2)', margin: '3px 0 0', lineHeight: 1.45, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>{x.bodyText}</p>
-                  <EntryThumbs images={images} resolve={(att) => mediaThumb(x.id, att)} size={32} />
-                </button>
-              );
-            })}
+            {(() => {
+              let lastMonth = '';
+              return list.flatMap((x) => {
+                const j = journalById(x.journalId);
+                const active = x.id === entryId;
+                const d = new Date(x.createdAt);
+                const images = entryImages(x);
+                const key = monthKey(d);
+                const sep = key !== lastMonth;
+                lastMonth = key;
+                return [
+                  sep && (
+                    <div key={`m-${key}`} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 13px 4px' }}>
+                      <span style={{ fontFamily: 'var(--mono)', fontSize: 10.5, fontWeight: 700, letterSpacing: 0.6, textTransform: 'uppercase', color: 'var(--ink-2)', whiteSpace: 'nowrap' }}>
+                        {MON_FULL[d.getMonth()]} {d.getFullYear()}
+                      </span>
+                      <span style={{ flex: 1, height: 1, background: 'var(--line)' }} />
+                    </div>
+                  ),
+                  // Hairline between consecutive rows; skipped right after a month
+                  // header, which already draws its own rule.
+                  !sep && <div key={`d-${x.id}`} style={{ height: 1, background: 'var(--line)', margin: '0 13px' }} />,
+                  <button key={x.id} onClick={() => onSelectEntry(x.id)} style={{ textAlign: 'left', cursor: 'pointer', padding: '12px 13px', borderRadius: 12, border: 'none', background: active ? 'var(--surface)' : 'transparent', borderLeft: `2.5px solid ${active ? j?.color ?? 'transparent' : 'transparent'}` }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
+                      <span style={{ fontFamily: 'var(--serif)', fontSize: 15.5, fontWeight: 500, color: 'var(--ink)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{x.title || 'Untitled'}</span>
+                      <span style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--ink-3)', flexShrink: 0 }}>{listDate(d)}</span>
+                    </div>
+                    <p style={{ fontFamily: 'var(--ui)', fontSize: 12.5, color: 'var(--ink-2)', margin: '3px 0 0', lineHeight: 1.45, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>{x.bodyText}</p>
+                    <EntryThumbs images={images} resolve={(att) => mediaThumb(x.id, att)} size={32} />
+                  </button>,
+                ];
+              });
+            })()}
           </div>
         </div>
 

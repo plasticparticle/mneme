@@ -73,7 +73,7 @@ interface AppData {
   /** Drop the in-memory identity and return to the lock screen. */
   lock(): void;
   createEntry(input: { journalId: string; title?: string; bodyText?: string; bodyJson?: string; labels?: string[] }): JournalEntry;
-  updateEntry(id: string, patch: { title?: string; bodyText?: string; bodyJson?: string; labels?: string[]; createdAt?: number; attachments?: MediaAttachment[] }): void;
+  updateEntry(id: string, patch: { journalId?: string; title?: string; bodyText?: string; bodyJson?: string; labels?: string[]; createdAt?: number; attachments?: MediaAttachment[] }): void;
   /**
    * After the user confirmed: tombstone the entry (the deletion syncs to other
    * devices through the LWW oplog) and delete every recording it references —

@@ -27,6 +27,7 @@ import { AttachmentList } from '../ui/Attachments';
 import { Lightbox } from '../ui/Lightbox';
 import { TemplatesSheet } from '../ui/Templates';
 import { EntryDateTime } from '../ui/EntryDateTime';
+import { JournalPicker, JournalSheet } from '../ui/JournalPicker';
 import '../editor/editor.css';
 
 const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -74,7 +75,7 @@ function EntryEditor({
   onWords: (n: number) => void;
   onOpenEntry: (id: string) => void;
 }): VNode {
-  const { entries, updateEntry, addMedia, removeMedia, mediaBlob, aiSettings } = useAppData();
+  const { entries, journals, updateEntry, addMedia, removeMedia, mediaBlob, aiSettings } = useAppData();
   const [capturing, setCapturing] = useState<'video' | 'audio' | null>(null);
   // The location composer behind the "/" Location command.
   const [locating, setLocating] = useState(false);
@@ -362,7 +363,6 @@ function EntryEditor({
     if (paras.length) ed.chain().focus().insertContent(paras).run();
   };
 
-  const journal = findJournal(entry.journalId);
   // Grow the title textarea to fit its wrapped content (single-line inputs can't wrap).
   const titleEl = useRef<HTMLTextAreaElement | null>(null);
   const fitTitle = (el: HTMLTextAreaElement): void => {
@@ -425,12 +425,12 @@ function EntryEditor({
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap', margin: '10px 0 16px', color: 'var(--ink-3)' }}>
         <EntryDateTime value={entry.createdAt} desk={desk} onChange={(ts) => updateEntry(entry.id, { createdAt: ts })} />
-        {journal && (
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-            <span style={{ width: 8, height: 8, borderRadius: 9, background: journal.color }} />
-            <span style={{ fontFamily: 'var(--ui)', fontSize: 13 }}>{journal.name}</span>
-          </span>
-        )}
+        <JournalPicker
+          journals={journals}
+          currentId={entry.journalId}
+          desk={desk}
+          onChange={(journalId) => updateEntry(entry.id, { journalId })}
+        />
         <SyncBadge dirty={dirty} />
       </div>
 
@@ -577,9 +577,10 @@ function EntryMenu({
   mode?: 'rich' | 'markdown';
   onToggleMode?: () => void;
 }): VNode {
-  const { deleteEntry } = useAppData();
+  const { deleteEntry, journals, updateEntry } = useAppData();
   const [open, setOpen] = useState(false);
   const [confirming, setConfirming] = useState(false);
+  const [moving, setMoving] = useState(false);
 
   // How many recordings the deletion takes with it (inline nodes + legacy list).
   const mediaCount = useMemo(() => {
@@ -626,6 +627,15 @@ function EntryMenu({
             <button
               onClick={() => {
                 setOpen(false);
+                setMoving(true);
+              }}
+              style={{ display: 'flex', alignItems: 'center', gap: 9, width: '100%', textAlign: 'left', padding: '9px 11px', borderRadius: 8, border: 'none', background: 'transparent', cursor: 'pointer', fontFamily: 'var(--ui)', fontSize: 13.5, fontWeight: 600, color: 'var(--ink)' }}
+            >
+              <Icon name="books" size={15} color="var(--ink-2)" /> Move to journal…
+            </button>
+            <button
+              onClick={() => {
+                setOpen(false);
                 setConfirming(true);
               }}
               style={{ display: 'flex', alignItems: 'center', gap: 9, width: '100%', textAlign: 'left', padding: '9px 11px', borderRadius: 8, border: 'none', background: 'transparent', cursor: 'pointer', fontFamily: 'var(--ui)', fontSize: 13.5, fontWeight: 600, color: '#E4573D' }}
@@ -634,6 +644,18 @@ function EntryMenu({
             </button>
           </div>
         </>
+      )}
+      {moving && entry && (
+        <JournalSheet
+          journals={journals}
+          currentId={entry.journalId}
+          desk={desk}
+          onClose={() => setMoving(false)}
+          onPick={(journalId) => {
+            setMoving(false);
+            if (journalId !== entry.journalId) updateEntry(entry.id, { journalId });
+          }}
+        />
       )}
       {confirming && entry && (
         <ConfirmDialog

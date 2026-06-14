@@ -81,11 +81,10 @@ export function JournalEntriesScreen({ journal, onBack, onOpenEntry, onNew, onEd
               lastMonth = key;
               return [
                 sep && (
-                  <div key={`m-${key}`} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 2px 2px' }}>
-                    <span style={{ fontFamily: 'var(--mono)', fontSize: 11.5, fontWeight: 700, letterSpacing: 0.8, textTransform: 'uppercase', color: 'var(--ink-2)', whiteSpace: 'nowrap' }}>
+                  <div key={`m-${key}`} style={{ padding: '16px 2px 4px' }}>
+                    <span style={{ fontFamily: 'var(--mono)', fontSize: 11, fontWeight: 700, letterSpacing: 0.8, textTransform: 'uppercase', color: '#786f62', whiteSpace: 'nowrap' }}>
                       {MON_FULL[d.getMonth()]} {d.getFullYear()}
                     </span>
-                    <span style={{ flex: 1, height: 1, background: 'var(--line)' }} />
                   </div>
                 ),
                 <button

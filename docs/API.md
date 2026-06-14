@@ -33,6 +33,11 @@ the auth model.
 | GET | `/admin` | – | admin dashboard page (404 unless `ADMIN_TOKEN` is set) |
 | GET | `/admin/stats` | 🔑 | aggregate stats JSON (`Bearer <ADMIN_TOKEN>`) |
 | DELETE | `/admin/vaults/{id}` | 🔑 | operator vault wipe (requires `{"confirm":"delete"}` body) |
+| GET | `/admin/backups` | 🔑 | backup service status + stored archive listing |
+| POST | `/admin/backups` | 🔑 | trigger a backup now (202, runs detached) |
+| GET | `/admin/backups/{name}` | 🔑 | download one archive (gzip tar) |
+| DELETE | `/admin/backups/{name}` | 🔑 | remove one stored archive |
+| POST | `/admin/backups/{name}/restore` | 🔑 | restore from an archive (requires `{"confirm":"restore"}` body) |
 
 Errors are `{ "error": "message" }` with an appropriate status (400/401/404/500). CORS preflight
 (`OPTIONS`) is answered for configured origins (`CORS_ORIGINS`).
@@ -228,6 +233,54 @@ Authorization note: vault deletion is two strictly separated capabilities. A **u
 only ever delete its own vault — `DELETE /v1/account` takes no vault id; the owner comes from the
 authenticated session. The **admin token** is required to delete by id; without it, `/admin/vaults/*`
 answers 401 (or 404 when the admin surface is disabled) before any lookup happens.
+
+### Backups & disaster recovery
+
+Enabled when `BACKUP_DIR` is set (otherwise the endpoints answer 503, and the scheduled worker is
+off). A backup is a single gzipped tar of **every vault's opaque ciphertext** — the bookkeeping tables
+as NDJSON plus the client-encrypted media chunks. It contains **no keys and no plaintext** (the relay
+never has any), so an archive is exactly as sensitive as the relay's own storage and changes nothing
+about the E2EE guarantees (see SECURITY.md §6). `sessions` and `auth_challenges` are deliberately
+excluded — they are short-lived secrets that must not be resurrected from an old archive.
+
+Layout: `manifest.json` (format version, timestamp, schema version, row counts), `db/*.ndjson` (one
+file per table, base64 for `bytea` columns), `media/<owner_id>/<media_id>/<n>` (raw chunk bytes).
+
+`GET /admin/backups` → `200` — service status plus the stored archive listing:
+
+```json
+{
+  "enabled": true, "dir": "/backups", "keep": 7, "running": false,
+  "last_name": "mneme-backup-20260614T203954Z.tar.gz", "last_at": "2026-06-14T20:39:54Z",
+  "last_error": "",
+  "backups": [ { "name": "mneme-backup-20260614T203954Z.tar.gz", "bytes": 1003,
+                 "created_at": "2026-06-14T20:39:54Z" } ],
+  "total_bytes": 1003
+}
+```
+
+`POST /admin/backups` → `202` — start a backup. The write can be slow on a large media set, so it
+runs **detached**; poll `GET /admin/backups` for the new archive (or `last_error`). 409 if one is
+already running, 503 if backups are disabled. Archives are written to a `.partial` file and renamed
+on success, so a crash mid-write never leaves a truncated archive that looks complete. The newest
+`BACKUP_KEEP` archives are retained (0 = keep all).
+
+`GET /admin/backups/{name}` → `200` (`application/gzip`) — download one archive. `{name}` must be a
+literal archive filename (`^mneme-backup-\d{8}T\d{6}Z\.tar\.gz$`); anything else → 400, the security
+boundary against path traversal. The dashboard downloads via an authenticated fetch (never a token in
+the URL — admin paths are logged).
+
+`DELETE /admin/backups/{name}` → `204` — remove one archive (does not touch vault data).
+
+`POST /admin/backups/{name}/restore` → `200` — **disaster recovery**. Body **must** be
+`{"confirm":"restore"}` (enforced server-side, 400 without it). This **replaces all relay data** with
+the archive's contents in one transaction (truncate-and-replay; a failure leaves the existing data
+untouched), then re-uploads the media chunks to object storage. The response echoes the restored
+manifest counts. Sessions are cleared, so every device re-authenticates on next sync. An archive whose
+schema version is newer than the running binary is refused — upgrade `journald` first.
+
+The **recommended** path for real DR is the CLI (`journald restore <archive>`): it runs against a
+stopped or freshly-provisioned server, which is the usual state when recovering. See README/§Commands.
 
 ---
 

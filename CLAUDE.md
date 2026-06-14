@@ -44,8 +44,20 @@ project. Scaffolded so far:
   server-side; dashboard row button + modal) and the user via the client's "Delete vault" sheet
   (`ui/DeleteVault.tsx`, Preferences → Vault → `deleteVault` in `state/data.tsx`: relay
   `DELETE /v1/account` first, then local OPFS destroy + seal clear, back to onboarding). A user
-  session can only ever delete its own vault — `/v1/account` takes no id.
-- **Infra** — `docker-compose.yml` (Postgres + MinIO + server), `server/Dockerfile`, `.devcontainer/`.
+  session can only ever delete its own vault — `/v1/account` takes no id. **Operator backup + disaster
+  recovery** is in (`internal/backup`, `internal/store/backup.go`): a backup is one gzipped-tar archive
+  of every vault's opaque ciphertext — the bookkeeping tables as NDJSON + the client-encrypted media
+  chunks, no keys, no plaintext (`sessions`/`auth_challenges` deliberately excluded). Restore is a
+  single transactional truncate-and-replay (`store.Restore`, realigns `entry_seq`) plus chunk
+  re-upload. Configured by `BACKUP_DIR`/`BACKUP_INTERVAL`/`BACKUP_KEEP`; a `Service` owns the directory
+  (mutexed run-now, scheduled worker, `.partial`→rename atomic writes, retention prune, strict
+  name-regex path guard). Two trigger paths: the admin surface (`/admin/backups` list/status, POST
+  to back up now → 202 detached, download, typed-`{"confirm":"restore"}` restore, delete; dashboard
+  section + restore modal) and CLI subcommands (`journald backup [--out]` / `restore <archive> [--yes]`
+  / `list-backups`) — the CLI is the recommended DR path (runs against a stopped/fresh server). Tests:
+  `internal/backup/backup_test.go` (fakes, no DB) + `e2e/backup_e2e_test.go` (real Postgres round-trip).
+  docs/API.md "Backups & disaster recovery", docs/SECURITY.md §6.14.
+- **Infra** — `docker-compose.yml` (Postgres + MinIO + server, `backups` volume), `server/Dockerfile`, `.devcontainer/`.
 
 Media (§10 step 5) is in for **video, audio, images, and file attachments**: video/audio record via
 `getUserMedia`+MediaRecorder in the editor (`ui/VideoCapture.tsx`, `ui/AudioCapture.tsx`, inserted via the `/` slash menu; `addMedia`
@@ -259,7 +271,12 @@ pnpm --filter client build           # typecheck + production build
 go build -o journald ./cmd/journald
 gofmt -l . && go vet ./... && go test ./...
 TEST_DATABASE_URL=postgres://journal:journal_dev@localhost:5432/journal?sslmode=disable \
-  go test -tags e2e ./e2e/...        # full handshake against a live Postgres
+  go test -tags e2e ./e2e/...        # full handshake + backup round-trip against a live Postgres
+
+# Operator backup / disaster recovery (same env as the server: DATABASE_URL, S3_*, BACKUP_*)
+./journald backup [--out PATH]       # write one archive (BACKUP_DIR or an explicit path)
+./journald restore <archive> [--yes] # REPLACE all relay data from an archive (destructive)
+./journald list-backups              # list archives in BACKUP_DIR
 
 # Live client↔relay crypto round-trip (relay must be running)
 pnpm --filter client exec tsx apps/client/scripts/integration.ts

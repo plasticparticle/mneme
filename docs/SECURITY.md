@@ -262,6 +262,21 @@ phrase offline.
 All randomness comes from the platform CSPRNG (`crypto.getRandomValues`); mnemonic entropy is 128-bit
 BIP39.
 
+### 6.14 Operator backups — ⚠️ Accepted (aggregation, not a new leak)
+The operator backup feature (`BACKUP_DIR`, the `/admin/backups` surface, and the `journald
+backup`/`restore` CLI) writes a single archive of **every vault's opaque ciphertext blobs + media
+chunks**. Crucially, a backup contains **no keys and no plaintext** — the relay never had any — so it
+neither weakens nor strengthens E2EE: an attacker who steals an archive learns exactly what an attacker
+who steals the Postgres DB + object bucket already could (the §2/§6.8 metadata, plus the ciphertext
+they still cannot decrypt). What changes is **aggregation and portability**: one file now concentrates
+all vaults' data, including the accepted metadata, and is easy to copy off-box. Treat archives with the
+same care as the database itself — restrict the directory (written `0700`/files `0600`), and encrypt
+them at rest (e.g. age/GPG) before moving them somewhere less trusted. `sessions` and `auth_challenges`
+(bearer-token hashes, single-use challenges) are deliberately **excluded** so a restore cannot
+resurrect a stale credential. Restore is destructive (it replaces all relay data) and is gated behind
+a typed `{"confirm":"restore"}` on the HTTP path and a stdin prompt on the CLI; archive names on the
+HTTP download/restore/delete paths are validated against a strict regex (the path-traversal boundary).
+
 ---
 
 ## 7. Known weaknesses / hardening backlog

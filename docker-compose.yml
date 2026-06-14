@@ -49,10 +49,14 @@ services:
       S3_BUCKET: journal-media
       LISTEN_ADDR: ":8080"
       ADMIN_TOKEN: admin_dev # local dev only — set a real secret (or leave unset to disable /admin) in prod
+      BACKUP_DIR: /backups # encrypted-blob archives of every vault; unset to disable scheduled backups
+      BACKUP_INTERVAL: 24h
+      BACKUP_KEEP: "7" # retained archives (newest first); 0 keeps all
     depends_on:
       postgres: { condition: service_healthy }
       minio: { condition: service_started }
     ports: ["8080:8080"]
+    volumes: ["backups:/backups"] # persist archives across container restarts; copy these off-box for real DR
 
   # Optional: client dev server in compose (otherwise just run `pnpm dev`).
   client:
@@ -67,3 +71,4 @@ services:
 volumes:
   pgdata:
   miniodata:
+  backups:

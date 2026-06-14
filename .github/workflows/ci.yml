@@ -8,6 +8,12 @@ on:
     branches: [main]
   pull_request:
 
+# Least-privilege default: both jobs only check out the repo and build/test, so
+# read access to contents is all they need — nothing writes back. Declaring this
+# explicitly satisfies CodeQL's actions/missing-workflow-permissions.
+permissions:
+  contents: read
+
 jobs:
   server:
     runs-on: ubuntu-latest

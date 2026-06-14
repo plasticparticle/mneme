@@ -502,10 +502,13 @@ function unescapeInline(text: string): string {
   return text.replace(/\\([\\`*_~$\[\]])/g, '$1');
 }
 
+// Escape the backslash itself alongside the pipe, so the escaping can't be
+// subverted by a literal backslash in the input (CodeQL js/incomplete-sanitization).
+// unescapePipes is its exact inverse — both run as a matched pair on table cells.
 function escapePipes(text: string): string {
-  return text.replace(/\|/g, '\\|');
+  return text.replace(/([\\|])/g, '\\$1');
 }
 
 function unescapePipes(text: string): string {
-  return text.replace(/\\\|/g, '|');
+  return text.replace(/\\([\\|])/g, '$1');
 }

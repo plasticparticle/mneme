@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/plasticparticle/mneme/server/internal/backup"
 	"github.com/plasticparticle/mneme/server/internal/blobs"
 	"github.com/plasticparticle/mneme/server/internal/config"
 	"github.com/plasticparticle/mneme/server/internal/store"
@@ -19,13 +20,27 @@ type Server struct {
 	blobs   blobs.Store
 	cfg     config.Config
 	metrics *metrics
+	backup  *backup.Service
 }
 
 func New(st *store.Store, bl blobs.Store, cfg config.Config) *Server {
 	if bl == nil {
 		bl = blobs.Disabled{}
 	}
-	return &Server{store: st, blobs: bl, cfg: cfg, metrics: newMetrics()}
+	return &Server{
+		store:   st,
+		blobs:   bl,
+		cfg:     cfg,
+		metrics: newMetrics(),
+		backup:  backup.NewService(cfg.Backup.Dir, cfg.Backup.Keep, st, bl),
+	}
+}
+
+// RunBackups drives the scheduled backup worker until ctx is cancelled. It is a
+// no-op unless BACKUP_DIR is configured. Called from cmd/journald alongside the
+// other background workers.
+func (s *Server) RunBackups(ctx context.Context) {
+	s.backup.Run(ctx, s.cfg.Backup.Interval)
 }
 
 // Routes builds the HTTP handler. Uses Go 1.22 method+pattern routing — no router dep.
@@ -57,6 +72,11 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /admin/{$}", s.handleAdminPage)
 	mux.Handle("GET /admin/stats", s.adminAuth(http.HandlerFunc(s.handleAdminStats)))
 	mux.Handle("DELETE /admin/vaults/{id}", s.adminAuth(http.HandlerFunc(s.handleAdminDeleteVault)))
+	mux.Handle("GET /admin/backups", s.adminAuth(http.HandlerFunc(s.handleAdminListBackups)))
+	mux.Handle("POST /admin/backups", s.adminAuth(http.HandlerFunc(s.handleAdminCreateBackup)))
+	mux.Handle("GET /admin/backups/{name}", s.adminAuth(http.HandlerFunc(s.handleAdminDownloadBackup)))
+	mux.Handle("DELETE /admin/backups/{name}", s.adminAuth(http.HandlerFunc(s.handleAdminDeleteBackup)))
+	mux.Handle("POST /admin/backups/{name}/restore", s.adminAuth(http.HandlerFunc(s.handleAdminRestoreBackup)))
 
 	return s.cors(s.logging(mux))
 }

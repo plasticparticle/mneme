@@ -80,13 +80,30 @@
   }
   .rowdel:hover { border-color: var(--accent); color: var(--accent); }
 
+  /* backups */
+  .bk-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .bk-status { color: var(--ink-soft); font-size: 13px; }
+  .bk-status.err { color: var(--accent); }
+  .btn {
+    font: inherit; font-size: 13px; padding: 7px 14px; border-radius: 8px; cursor: pointer;
+    border: 1px solid var(--accent); background: var(--accent); color: #fff;
+  }
+  .btn:disabled { opacity: .5; cursor: not-allowed; }
+  .btn.ghost { background: transparent; color: var(--ink-soft); border-color: var(--line); }
+  .btn.ghost:hover { border-color: var(--accent); color: var(--accent); }
+  td a.dl { color: var(--accent); text-decoration: none; }
+  td a.dl:hover { text-decoration: underline; }
+  .bk-disabled { color: var(--ink-soft); font-size: 13.5px; background: var(--card);
+    border: 1px dashed var(--line); border-radius: 10px; padding: 14px 16px; }
+  .bk-disabled code { font-family: "Spline Sans Mono", ui-monospace, monospace; color: var(--ink); }
+
   /* delete-confirmation modal */
-  #modalWrap {
+  #modalWrap, #restoreWrap {
     position: fixed; inset: 0; background: rgba(30, 22, 16, .4); backdrop-filter: blur(2px);
     display: flex; align-items: center; justify-content: center; z-index: 10;
   }
   /* The id rule above outranks .hidden (id > class specificity) — restate it. */
-  #modalWrap.hidden { display: none; }
+  #modalWrap.hidden, #restoreWrap.hidden { display: none; }
   #modal {
     background: var(--card); border: 1px solid var(--line); border-radius: 12px;
     padding: 22px 24px; width: min(420px, 88vw);
@@ -139,6 +156,44 @@
       </tr></thead>
       <tbody id="vaultRows"></tbody>
     </table>
+
+    <h2>Backups &amp; recovery</h2>
+    <div id="bkDisabled" class="bk-disabled hidden">
+      Server-side backups are off. Set <code>BACKUP_DIR</code> (and optionally
+      <code>BACKUP_INTERVAL</code>, <code>BACKUP_KEEP</code>) to archive every vault's encrypted
+      blobs and media on a schedule. A backup holds only ciphertext — no keys, no plaintext.
+    </div>
+    <div id="bkPanel" class="hidden">
+      <div class="bk-head">
+        <span id="bkStatus" class="bk-status"></span>
+        <button id="bkNow" class="btn" type="button">Back up now</button>
+      </div>
+      <table style="margin-top:14px">
+        <thead><tr>
+          <th>Archive</th><th>Created</th><th>Size</th><th></th><th></th><th></th>
+        </tr></thead>
+        <tbody id="bkRows"></tbody>
+      </table>
+    </div>
+
+    <div id="restoreWrap" class="hidden">
+      <div id="modal">
+        <h3>Restore from <span id="restoreName" class="mono"></span>?</h3>
+        <p><strong>This replaces every vault on the relay</strong> with the contents of this archive —
+           all current encrypted records, media, reminders and devices are overwritten in one step.
+           Sessions are cleared, so every device re-authenticates on next sync.</p>
+        <p>It does <strong>not</strong> reach into anyone's devices. Use this for disaster recovery
+           onto a fresh or broken relay; the <span class="mono">journald restore</span> CLI is the
+           recommended path when the server can be stopped first.</p>
+        <p>Type <strong class="mono">restore</strong> to confirm:</p>
+        <input id="restoreInput" type="text" autocomplete="off" spellcheck="false" placeholder="restore">
+        <div id="restoreErr"></div>
+        <div class="actions">
+          <button id="restoreCancel" type="button">Cancel</button>
+          <button id="restoreGo" type="button" disabled>Restore</button>
+        </div>
+      </div>
+    </div>
 
     <div id="modalWrap" class="hidden">
       <div id="modal">
@@ -232,6 +287,145 @@
     </tr>`).join('') || '<tr><td colspan="9">No vaults yet.</td></tr>';
   }
 
+  // ── backups & recovery ──
+  const authHeaders = extra => Object.assign(
+    { Authorization: 'Bearer ' + sessionStorage.getItem(KEY) }, extra || {});
+
+  async function loadBackups() {
+    try {
+      const res = await fetch('/admin/backups', { headers: authHeaders() });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      renderBackups(await res.json());
+    } catch (e) {
+      $('bkStatus').className = 'bk-status err';
+      $('bkStatus').textContent = 'backups: ' + e.message;
+    }
+  }
+
+  function renderBackups(s) {
+    $('bkDisabled').classList.toggle('hidden', !!s.enabled);
+    $('bkPanel').classList.toggle('hidden', !s.enabled);
+    if (!s.enabled) return;
+
+    const bits = [];
+    bits.push(`${(s.backups || []).length} archive${(s.backups || []).length === 1 ? '' : 's'}`);
+    if (s.total_bytes) bits.push(fmtBytes(s.total_bytes));
+    bits.push(s.keep > 0 ? `keep ${s.keep}` : 'keep all');
+    if (s.running) bits.push('· backing up…');
+    else if (s.last_at) bits.push('· last ' + new Date(s.last_at).toLocaleString());
+    $('bkStatus').className = 'bk-status' + (s.last_error ? ' err' : '');
+    $('bkStatus').textContent = s.last_error ? ('last backup failed: ' + s.last_error) : bits.join(' ');
+    $('bkNow').disabled = !!s.running;
+    $('bkNow').textContent = s.running ? 'Backing up…' : 'Back up now';
+
+    $('bkRows').innerHTML = (s.backups || []).map(b => `<tr>
+        <td class="mono">${b.name}</td>
+        <td>${b.created_at ? new Date(b.created_at).toLocaleString() : '—'}</td>
+        <td class="mono">${fmtBytes(b.bytes)}</td>
+        <td><button class="rowdel" data-dlbk="${b.name}">Download</button></td>
+        <td><button class="rowdel" data-restore="${b.name}">Restore</button></td>
+        <td><button class="rowdel" data-delbk="${b.name}">Delete</button></td>
+      </tr>`).join('') || '<tr><td colspan="6">No backups yet.</td></tr>';
+  }
+
+  $('bkNow').addEventListener('click', async () => {
+    $('bkNow').disabled = true;
+    $('bkNow').textContent = 'Backing up…';
+    try {
+      const res = await fetch('/admin/backups', { method: 'POST', headers: authHeaders() });
+      if (!res.ok && res.status !== 202) throw new Error('HTTP ' + res.status);
+    } catch (e) {
+      $('bkStatus').className = 'bk-status err';
+      $('bkStatus').textContent = 'backup failed to start: ' + e.message;
+    }
+    // Poll a few times so the new archive (or an error) surfaces without a manual refresh.
+    let polls = 0;
+    const iv = setInterval(async () => {
+      await loadBackups();
+      if (++polls >= 20 || !$('bkNow').disabled) clearInterval(iv);
+    }, 1500);
+  });
+
+  async function downloadBackup(name) {
+    try {
+      const res = await fetch('/admin/backups/' + encodeURIComponent(name), { headers: authHeaders() });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = name;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
+    } catch (e) {
+      $('bkStatus').className = 'bk-status err';
+      $('bkStatus').textContent = 'download failed: ' + e.message;
+    }
+  }
+
+  $('bkRows').addEventListener('click', async e => {
+    const dl = e.target.closest('[data-dlbk]');
+    if (dl) { downloadBackup(dl.dataset.dlbk); return; }
+    const restore = e.target.closest('[data-restore]');
+    if (restore) { openRestore(restore.dataset.restore); return; }
+    const del = e.target.closest('[data-delbk]');
+    if (del) {
+      if (!confirm('Delete archive ' + del.dataset.delbk + '? The vault data it holds is not affected.')) return;
+      try {
+        const res = await fetch('/admin/backups/' + encodeURIComponent(del.dataset.delbk),
+          { method: 'DELETE', headers: authHeaders() });
+        if (!res.ok && res.status !== 404) throw new Error('HTTP ' + res.status);
+        loadBackups();
+      } catch (err) {
+        $('bkStatus').className = 'bk-status err';
+        $('bkStatus').textContent = 'delete failed: ' + err.message;
+      }
+    }
+  });
+
+  let restoreName = null;
+  function openRestore(name) {
+    restoreName = name;
+    $('restoreName').textContent = name;
+    $('restoreInput').value = '';
+    $('restoreErr').textContent = '';
+    $('restoreGo').disabled = true;
+    $('restoreWrap').classList.remove('hidden');
+    $('restoreInput').focus();
+  }
+  function closeRestore() {
+    restoreName = null;
+    $('restoreWrap').classList.add('hidden');
+  }
+  async function confirmRestore() {
+    if ($('restoreInput').value.trim() !== 'restore' || !restoreName) return;
+    $('restoreGo').disabled = true;
+    $('restoreErr').textContent = 'restoring… do not close this tab';
+    try {
+      const res = await fetch('/admin/backups/' + encodeURIComponent(restoreName) + '/restore', {
+        method: 'POST',
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ confirm: 'restore' }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || ('HTTP ' + res.status));
+      }
+      closeRestore();
+      load();
+      loadBackups();
+    } catch (e) {
+      $('restoreErr').textContent = 'restore failed: ' + e.message;
+      $('restoreGo').disabled = false;
+    }
+  }
+  $('restoreInput').addEventListener('input', () => {
+    $('restoreGo').disabled = $('restoreInput').value.trim() !== 'restore';
+  });
+  $('restoreInput').addEventListener('keydown', e => { if (e.key === 'Enter') confirmRestore(); });
+  $('restoreGo').addEventListener('click', confirmRestore);
+  $('restoreCancel').addEventListener('click', closeRestore);
+  $('restoreWrap').addEventListener('click', e => { if (e.target === $('restoreWrap')) closeRestore(); });
+
   // ── vault deletion (typed confirmation, enforced again server-side) ──
   let delOwner = null;
   function openDelete(owner, label) {
@@ -306,6 +500,7 @@
       $('dash').classList.remove('hidden');
       $('status').className = '';
       $('status').textContent = 'updated ' + new Date().toLocaleTimeString();
+      loadBackups();
     } catch (e) {
       $('status').className = 'err';
       $('status').textContent = 'fetch failed: ' + e.message;

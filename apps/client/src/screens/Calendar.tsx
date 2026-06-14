@@ -3,7 +3,7 @@ import { useMemo, useState } from 'preact/hooks';
 import { Icon, type IconName } from '../ui/Icon';
 import { Btn, LabelChip, ConnChip } from '../ui/primitives';
 import { hexA } from '../ui/color';
-import { findJournal } from '../data/sample';
+import { type Journal } from '../data/sample';
 import { useAppData } from '../state/data';
 import { compactCount, dailyCounts, dayStreak, monthWords, onThisDay } from '../state/stats';
 import type { JournalEntry } from '../sync/engine';
@@ -40,8 +40,8 @@ function monthMeta(year: number, month: number): { offset: number; days: number 
   return { offset, days };
 }
 
-function EntryRow({ e, onOpen, compact }: { e: CalEntry; onOpen: (id: string) => void; compact?: boolean }): VNode {
-  const j = findJournal(e.journal);
+function EntryRow({ e, onOpen, compact, resolve }: { e: CalEntry; onOpen: (id: string) => void; compact?: boolean; resolve: (id: string) => Journal | undefined }): VNode {
+  const j = resolve(e.journal);
   const color = j?.color ?? 'var(--ink-3)';
   return (
     <button
@@ -86,7 +86,7 @@ function Heatmap({ counts }: { counts: number[] }): VNode {
   );
 }
 
-function Cell({ d, today, selected, onSelect, big, dayEntries }: { d: number; today: number; selected: number; onSelect: (d: number) => void; big?: boolean; dayEntries: CalEntry[] }): VNode {
+function Cell({ d, today, selected, onSelect, big, dayEntries, resolve }: { d: number; today: number; selected: number; onSelect: (d: number) => void; big?: boolean; dayEntries: CalEntry[]; resolve: (id: string) => Journal | undefined }): VNode {
   const entries = dayEntries;
   const isToday = d === today;
   const isSel = d === selected;
@@ -107,7 +107,7 @@ function Cell({ d, today, selected, onSelect, big, dayEntries }: { d: number; to
       {big ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 3, marginTop: 5, overflow: 'hidden' }}>
           {entries.slice(0, 3).map((e) => {
-            const j = findJournal(e.journal);
+            const j = resolve(e.journal);
             return (
               <div key={e.id} style={{ display: 'flex', alignItems: 'center', gap: 5, minWidth: 0 }}>
                 <span style={{ width: 6, height: 6, borderRadius: 9, background: isSel ? '#fff' : j?.color, flexShrink: 0 }} />
@@ -121,7 +121,7 @@ function Cell({ d, today, selected, onSelect, big, dayEntries }: { d: number; to
         entries.length > 0 && (
           <div style={{ display: 'flex', gap: 3, marginTop: 4, position: 'absolute', bottom: 6 }}>
             {entries.slice(0, 3).map((e) => {
-              const j = findJournal(e.journal);
+              const j = resolve(e.journal);
               return <span key={e.id} style={{ width: 5, height: 5, borderRadius: 9, background: isSel ? '#fff' : j?.color }} />;
             })}
           </div>
@@ -132,7 +132,13 @@ function Cell({ d, today, selected, onSelect, big, dayEntries }: { d: number; to
 }
 
 export function CalendarScreen({ desk, onOpenEntry }: { desk: boolean; onOpenEntry: (id: string) => void }): VNode {
-  const { entries } = useAppData();
+  const { entries, journals } = useAppData();
+  // Resolve against the live notebooks (user-created and imported ones aren't in
+  // the static seed) so calendar dots and rows carry the right journal colour.
+  const resolveJournal = useMemo(() => {
+    const byId = new Map(journals.map((j) => [j.id, j]));
+    return (id: string): Journal | undefined => byId.get(id);
+  }, [journals]);
   const [offset, setOffset] = useState(0); // months from "today"
   const now = new Date();
   const baseY = now.getUTCFullYear();
@@ -170,7 +176,7 @@ export function CalendarScreen({ desk, onOpenEntry }: { desk: boolean; onOpenEnt
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: big ? 6 : 2 }}>
         {Array.from({ length: meta.offset }).map((_, i) => <div key={'b' + i} />)}
         {Array.from({ length: meta.days }).map((_, i) => (
-          <Cell key={i} d={i + 1} today={today} selected={selected} onSelect={setSelected} big={big} dayEntries={byDay.get(i + 1) ?? []} />
+          <Cell key={i} d={i + 1} today={today} selected={selected} onSelect={setSelected} big={big} dayEntries={byDay.get(i + 1) ?? []} resolve={resolveJournal} />
         ))}
       </div>
     </div>
@@ -215,7 +221,7 @@ export function CalendarScreen({ desk, onOpenEntry }: { desk: boolean; onOpenEnt
             <div style={{ fontFamily: 'var(--serif)', fontSize: 22, fontWeight: 500, color: 'var(--ink)', marginTop: 2 }}>{dayEntries.length ? `${dayEntries.length} ${dayEntries.length === 1 ? 'entry' : 'entries'}` : 'Nothing yet'}</div>
           </div>
           <div style={{ flex: 1, overflow: 'auto', padding: '0 18px 18px', display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {dayEntries.length ? dayEntries.map((e) => <EntryRow key={e.id} e={e} onOpen={onOpenEntry} compact />) : <EmptyDay onNew={() => onOpenEntry('')} />}
+            {dayEntries.length ? dayEntries.map((e) => <EntryRow key={e.id} e={e} onOpen={onOpenEntry} compact resolve={resolveJournal} />) : <EmptyDay onNew={() => onOpenEntry('')} />}
             <OnThisDay matches={memories} onOpen={onOpenEntry} />
           </div>
           <div style={{ padding: '16px 20px', borderTop: '1px solid var(--line)' }}>
@@ -249,7 +255,7 @@ export function CalendarScreen({ desk, onOpenEntry }: { desk: boolean; onOpenEnt
           <span style={{ fontFamily: 'var(--ui)', fontSize: 12.5, color: 'var(--ink-3)' }}>{dayEntries.length} {dayEntries.length === 1 ? 'entry' : 'entries'}</span>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          {dayEntries.length ? dayEntries.map((e) => <EntryRow key={e.id} e={e} onOpen={onOpenEntry} />) : <EmptyDay onNew={() => onOpenEntry('')} />}
+          {dayEntries.length ? dayEntries.map((e) => <EntryRow key={e.id} e={e} onOpen={onOpenEntry} resolve={resolveJournal} />) : <EmptyDay onNew={() => onOpenEntry('')} />}
           <OnThisDay matches={memories} onOpen={onOpenEntry} />
         </div>
       </div>

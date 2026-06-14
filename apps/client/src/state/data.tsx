@@ -19,12 +19,13 @@ import { pushEntries, pushTemplates, pushInterviewTypes, pullEntries, type Journ
 import { uploadMedia, downloadMedia } from '../sync/media';
 import { rotateAccount, type RotationProgress } from '../sync/rotate';
 import { newEntryId, newMediaId, newTemplateId } from '../sync/ids';
-import { ENTRIES, JOURNALS, type Journal } from '../data/sample';
+import { ENTRIES, JOURNALS, type Journal, type CoverPattern } from '../data/sample';
 import { seedBuiltinTemplates } from '../data/templates';
 import { seedBuiltinInterviews } from '../data/interviews';
 import type { JSONContent } from '@tiptap/core';
 import { blocksToDoc, textToDoc, docToText, docMediaIds } from '../editor/doc';
 import { LocalDb, destroyOwnerDb, type MediaRecord } from '../db';
+import { makeThumbnail } from '../ui/thumbnail';
 
 export type SyncStatus = 'locked' | 'connecting' | 'online' | 'offline';
 
@@ -82,6 +83,12 @@ interface AppData {
   deleteEntry(id: string): void;
   newJournal(j: Journal): void;
   /**
+   * Restyle an existing notebook — rename it and/or change its colour or cover.
+   * Journals are a local-only grouping, so this only touches this device's
+   * `journals` table (nothing syncs). `count`/`last` are derived and ignored.
+   */
+  updateJournal(id: string, patch: { name?: string; subtitle?: string; color?: string; cover?: CoverPattern }): void;
+  /**
    * After the user typed "delete": remove the notebook and tombstone every entry
    * in it (the deletions sync to other devices through the LWW oplog, and the
    * entries' recordings are purged locally and on the relay). The journal row
@@ -114,6 +121,12 @@ interface AppData {
   removeMedia(mediaId: string): void;
   /** Resolve an attachment to playable bytes: local DB first, then relay download. */
   mediaBlob(entryId: string, att: MediaAttachment): Promise<Blob | null>;
+  /**
+   * Resolve a small thumbnail for an image attachment (the overview lists). Served
+   * from the cached downscaled JPEG when present; otherwise generated once from the
+   * full bytes and persisted. Returns null for non-images or when bytes are unreachable.
+   */
+  mediaThumb(entryId: string, att: MediaAttachment): Promise<Blob | null>;
   /**
    * Replace the recovery phrase: re-encrypt the vault under `newMnemonic` (a new
    * owner), wipe the old account from the relay, and re-home local state. Throws
@@ -643,6 +656,17 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
     [db],
   );
 
+  const updateJournal: AppData['updateJournal'] = useCallback(
+    (id, patch) => {
+      const cur = journals.find((j) => j.id === id);
+      if (!cur) return;
+      const updated = { ...cur, ...patch };
+      setJournals((prev) => prev.map((j) => (j.id === id ? updated : j)));
+      if (dbReady.current) void db.putJournal(updated);
+    },
+    [db, journals],
+  );
+
   const createTemplate: AppData['createTemplate'] = useCallback(
     (input) => {
       const now = Date.now();
@@ -940,6 +964,32 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
     [db, relay],
   );
 
+  // Small list thumbnail for an image: cached downscaled JPEG → generate from the
+  // full bytes once → persist. Keeps the overview lists from decoding full-res
+  // images into the DOM. Non-images have no preview; the editor uses mediaBlob.
+  const mediaThumb: AppData['mediaThumb'] = useCallback(
+    async (entryId, att) => {
+      if (att.kind !== 'image') return null;
+      if (dbReady.current) {
+        const cached = await db.getMediaThumb(att.id).catch(() => null);
+        if (cached) return bytesToBlob(cached, 'image/jpeg');
+      }
+      const full = await mediaBlob(entryId, att);
+      if (!full) return null;
+      try {
+        const thumb = await makeThumbnail(full);
+        if (dbReady.current) {
+          const bytes = new Uint8Array(await thumb.arrayBuffer());
+          void db.putMediaThumb(att.id, bytes).catch(() => undefined);
+        }
+        return thumb;
+      } catch {
+        return full; // unsupported format — fall back to the original bytes
+      }
+    },
+    [db, mediaBlob],
+  );
+
   // Replace the recovery phrase (sync/rotate.ts). The rotation sheet blocks edits
   // while this runs; flipping to 'connecting' first tears down the background
   // interval so no flush/pull races the migration against the old account.
@@ -1124,6 +1174,6 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
   // and the outbox can push them) but every consumer sees only live entries.
   const liveEntries = useMemo(() => entries.filter((e) => !e.deleted), [entries]);
 
-  const value: AppData = { status, hasVault, ownerId, pendingCount, saving, bootstrapping, entries: liveEntries, journals: journalsWithCounts, templates, interviewTypes, aiSettings, saveAiSettings, signIn, unlock, lock, createEntry, updateEntry, deleteEntry, newJournal, deleteJournal, createTemplate, updateTemplate, deleteTemplate, createInterviewType, updateInterviewType, deleteInterviewType, addMedia, removeMedia, mediaBlob, rotatePhrase, deleteVault };
+  const value: AppData = { status, hasVault, ownerId, pendingCount, saving, bootstrapping, entries: liveEntries, journals: journalsWithCounts, templates, interviewTypes, aiSettings, saveAiSettings, signIn, unlock, lock, createEntry, updateEntry, deleteEntry, newJournal, updateJournal, deleteJournal, createTemplate, updateTemplate, deleteTemplate, createInterviewType, updateInterviewType, deleteInterviewType, addMedia, removeMedia, mediaBlob, mediaThumb, rotatePhrase, deleteVault };
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

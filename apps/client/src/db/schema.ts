@@ -112,7 +112,16 @@ export const MIGRATIONS: string[] = [
   );
   CREATE INDEX interview_types_dirty ON interview_types(dirty) WHERE dirty = 1;
   `,
-  // ── v7 (FUTURE) — FTS5 full-text index (§3 mandates FTS5 for search) ──
+  // ── v7 — cached image thumbnails ──
+  // A small downscaled JPEG of an image attachment, generated client-side from
+  // the decrypted bytes the first time the entry lists need to show it. Lets the
+  // overview lists render tiny previews instead of decoding the full-resolution
+  // (multi-MB) image into the DOM. Plaintext like `data` (this DB is local-only,
+  // §5a); NULL until generated, never synced.
+  `
+  ALTER TABLE media ADD COLUMN thumb BLOB;
+  `,
+  // ── v8 (FUTURE) — FTS5 full-text index (§3 mandates FTS5 for search) ──
   // The published wa-sqlite 1.0.0 wasm builds are compiled WITHOUT the FTS5
   // module, so creating this table fails today ("no such module: fts5"). When we
   // ship an FTS5-enabled wasm, append the migration below as a forward-only step

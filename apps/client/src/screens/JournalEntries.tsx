@@ -3,21 +3,30 @@ import { Icon } from '../ui/Icon';
 import { Cover, ConnChip, SyncNotice } from '../ui/primitives';
 import type { Journal } from '../data/sample';
 import { useAppData } from '../state/data';
+import { EntryThumbs, entryImages } from '../ui/EntryThumbs';
 
 const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+// Compact list date: append the year only when the entry isn't from the current
+// year, so recent entries stay clean while older ones aren't ambiguous.
+function listDate(d: Date): string {
+  const label = `${MON[d.getMonth()]} ${d.getDate()}`;
+  return d.getFullYear() === new Date().getFullYear() ? label : `${label}, ${d.getFullYear()}`;
+}
 
 // Mobile-only drill-in: the entries of one notebook. Desktop never routes here —
 // it shows the journal-scoped list as the editor's left pane instead.
-export function JournalEntriesScreen({ journal, onBack, onOpenEntry, onNew, onDelete, syncing }: {
+export function JournalEntriesScreen({ journal, onBack, onOpenEntry, onNew, onEdit, onDelete, syncing }: {
   journal: Journal;
   onBack: () => void;
   onOpenEntry: (id: string) => void;
   onNew: () => void;
+  /** Opens the rename/recolour sheet for this notebook. */
+  onEdit: () => void;
   /** Opens the typed-"delete" confirmation sheet for this notebook. */
   onDelete: () => void;
   syncing?: boolean;
 }): VNode {
-  const { entries } = useAppData();
+  const { entries, mediaThumb } = useAppData();
   const list = entries
     .filter((e) => e.journalId === journal.id)
     .sort((a, b) => b.updatedAt - a.updatedAt);
@@ -30,6 +39,9 @@ export function JournalEntriesScreen({ journal, onBack, onOpenEntry, onNew, onDe
         </button>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <ConnChip compact />
+          <button title="Edit journal" onClick={onEdit} style={{ width: 36, height: 36, borderRadius: 999, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'transparent', border: 'none', cursor: 'pointer' }}>
+            <Icon name="edit" size={18} color="var(--ink-2)" />
+          </button>
           <button title="Delete journal" onClick={onDelete} style={{ width: 36, height: 36, borderRadius: 999, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'transparent', border: 'none', cursor: 'pointer' }}>
             <Icon name="trash" size={18} color="var(--accent)" />
           </button>
@@ -55,6 +67,7 @@ export function JournalEntriesScreen({ journal, onBack, onOpenEntry, onNew, onDe
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10, margin: '18px 0' }}>
           {list.map((e) => {
             const d = new Date(e.createdAt);
+            const images = entryImages(e);
             return (
               <button
                 key={e.id}
@@ -63,11 +76,12 @@ export function JournalEntriesScreen({ journal, onBack, onOpenEntry, onNew, onDe
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 10 }}>
                   <span style={{ fontFamily: 'var(--serif)', fontSize: 16.5, fontWeight: 500, color: 'var(--ink)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{e.title || 'Untitled'}</span>
-                  <span style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--ink-3)', flexShrink: 0 }}>{MON[d.getMonth()]} {d.getDate()}</span>
+                  <span style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--ink-3)', flexShrink: 0 }}>{listDate(d)}</span>
                 </div>
                 {e.bodyText && (
                   <p style={{ fontFamily: 'var(--ui)', fontSize: 13, color: 'var(--ink-2)', margin: '4px 0 0', lineHeight: 1.45, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>{e.bodyText}</p>
                 )}
+                <EntryThumbs images={images} resolve={(att) => mediaThumb(e.id, att)} size={40} />
               </button>
             );
           })}

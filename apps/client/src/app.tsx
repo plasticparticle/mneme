@@ -9,7 +9,7 @@ import { useAppData, type SyncStatus } from './state/data';
 import type { Journal } from './data/sample';
 import type { TemplateRecord } from './sync/engine';
 import { Onboarding } from './screens/Onboarding';
-import { JournalsScreen, NewJournalSheet } from './screens/Journals';
+import { JournalsScreen, NewJournalSheet, EditJournalSheet } from './screens/Journals';
 import { JournalEntriesScreen } from './screens/JournalEntries';
 import { CalendarScreen } from './screens/Calendar';
 import { EditorScreen } from './screens/Editor';
@@ -190,7 +190,7 @@ function MobileNav({ flow, setFlow, onCompose, onSettings, onSearch }: {
 export function App(): VNode {
   const desk = useIsDesktop();
   const theme = useTheme();
-  const { status, hasVault, ownerId, bootstrapping, entries, journals, templates, aiSettings, newJournal, deleteJournal, signIn, unlock, lock, createEntry, rotatePhrase, deleteVault } = useAppData();
+  const { status, hasVault, ownerId, bootstrapping, entries, journals, templates, aiSettings, newJournal, updateJournal, deleteJournal, signIn, unlock, lock, createEntry, rotatePhrase, deleteVault } = useAppData();
   const [flow, setFlowRaw] = useState<Flow>('journals');
   const [modal, setModal] = useState(false);
   const [rotateOpen, setRotateOpen] = useState(false);
@@ -205,6 +205,7 @@ export function App(): VNode {
   const [interviewTypesOpen, setInterviewTypesOpen] = useState(false);
   // Which notebook the typed-"delete" confirmation sheet is for (null → closed).
   const [deleteJournalId, setDeleteJournalId] = useState<string | null>(null);
+  const [editJournalId, setEditJournalId] = useState<string | null>(null);
   // Which entry the editor is currently editing (null → editor shows its empty state).
   const [openEntryId, setOpenEntryId] = useState<string | null>(null);
   // Which notebook the mobile 'journal' flow is showing.
@@ -338,12 +339,13 @@ export function App(): VNode {
           onBack={() => setFlow('journals')}
           onOpenEntry={openEntry}
           onNew={() => newEntry(openJournalObj.id)}
+          onEdit={() => setEditJournalId(openJournalObj.id)}
           onDelete={() => setDeleteJournalId(openJournalObj.id)}
           syncing={bootstrapping}
         />
       );
     }
-    return <JournalsScreen desk={desk} journals={journals} onOpen={openJournal} onNew={() => setModal(true)} onDelete={(j) => setDeleteJournalId(j.id)} onSearch={() => setSearchOpen(true)} syncing={bootstrapping} />;
+    return <JournalsScreen desk={desk} journals={journals} onOpen={openJournal} onNew={() => setModal(true)} onEdit={(j) => setEditJournalId(j.id)} onDelete={(j) => setDeleteJournalId(j.id)} onSearch={() => setSearchOpen(true)} syncing={bootstrapping} />;
   })();
 
   // A picked result closes the palette and opens the entry in the editor.
@@ -363,6 +365,19 @@ export function App(): VNode {
         setDeleteJournalId(null);
         // The mobile drill-in was showing this notebook — return to the library.
         if (flow === 'journal' && openJournalId === deleteJournalTarget.id) setFlow('journals');
+      }}
+    />
+  );
+
+  const editJournalTarget = journals.find((j) => j.id === editJournalId);
+  const editJournalSheet = editJournalTarget && (
+    <EditJournalSheet
+      desk={desk}
+      journal={editJournalTarget}
+      onClose={() => setEditJournalId(null)}
+      onSave={(patch) => {
+        updateJournal(editJournalTarget.id, patch);
+        setEditJournalId(null);
       }}
     />
   );
@@ -390,6 +405,7 @@ export function App(): VNode {
         {interviewOpen && <GuidedInterviewSheet desk onClose={() => setInterviewOpen(false)} onOpenEntry={openEntry} onManageTypes={() => setInterviewTypesOpen(true)} />}
         {searchSheet}
         {deleteJournalSheet}
+        {editJournalSheet}
         {prefsOpen && <PreferencesSheet desk theme={theme} onClose={() => setPrefsOpen(false)} ownerId={ownerId} status={status} onLock={lock} onRotate={() => setRotateOpen(true)} onImport={() => setImportOpen(true)} onDeleteVault={() => setDeleteVaultOpen(true)} onAiSettings={() => setAiSettingsOpen(true)} onInterviewTypes={aiSettings?.enabled ? () => setInterviewTypesOpen(true) : null} />}
         {modal && <NewJournalSheet desk templates={templates.filter((t) => !t.deleted)} onClose={() => setModal(false)} onCreate={onCreateJournal} />}
         {templatesOpen && <TemplatesSheet desk onClose={() => setTemplatesOpen(false)} onUse={(t) => { setTemplatesOpen(false); newEntryFromTemplate(t); }} />}

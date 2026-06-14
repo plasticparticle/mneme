@@ -184,7 +184,3 @@ export const ENTRY_DAYS: Record<number, Entry[]> = (() => {
   });
   return m;
 })();
-
-export function findJournal(id: string): Journal | undefined {
-  return JOURNALS.find((j) => j.id === id);
-}

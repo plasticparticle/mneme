@@ -4,7 +4,7 @@ import type { Editor, JSONContent } from '@tiptap/core';
 import { Icon } from '../ui/Icon';
 import { SyncBadge, Cover, ConnChip } from '../ui/primitives';
 import { LabelField } from '../ui/LabelField';
-import { findJournal, LABELS } from '../data/sample';
+import { LABELS, type Journal } from '../data/sample';
 import { useAppData } from '../state/data';
 import type { JournalEntry, MediaAttachment, TemplateRecord } from '../sync/engine';
 import { useRichEditor } from '../editor/useRichEditor';
@@ -24,6 +24,7 @@ import type { AiEditorAction } from '../ai/prompts';
 import { VideoCapture } from '../ui/VideoCapture';
 import { AudioCapture } from '../ui/AudioCapture';
 import { AttachmentList } from '../ui/Attachments';
+import { EntryThumbs, entryImages } from '../ui/EntryThumbs';
 import { Lightbox } from '../ui/Lightbox';
 import { TemplatesSheet } from '../ui/Templates';
 import { EntryDateTime } from '../ui/EntryDateTime';
@@ -31,6 +32,12 @@ import { JournalPicker, JournalSheet } from '../ui/JournalPicker';
 import '../editor/editor.css';
 
 const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+// Compact list date: append the year only when the entry isn't from the current
+// year, so recent entries stay clean while older ones aren't ambiguous.
+function listDate(d: Date): string {
+  const label = `${MON[d.getMonth()]} ${d.getDate()}`;
+  return d.getFullYear() === new Date().getFullYear() ? label : `${label}, ${d.getFullYear()}`;
+}
 const SAVE_DEBOUNCE_MS = 600;
 
 function countWords(text: string): number {
@@ -696,8 +703,13 @@ export function EditorScreen({
   /** Mobile delete hand-off: navigate to the journal's entry list. */
   onDeleted: (journalId: string | null) => void;
 }): VNode {
-  const { entries } = useAppData();
+  const { entries, journals, mediaThumb } = useAppData();
   const entry = entries.find((e) => e.id === entryId) ?? null;
+  // Resolve against the live notebooks from app state — not just the built-in
+  // sample seed — otherwise user-created and imported notebooks resolve to
+  // undefined, and the header falls back to "Write" with no cover/colour.
+  const journalById = (id: string | null | undefined): Journal | undefined =>
+    id ? journals.find((j) => j.id === id) : undefined;
   const [editor, setEditor] = useState<Editor | null>(null);
   const [words, setWords] = useState(0);
   // WYSIWYG vs markdown-source editing — per entry, session-only: it resets to
@@ -710,7 +722,7 @@ export function EditorScreen({
   const lastJournalId = useRef<string | null>(null);
   if (entry) lastJournalId.current = entry.journalId;
   const journalId = entry?.journalId ?? lastJournalId.current;
-  const journal = journalId ? findJournal(journalId) : undefined;
+  const journal = journalById(journalId);
 
   // Deleting keeps you inside the journal: desktop opens its next entry (or
   // its scoped empty editor when none remain); mobile returns to its list.
@@ -740,7 +752,7 @@ export function EditorScreen({
     // last one open — survives a delete); only a fresh editor with no journal
     // context yet falls back to the whole vault.
     const scoped = journalId ? entries.filter((x) => x.journalId === journalId) : entries;
-    const list = [...scoped].sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 12);
+    const list = [...scoped].sort((a, b) => b.updatedAt - a.updatedAt);
     return (
       <div style={{ height: '100%', display: 'flex', background: 'var(--paper)' }}>
         {/* entry list */}
@@ -757,16 +769,18 @@ export function EditorScreen({
           </div>
           <div style={{ flex: 1, overflow: 'auto', padding: '0 12px 14px', display: 'flex', flexDirection: 'column', gap: 4 }}>
             {list.map((x) => {
-              const j = findJournal(x.journalId);
+              const j = journalById(x.journalId);
               const active = x.id === entryId;
               const d = new Date(x.createdAt);
+              const images = entryImages(x);
               return (
                 <button key={x.id} onClick={() => onSelectEntry(x.id)} style={{ textAlign: 'left', cursor: 'pointer', padding: '12px 13px', borderRadius: 12, border: 'none', background: active ? 'var(--surface)' : 'transparent', borderLeft: `2.5px solid ${active ? j?.color ?? 'transparent' : 'transparent'}` }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
                     <span style={{ fontFamily: 'var(--serif)', fontSize: 15.5, fontWeight: 500, color: 'var(--ink)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{x.title || 'Untitled'}</span>
-                    <span style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--ink-3)', flexShrink: 0 }}>{MON[d.getMonth()]} {d.getDate()}</span>
+                    <span style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--ink-3)', flexShrink: 0 }}>{listDate(d)}</span>
                   </div>
                   <p style={{ fontFamily: 'var(--ui)', fontSize: 12.5, color: 'var(--ink-2)', margin: '3px 0 0', lineHeight: 1.45, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>{x.bodyText}</p>
+                  <EntryThumbs images={images} resolve={(att) => mediaThumb(x.id, att)} size={32} />
                 </button>
               );
             })}

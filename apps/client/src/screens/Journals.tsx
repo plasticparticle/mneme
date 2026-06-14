@@ -131,6 +131,98 @@ export function NewJournalSheet({
   );
 }
 
+export function EditJournalSheet({
+  desk,
+  journal,
+  onClose,
+  onSave,
+}: {
+  desk: boolean;
+  /** The notebook being restyled — seeds the form. */
+  journal: Journal;
+  onClose: () => void;
+  /** Persists the new name/colour/cover; the caller closes the sheet. */
+  onSave: (patch: { name: string; color: string; cover: CoverPattern }) => void;
+}): VNode {
+  const [name, setName] = useState(journal.name);
+  const [color, setColor] = useState(journal.color);
+  const [cover, setCover] = useState<CoverPattern>(journal.cover);
+  const draft: Journal = { ...journal, name: name || 'Untitled journal', color, cover };
+
+  const body = (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+        <Cover journal={draft} w={48} h={62} r={9} />
+        <div style={{ flex: 1 }}>
+          <input
+            autoFocus
+            value={name}
+            onInput={(e) => setName((e.target as HTMLInputElement).value)}
+            placeholder="Name your journal"
+            style={{ width: '100%', boxSizing: 'border-box', border: 'none', outline: 'none', background: 'transparent', fontFamily: 'var(--serif)', fontSize: 22, color: 'var(--ink)', fontWeight: 500 }}
+          />
+          <div style={{ height: 1, background: 'var(--line)', marginTop: 4 }} />
+        </div>
+      </div>
+
+      <Field label="Colour">
+        <div style={{ display: 'flex', gap: 9, flexWrap: 'wrap' }}>
+          {JCOLORS.map((c) => (
+            <button
+              key={c}
+              onClick={() => setColor(c)}
+              style={{ width: 30, height: 30, borderRadius: 999, cursor: 'pointer', background: c, border: color === c ? '2.5px solid var(--ink)' : '2.5px solid transparent', outline: `1px solid ${hexA(c, 0.4)}`, outlineOffset: -1 }}
+            />
+          ))}
+        </div>
+      </Field>
+
+      <Field label="Cover">
+        <div style={{ display: 'flex', gap: 8 }}>
+          {JCOVERS.map((cv) => (
+            <button
+              key={cv}
+              onClick={() => setCover(cv)}
+              style={{ flex: 1, padding: 7, borderRadius: 12, cursor: 'pointer', background: 'var(--paper)', border: `1.5px solid ${cover === cv ? 'var(--accent)' : 'var(--line)'}`, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}
+            >
+              <Cover journal={{ color, cover: cv }} w={28} h={36} r={6} />
+              <span style={{ fontFamily: 'var(--ui)', fontSize: 10.5, color: 'var(--ink-2)', textTransform: 'capitalize' }}>{cv}</span>
+            </button>
+          ))}
+        </div>
+      </Field>
+
+      <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
+        <Btn kind="ghost" size="md" onClick={onClose} style={{ flex: 1 }}>Cancel</Btn>
+        <Btn
+          kind="primary"
+          size="md"
+          onClick={() => onSave({ name: name.trim() || 'Untitled journal', color, cover })}
+          style={{ flex: 2 }}
+        >
+          Save changes
+        </Btn>
+      </div>
+    </div>
+  );
+
+  return (
+    <div
+      onClick={onClose}
+      style={{ position: 'absolute', inset: 0, zIndex: 60, background: 'rgba(30,22,16,.34)', backdropFilter: 'blur(2px)', display: 'flex', alignItems: desk ? 'center' : 'flex-end', justifyContent: 'center' }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{ width: desk ? 440 : '100%', boxSizing: 'border-box', background: 'var(--surface)', borderRadius: desk ? 20 : '24px 24px 0 0', border: '1px solid var(--line)', padding: desk ? 26 : '20px 22px 30px', boxShadow: '0 20px 60px rgba(30,20,12,.3)' }}
+      >
+        {!desk && <div style={{ width: 38, height: 4, borderRadius: 9, background: 'var(--line)', margin: '0 auto 16px' }} />}
+        <h3 style={{ fontFamily: 'var(--serif)', fontSize: 19, fontWeight: 500, color: 'var(--ink)', margin: '0 0 18px' }}>Edit journal</h3>
+        {body}
+      </div>
+    </div>
+  );
+}
+
 function Field({ label, children }: { label: string; children: ComponentChildren }): VNode {
   return (
     <div>
@@ -178,7 +270,7 @@ function JournalCard({ j, onOpen }: { j: Journal; onOpen: (j: Journal) => void }
   );
 }
 
-export function JournalsScreen({ desk, journals, onOpen, onNew, onDelete, onSearch, syncing }: { desk: boolean; journals: Journal[]; onOpen: (j: Journal) => void; onNew: () => void; onDelete: (j: Journal) => void; onSearch: () => void; syncing?: boolean }): VNode {
+export function JournalsScreen({ desk, journals, onOpen, onNew, onEdit, onDelete, onSearch, syncing }: { desk: boolean; journals: Journal[]; onOpen: (j: Journal) => void; onNew: () => void; onEdit: (j: Journal) => void; onDelete: (j: Journal) => void; onSearch: () => void; syncing?: boolean }): VNode {
   if (desk) {
     return (
       <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: 'var(--paper)' }}>
@@ -217,15 +309,26 @@ export function JournalsScreen({ desk, journals, onOpen, onNew, onDelete, onSear
                   <div style={{ fontFamily: 'var(--ui)', fontSize: 13, color: 'var(--ink-2)', marginTop: 2 }}>{j.subtitle}</div>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 9 }}>
                     <span style={{ fontFamily: 'var(--ui)', fontSize: 12, color: 'var(--ink-3)' }}>{j.last ? `Edited ${j.last}` : 'No entries yet'}</span>
-                    <button
-                      title="Delete journal"
-                      onClick={(e) => { e.stopPropagation(); onDelete(j); }}
-                      style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28, margin: -6, borderRadius: 8, border: 'none', background: 'transparent', cursor: 'pointer', opacity: 0.55 }}
-                      onMouseEnter={(e) => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.background = 'var(--accent-soft)'; }}
-                      onMouseLeave={(e) => { e.currentTarget.style.opacity = '0.55'; e.currentTarget.style.background = 'transparent'; }}
-                    >
-                      <Icon name="trash" size={15} color="var(--accent)" />
-                    </button>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 2, margin: -6 }}>
+                      <button
+                        title="Edit journal"
+                        onClick={(e) => { e.stopPropagation(); onEdit(j); }}
+                        style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28, borderRadius: 8, border: 'none', background: 'transparent', cursor: 'pointer', opacity: 0.55 }}
+                        onMouseEnter={(e) => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.background = 'var(--accent-soft)'; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.opacity = '0.55'; e.currentTarget.style.background = 'transparent'; }}
+                      >
+                        <Icon name="edit" size={15} color="var(--ink-2)" />
+                      </button>
+                      <button
+                        title="Delete journal"
+                        onClick={(e) => { e.stopPropagation(); onDelete(j); }}
+                        style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28, borderRadius: 8, border: 'none', background: 'transparent', cursor: 'pointer', opacity: 0.55 }}
+                        onMouseEnter={(e) => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.background = 'var(--accent-soft)'; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.opacity = '0.55'; e.currentTarget.style.background = 'transparent'; }}
+                      >
+                        <Icon name="trash" size={15} color="var(--accent)" />
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>

@@ -169,16 +169,41 @@ export function markdownToBlocks(md: string): JSONContent[] {
 }
 
 /**
- * Day One has no separate title field — the first line of an entry is its title.
- * Pull a plain-text title from the leading heading/paragraph and return the
- * remaining blocks as the body, so the title isn't duplicated in both places.
+ * Day One has no separate title field — the first *line* of an entry is its title.
+ * A leading heading is single-line, so its whole text becomes the title. A leading
+ * paragraph, however, can run for many lines joined by soft breaks (a single "\n"
+ * doesn't end a Markdown paragraph), so we take only the text up to the first soft
+ * break and keep the rest of the paragraph in the body — otherwise a long opening
+ * paragraph would be swallowed whole into the title (and truncated past the cap,
+ * losing content).
  */
 export function splitTitle(blocks: JSONContent[]): { title: string; body: JSONContent[] } {
   const first = blocks[0];
-  if (first && (first.type === 'heading' || first.type === 'paragraph')) {
+  if (!first) return { title: '', body: blocks };
+
+  if (first.type === 'heading') {
     const title = plainText(first).trim();
     if (title) return { title: title.slice(0, 140), body: blocks.slice(1) };
+    return { title: '', body: blocks };
   }
+
+  if (first.type === 'paragraph') {
+    const content = first.content ?? [];
+    const brk = content.findIndex((n) => n.type === 'hardBreak');
+    const headNodes = brk === -1 ? content : content.slice(0, brk);
+    const title = headNodes.map(plainText).join('').trim();
+    if (!title) return { title: '', body: blocks };
+
+    // A single long line with no break is prose, not a title — leave it in the body.
+    if (brk === -1 && title.length > 140) return { title: '', body: blocks };
+
+    // Everything after the first line stays in the body as its own paragraph.
+    const restNodes = brk === -1 ? [] : content.slice(brk + 1);
+    const body: JSONContent[] = restNodes.length ? [{ type: 'paragraph', content: restNodes }] : [];
+    body.push(...blocks.slice(1));
+    return { title: title.slice(0, 140), body };
+  }
+
   return { title: '', body: blocks };
 }
 

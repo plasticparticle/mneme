@@ -87,14 +87,28 @@ async function handle(req: DbRequest): Promise<{ rows: SqlValue[][]; columns: st
   }
 }
 
-self.onmessage = async (ev: MessageEvent<DbRequest>) => {
+// Serialize every request through one promise chain. There is a single SQLite
+// connection, and `exec` yields at each `await` (statements/step); an unguarded
+// async onmessage would let requests interleave on that one connection. That is
+// corrupting for `batch` ops in particular: a batch wraps its writes in
+// BEGIN…COMMIT, so any other request's writes that interleave land inside that
+// transaction — and a second overlapping BEGIN throws, triggering a ROLLBACK
+// that discards them. A bulk Day One import (hundreds of putLocal writes racing
+// with each flush's markSynced batches) is where this surfaced: most inserts
+// were rolled back and only a handful survived. Chaining keeps each request
+// fully done before the next begins.
+let queue: Promise<unknown> = Promise.resolve();
+
+self.onmessage = (ev: MessageEvent<DbRequest>) => {
   const req = ev.data;
-  try {
-    const { rows, columns } = await handle(req);
-    const res: DbResponse = { id: req.id, ok: true, rows, columns };
-    (self as unknown as Worker).postMessage(res);
-  } catch (e) {
-    const res: DbResponse = { id: req.id, ok: false, error: e instanceof Error ? e.message : String(e) };
-    (self as unknown as Worker).postMessage(res);
-  }
+  queue = queue.then(async () => {
+    try {
+      const { rows, columns } = await handle(req);
+      const res: DbResponse = { id: req.id, ok: true, rows, columns };
+      (self as unknown as Worker).postMessage(res);
+    } catch (e) {
+      const res: DbResponse = { id: req.id, ok: false, error: e instanceof Error ? e.message : String(e) };
+      (self as unknown as Worker).postMessage(res);
+    }
+  });
 };

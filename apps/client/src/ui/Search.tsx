@@ -9,7 +9,6 @@ import type { VNode } from 'preact';
 import { useMemo, useRef, useState } from 'preact/hooks';
 import { Icon } from './Icon';
 import { LabelChip } from './primitives';
-import { findJournal } from '../data/sample';
 import { useAppData } from '../state/data';
 import { search, normalize, type Hit } from '../search/core';
 
@@ -40,7 +39,7 @@ export function SearchSheet({ desk, onClose, onOpen }: {
   onClose: () => void;
   onOpen: (entryId: string) => void;
 }): VNode {
-  const { entries } = useAppData();
+  const { entries, journals } = useAppData();
   const [query, setQuery] = useState('');
   const [index, setIndex] = useState(0);
   const listRef = useRef<HTMLDivElement>(null);
@@ -84,7 +83,7 @@ export function SearchSheet({ desk, onClose, onOpen }: {
         </div>
       )}
       {hits.map((h, i) => {
-        const j = findJournal(h.entry.journalId);
+        const j = journals.find((x) => x.id === h.entry.journalId);
         const hot = i === active;
         return (
           <button

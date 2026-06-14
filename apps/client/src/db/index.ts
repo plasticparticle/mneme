@@ -557,6 +557,17 @@ export class LocalDb {
     await this.#run(`DELETE FROM media WHERE id = ?`, [id]);
   }
 
+  /** The cached downscaled thumbnail of an image (schema v7), or null if not generated yet. */
+  async getMediaThumb(id: string): Promise<Uint8Array | null> {
+    const rows = await this.#query(`SELECT thumb FROM media WHERE id = ?`, [id]);
+    return rows.length ? ((rows[0][0] as Uint8Array | null) ?? null) : null;
+  }
+
+  /** Persist a generated thumbnail next to its media row (no-op if the row is gone). */
+  async putMediaThumb(id: string, thumb: Uint8Array): Promise<void> {
+    await this.#run(`UPDATE media SET thumb = ? WHERE id = ?`, [thumb, id]);
+  }
+
   // ── media tombstones (schema v4): relay-side deletion queue ──
 
   /** Queue a media id for relay-side deletion (survives reloads until acknowledged). */

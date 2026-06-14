@@ -67,6 +67,14 @@ const mine = {
       text: '![](dayone-moment://MISSING)\n\nMedia-only-ish entry with a missing file.',
       photos: [{ identifier: 'MISSING', md5: 'zzz999', type: 'jpeg' }],
     },
+    {
+      // Day One title = first LINE: a short opening line, then a long body joined
+      // by single "\n" soft breaks (no blank line) — must NOT swallow the body
+      // into the title (the headline-mapping bug).
+      uuid: 'B3',
+      creationDate: '2022-05-14T08:07:00Z',
+      text: 'Samstag. Immer gut.\nIn der Arbeit habe ich mich geärgert. ' + 'x'.repeat(200) + '\nDritte Zeile.',
+    },
   ],
 };
 
@@ -83,9 +91,9 @@ const zip = zipSync({
 
 const archive = parseDayOneArchive(zip);
 assert.equal(archive.journals.length, 2, 'two journals parsed');
-assert.equal(archive.entryCount, 3, 'three entries total');
+assert.equal(archive.entryCount, 4, 'four entries total');
 assert.equal(archive.mediaCount, 3, 'three resolvable media files (missing one excluded)');
-console.log('✓ parse: 2 journals, 3 entries, 3 resolvable media');
+console.log('✓ parse: 2 journals, 4 entries, 3 resolvable media');
 
 // --- Mock app surface --------------------------------------------------------
 
@@ -117,7 +125,7 @@ const api: ImportApi = {
 // --- Run ---------------------------------------------------------------------
 
 const summary = await importDayOne(archive, api);
-assert.equal(summary.entries, 3, 'all three entries imported');
+assert.equal(summary.entries, 4, 'all four entries imported');
 assert.equal(summary.journals, 1, 'only "Travel" created; "My Journal" reused by name');
 assert.equal(summary.media, 3, 'three media files attached');
 assert.equal(summary.skippedMedia, 1, 'one missing media reference skipped');
@@ -130,7 +138,7 @@ const travelId = newJournals[0].id;
 const travelEntries = created.filter((c) => c.journalId === travelId);
 assert.equal(travelEntries.length, 1, 'one entry in Travel');
 const mineEntries = created.filter((c) => c.journalId === 'j-personal');
-assert.equal(mineEntries.length, 2, 'two entries reused into My Journal');
+assert.equal(mineEntries.length, 3, 'three entries reused into My Journal');
 console.log('✓ journals: Travel created, My Journal reused');
 
 // The rich travel entry: title, date, tags, and document structure.
@@ -168,5 +176,16 @@ const b2doc = JSON.parse(b2.bodyJson!) as JSONContent;
 assert.ok(!JSON.stringify(b2doc).includes('mediaGallery'), 'missing image left no node');
 assert.ok(!Number.isNaN(b2.createdAt!), 'bad date fell back to a number');
 console.log('✓ partial export: missing media skipped, entry intact');
+
+// Headline mapping: title is the FIRST LINE only; the rest of a soft-broken
+// opening paragraph stays in the body (not swallowed/truncated into the title).
+const b3 = updated.get(mineEntries[2].id)!;
+assert.equal(b3.title, 'Samstag. Immer gut.', 'title is the first line, not the whole paragraph');
+const b3doc = JSON.parse(b3.bodyJson!) as JSONContent;
+const b3text = b3.bodyText!;
+assert.ok(b3text.includes('In der Arbeit habe ich mich geärgert'), 'rest of the first paragraph kept in body');
+assert.ok(b3text.includes('Dritte Zeile.'), 'later lines kept in body');
+assert.ok(!(b3doc.content ?? []).some((n) => n.type === 'heading'), 'first line did not become a heading');
+console.log('✓ headline mapping: first line → title, body preserved');
 
 console.log('\nAll Day One import assertions passed.');

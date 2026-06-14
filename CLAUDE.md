@@ -205,7 +205,11 @@ marks, lists/tasks, quotes, fenced code, `dayone-moment://` media refs → place
 each entry is created then media is encrypted+attached via the normal `addMedia` path (consecutive
 images group into a gallery) and the original `creationDate`/tags are written back. **No special
 relay path** — imported records encrypt and sync exactly like hand-authored ones; the zip never
-leaves the device. Wire-path check: `pnpm --filter client exec tsx scripts/dayone-import.ts`.
+leaves the device. Checks: `pnpm --filter client exec tsx scripts/dayone-import.ts` (parse + doc
+conversion, mocked surface) and `scripts/dayone-import-persist.ts` (a 101-entry bulk import driven
+through real wa-sqlite under the worker's serialized dispatch — guards the `src/db/worker.ts`
+request queue: an unserialized worker interleaves the import's fire-and-forget `putLocal` runs with
+`flush`'s `markSynced` BEGIN/COMMIT batches on the single connection and corrupts/loses rows).
 
 Not yet: FTS5 (blocked on a custom wa-sqlite wasm build), push transport + reminders UI (step 6),
 export + non-Day-One import (step 7), Tauri shells (step 8) and their OS-keychain at-rest storage (§6).

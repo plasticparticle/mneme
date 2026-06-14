@@ -9,5 +9,10 @@
     "build": "pnpm --filter client build",
     "preview": "pnpm --filter client preview",
     "typecheck": "pnpm --filter client typecheck"
+  },
+  "pnpm": {
+    "overrides": {
+      "esbuild": "^0.28.1"
+    }
   }
 }

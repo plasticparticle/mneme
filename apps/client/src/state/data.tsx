@@ -41,6 +41,10 @@ interface AppData {
   ownerId: string | null;
   // How many local entries still wait to be pushed to the relay (the outbox depth).
   pendingCount: number;
+  // Notebook ids that still have entries waiting in the push outbox — drives the
+  // per-journal "Syncing…" badge so a bulk import shows which notebooks are still
+  // catching up. Media-only tails are reflected in `pendingCount`, not here.
+  pendingJournalIds: Set<string>;
   // True while a push to the relay is in flight.
   saving: boolean;
   // True from sign-in until the first sync attempt finishes (pull done or
@@ -153,6 +157,14 @@ export function useAppData(): AppData {
   return v;
 }
 
+// Cheap equality so the per-journal pending set only triggers a re-render when
+// its membership actually changes (syncPendingCount fires on every outbox poke).
+function sameSet(a: Set<string>, b: Set<string>): boolean {
+  if (a.size !== b.size) return false;
+  for (const v of a) if (!b.has(v)) return false;
+  return true;
+}
+
 const SYNC_INTERVAL_MS = 30_000;
 // While disconnected, retry authentication on this cadence so the client recovers
 // on its own once the relay comes back — no need to re-enter the mnemonic.
@@ -237,6 +249,7 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
   const [hasVault, setHasVault] = useState<boolean | null>(null);
   const [ownerId, setOwnerId] = useState<string | null>(null);
   const [pendingCount, setPendingCount] = useState(0);
+  const [pendingJournalIds, setPendingJournalIds] = useState<Set<string>>(new Set());
   const [saving, setSaving] = useState(false);
   const [bootstrapping, setBootstrapping] = useState(false);
   const [entries, setEntries] = useState<JournalEntry[]>([]);
@@ -283,17 +296,19 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
   }, []);
 
   // Mirror the (mutable) outbox depth into reactive state so the UI can react.
-  const syncPendingCount = useCallback(
-    () =>
-      setPendingCount(
-        pending.current.size +
-          pendingTemplates.current.size +
-          pendingInterviewTypes.current.size +
-          pendingMedia.current.size +
-          pendingMediaDeletes.current.size,
-      ),
-    [],
-  );
+  const syncPendingCount = useCallback(() => {
+    setPendingCount(
+      pending.current.size +
+        pendingTemplates.current.size +
+        pendingInterviewTypes.current.size +
+        pendingMedia.current.size +
+        pendingMediaDeletes.current.size,
+    );
+    // Per-notebook view of the entry outbox for the journal-card sync badge.
+    const js = new Set<string>();
+    for (const e of pending.current.values()) js.add(e.journalId);
+    setPendingJournalIds((prev) => (sameSet(prev, js) ? prev : js));
+  }, []);
 
   // Upload queued recordings one media object at a time (chunked inside uploadMedia),
   // then push queued deletions. Runs after the entry flush so the attachment
@@ -1174,6 +1189,6 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
   // and the outbox can push them) but every consumer sees only live entries.
   const liveEntries = useMemo(() => entries.filter((e) => !e.deleted), [entries]);
 
-  const value: AppData = { status, hasVault, ownerId, pendingCount, saving, bootstrapping, entries: liveEntries, journals: journalsWithCounts, templates, interviewTypes, aiSettings, saveAiSettings, signIn, unlock, lock, createEntry, updateEntry, deleteEntry, newJournal, updateJournal, deleteJournal, createTemplate, updateTemplate, deleteTemplate, createInterviewType, updateInterviewType, deleteInterviewType, addMedia, removeMedia, mediaBlob, mediaThumb, rotatePhrase, deleteVault };
+  const value: AppData = { status, hasVault, ownerId, pendingCount, pendingJournalIds, saving, bootstrapping, entries: liveEntries, journals: journalsWithCounts, templates, interviewTypes, aiSettings, saveAiSettings, signIn, unlock, lock, createEntry, updateEntry, deleteEntry, newJournal, updateJournal, deleteJournal, createTemplate, updateTemplate, deleteTemplate, createInterviewType, updateInterviewType, deleteInterviewType, addMedia, removeMedia, mediaBlob, mediaThumb, rotatePhrase, deleteVault };
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

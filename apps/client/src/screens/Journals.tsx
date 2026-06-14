@@ -1,11 +1,12 @@
 import type { VNode, ComponentChildren } from 'preact';
 import { useState } from 'preact/hooks';
 import { Icon } from '../ui/Icon';
-import { Btn, Cover, ConnChip, SyncNotice } from '../ui/primitives';
+import { Btn, Cover, SyncBadge, SyncNotice, Spinner } from '../ui/primitives';
 import { hexA } from '../ui/color';
 import type { CoverPattern, Journal } from '../data/sample';
 import type { TemplateRecord } from '../sync/engine';
 import { DocPreview } from '../editor/DocPreview';
+import { useAppData } from '../state/data';
 
 const JCOLORS = ['#B0563A', '#4E8B85', '#6A6AA0', '#B08A2E', '#5A7BA6', '#6E8B5E', '#8E6A93', '#C06A4A'];
 const JCOVERS: CoverPattern[] = ['lines', 'dots', 'grid', 'plain', 'photo'];
@@ -247,7 +248,20 @@ function AccountChip(): VNode {
   );
 }
 
-function JournalCard({ j, onOpen }: { j: Journal; onOpen: (j: Journal) => void }): VNode {
+// Per-notebook badge while some of its entries are still in the push outbox —
+// so a bulk import shows which notebooks have finished syncing and which haven't.
+function SyncingTag(): VNode {
+  return (
+    <span
+      title="This notebook is still syncing to the relay"
+      style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontFamily: 'var(--ui)', fontSize: 11.5, fontWeight: 600, color: 'var(--accent-ink)' }}
+    >
+      <Spinner size={11} /> Syncing…
+    </span>
+  );
+}
+
+function JournalCard({ j, onOpen, syncing }: { j: Journal; onOpen: (j: Journal) => void; syncing?: boolean }): VNode {
   return (
     <button
       onClick={() => onOpen(j)}
@@ -263,6 +277,8 @@ function JournalCard({ j, onOpen }: { j: Journal; onOpen: (j: Journal) => void }
           <span style={{ fontFamily: 'var(--ui)', fontSize: 12, color: 'var(--ink-3)' }}>{j.count} {j.count === 1 ? 'entry' : 'entries'}</span>
           {j.last && <span style={{ width: 3, height: 3, borderRadius: 9, background: 'var(--ink-3)' }} />}
           {j.last && <span style={{ fontFamily: 'var(--ui)', fontSize: 12, color: 'var(--ink-3)' }}>{j.last}</span>}
+          {syncing && <span style={{ width: 3, height: 3, borderRadius: 9, background: 'var(--ink-3)' }} />}
+          {syncing && <SyncingTag />}
         </div>
       </div>
       <Icon name="right" size={18} color="var(--ink-3)" />
@@ -271,6 +287,17 @@ function JournalCard({ j, onOpen }: { j: Journal; onOpen: (j: Journal) => void }
 }
 
 export function JournalsScreen({ desk, journals, onOpen, onNew, onEdit, onDelete, onSearch, syncing }: { desk: boolean; journals: Journal[]; onOpen: (j: Journal) => void; onNew: () => void; onEdit: (j: Journal) => void; onDelete: (j: Journal) => void; onSearch: () => void; syncing?: boolean }): VNode {
+  const { pendingCount, pendingJournalIds } = useAppData();
+  // `syncing` (the first-sync pull) shows the download banner; an outbox with
+  // records still to push (e.g. straight after a Day One import) shows an upload
+  // banner so the screen never looks idle while entries are still leaving.
+  const uploading = !syncing && pendingCount > 0;
+  const uploadBanner = uploading && (
+    <SyncNotice
+      title="Finishing sync…"
+      body={`${pendingCount} ${pendingCount === 1 ? 'change is' : 'changes are'} being encrypted and uploaded to the relay. Imported entries appear in their notebooks as they sync.`}
+    />
+  );
   if (desk) {
     return (
       <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: 'var(--paper)' }}>
@@ -280,11 +307,13 @@ export function JournalsScreen({ desk, journals, onOpen, onNew, onEdit, onDelete
             <p style={{ fontFamily: 'var(--ui)', fontSize: 13.5, color: 'var(--ink-3)', margin: '4px 0 0' }}>{journals.length} notebooks · {journals.reduce((a, b) => a + b.count, 0)} entries · all encrypted</p>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <SyncBadge />
             <SearchBar desk onClick={onSearch} />
             <Btn kind="primary" icon="plus" onClick={onNew}>New journal</Btn>
           </div>
         </div>
         {syncing && <div style={{ padding: '0 34px 14px' }}><SyncNotice /></div>}
+        {uploadBanner && <div style={{ padding: '0 34px 14px' }}>{uploadBanner}</div>}
         <div style={{ flex: 1, overflow: 'auto', padding: '8px 34px 34px' }}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16 }}>
             {journals.map((j) => (
@@ -308,7 +337,11 @@ export function JournalsScreen({ desk, journals, onOpen, onNew, onEdit, onDelete
                   <div style={{ fontFamily: 'var(--serif)', fontSize: 19, fontWeight: 500, color: 'var(--ink)' }}>{j.name}</div>
                   <div style={{ fontFamily: 'var(--ui)', fontSize: 13, color: 'var(--ink-2)', marginTop: 2 }}>{j.subtitle}</div>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 9 }}>
-                    <span style={{ fontFamily: 'var(--ui)', fontSize: 12, color: 'var(--ink-3)' }}>{j.last ? `Edited ${j.last}` : 'No entries yet'}</span>
+                    {pendingJournalIds.has(j.id) ? (
+                      <SyncingTag />
+                    ) : (
+                      <span style={{ fontFamily: 'var(--ui)', fontSize: 12, color: 'var(--ink-3)' }}>{j.last ? `Edited ${j.last}` : 'No entries yet'}</span>
+                    )}
                     <div style={{ display: 'flex', alignItems: 'center', gap: 2, margin: -6 }}>
                       <button
                         title="Edit journal"
@@ -355,7 +388,7 @@ export function JournalsScreen({ desk, journals, onOpen, onNew, onEdit, onDelete
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <AccountChip />
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <ConnChip />
+            <SyncBadge />
             <button style={{ width: 38, height: 38, borderRadius: 999, border: '1px solid var(--line)', background: 'var(--surface)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
               <Icon name="settings" size={19} color="var(--ink-2)" />
             </button>
@@ -368,9 +401,10 @@ export function JournalsScreen({ desk, journals, onOpen, onNew, onEdit, onDelete
         <div style={{ margin: '18px 0' }}><SearchBar onClick={onSearch} /></div>
 
         {syncing && <div style={{ margin: '0 0 14px' }}><SyncNotice /></div>}
+        {uploadBanner && <div style={{ margin: '0 0 14px' }}>{uploadBanner}</div>}
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 11 }}>
-          {journals.map((j) => <JournalCard key={j.id} j={j} onOpen={onOpen} />)}
+          {journals.map((j) => <JournalCard key={j.id} j={j} onOpen={onOpen} syncing={pendingJournalIds.has(j.id)} />)}
           <button
             onClick={onNew}
             style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', cursor: 'pointer', padding: 16, borderRadius: 16, background: 'transparent', border: '1.5px dashed var(--line)', color: 'var(--ink-3)' }}

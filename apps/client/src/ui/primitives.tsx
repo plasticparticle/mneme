@@ -137,7 +137,12 @@ function deriveSync(status: SyncStatus, pendingCount: number, saving: boolean, d
   }
   if (status === 'locked') return { label: 'Locked', dot: 'var(--ink-3)', busy: false, locked: false, title: 'Not signed in' };
   // online
-  if (unsynced) return { label: 'Saving…', dot: 'var(--accent)', busy: true, locked: false, title: 'Encrypting and syncing your changes' };
+  if (unsynced) {
+    // Surface the outbox depth so a long sync (e.g. just after a bulk import)
+    // reads as visible, finite progress rather than an indefinite "Saving…".
+    const label = pendingCount > 0 ? `Syncing ${pendingCount}…` : 'Saving…';
+    return { label, dot: 'var(--accent)', busy: true, locked: false, title: 'Encrypting and syncing your changes' };
+  }
   return { label: 'Synced', dot: 'var(--accent)', busy: false, locked: true, title: 'End-to-end encrypted · all changes synced' };
 }
 
@@ -236,10 +241,12 @@ export function Spinner({ size = 16, color = 'var(--accent)' }: { size?: number;
 }
 
 /**
- * First-sync banner: shown while the initial pull after sign-in is still
- * running, so an empty timeline reads as "still arriving", not "nothing there".
+ * Sync banner: by default the first-sync notice shown while the initial pull
+ * after sign-in is still running, so an empty timeline reads as "still arriving",
+ * not "nothing there". `title`/`body` override the copy for the push direction —
+ * e.g. while a bulk import's entries are still uploading to the relay.
  */
-export function SyncNotice(): VNode {
+export function SyncNotice({ title, body }: { title?: string; body?: string } = {}): VNode {
   return (
     <div
       style={{
@@ -249,8 +256,8 @@ export function SyncNotice(): VNode {
     >
       <Spinner size={16} />
       <span style={{ fontFamily: 'var(--ui)', fontSize: 12.5, lineHeight: 1.5, color: 'var(--accent-ink)' }}>
-        <strong>Syncing your journal…</strong> Entries are downloaded from the relay and decrypted on this
-        device. They appear as they arrive.
+        <strong>{title ?? 'Syncing your journal…'}</strong>{' '}
+        {body ?? 'Entries are downloaded from the relay and decrypted on this device. They appear as they arrive.'}
       </span>
     </div>
   );

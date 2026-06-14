@@ -29,10 +29,14 @@ import { InterviewTypesSheet } from './ui/InterviewTypes';
 type Flow = 'journals' | 'journal' | 'calendar' | 'editor';
 
 // ── DESKTOP sidebar ─────────────────────────────────────────
-function Sidebar({ flow, setFlow, journals, onOpenJournal, status, ownerId, onTemplates, onSearch, onPreferences, onAsk, onInterview }: {
+function Sidebar({ flow, setFlow, journals, activeJournalId, onNew, onOpenJournal, status, ownerId, onTemplates, onSearch, onPreferences, onAsk, onInterview }: {
   flow: Flow;
   setFlow: (f: Flow) => void;
   journals: Journal[];
+  /** Notebook the editor's open entry belongs to — that row lights up instead of "Write". */
+  activeJournalId: string | null;
+  /** The primary CTA — start a fresh entry (in the active notebook if there is one). */
+  onNew: () => void;
   onOpenJournal: (j: Journal) => void;
   status: SyncStatus;
   ownerId: string | null;
@@ -44,6 +48,10 @@ function Sidebar({ flow, setFlow, journals, onOpenJournal, status, ownerId, onTe
   /** null while the AI assistant is disabled — the row hides itself. */
   onInterview: (() => void) | null;
 }): VNode {
+  // Fold the outbox depth into the footer so a sync in progress (e.g. just after
+  // a bulk import) is visible from every screen, not only the journals list.
+  const { pendingCount, saving } = useAppData();
+  const syncing = status === 'online' && (saving || pendingCount > 0);
   const nav = (key: Flow, icon: IconName, label: string): VNode => {
     const active = flow === key;
     return (
@@ -61,6 +69,17 @@ function Sidebar({ flow, setFlow, journals, onOpenJournal, status, ownerId, onTe
     <div style={{ width: 238, flexShrink: 0, borderRight: '1px solid var(--line)', background: 'var(--surface-2)', display: 'flex', flexDirection: 'column', padding: '18px 14px' }}>
       <div style={{ padding: '4px 8px 18px' }}><Wordmark size={22} /></div>
 
+      {/* Primary CTA — the clear, present way to begin a journal entry. Accent
+          fill (matching the mobile compose FAB) so it reads as THE action. */}
+      <button
+        onClick={onNew}
+        style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, width: '100%', boxSizing: 'border-box', cursor: 'pointer', padding: '11px 14px', marginBottom: 10, borderRadius: 11, border: 'none', background: 'var(--accent)', color: '#fff', fontFamily: 'var(--ui)', fontSize: 14, fontWeight: 600, boxShadow: '0 2px 8px rgba(120,60,30,.28)' }}
+        onMouseEnter={(e) => { e.currentTarget.style.filter = 'brightness(1.05)'; }}
+        onMouseLeave={(e) => { e.currentTarget.style.filter = 'none'; }}
+      >
+        <Icon name="plus" size={18} color="#fff" /> New entry
+      </button>
+
       {/* Search field — opens the vault-wide search palette (also ⌘/Ctrl+K). */}
       <button
         onClick={onSearch}
@@ -76,7 +95,6 @@ function Sidebar({ flow, setFlow, journals, onOpenJournal, status, ownerId, onTe
       <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
         {nav('journals', 'books', 'Journals')}
         {nav('calendar', 'cal', 'Calendar')}
-        {nav('editor', 'feather', 'Write')}
         {/* Templates open as a sheet, not a flow — styled to match the nav rows. */}
         <button
           onClick={onTemplates}
@@ -111,19 +129,22 @@ function Sidebar({ flow, setFlow, journals, onOpenJournal, status, ownerId, onTe
 
       <div style={{ fontFamily: 'var(--ui)', fontSize: 11, fontWeight: 700, letterSpacing: 0.7, textTransform: 'uppercase', color: 'var(--ink-3)', padding: '20px 10px 8px' }}>Notebooks</div>
       <div style={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column', gap: 1 }}>
-        {journals.map((j) => (
-          <button
-            key={j.id}
-            onClick={() => onOpenJournal(j)}
-            style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left', cursor: 'pointer', padding: '8px 10px', borderRadius: 9, border: 'none', background: 'transparent', color: 'var(--ink)', fontFamily: 'var(--ui)', fontSize: 13.5 }}
-            onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface)')}
-            onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-          >
-            <span style={{ width: 11, height: 11, borderRadius: 3, background: j.color, flexShrink: 0 }} />
-            <span style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{j.name}</span>
-            <span style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--ink-3)' }}>{j.count}</span>
-          </button>
-        ))}
+        {journals.map((j) => {
+          const active = activeJournalId === j.id;
+          return (
+            <button
+              key={j.id}
+              onClick={() => onOpenJournal(j)}
+              style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left', cursor: 'pointer', padding: '8px 10px', borderRadius: 9, border: 'none', background: active ? 'var(--accent-soft)' : 'transparent', color: active ? 'var(--accent-ink)' : 'var(--ink)', fontFamily: 'var(--ui)', fontSize: 13.5, fontWeight: active ? 600 : 500 }}
+              onMouseEnter={(e) => { if (!active) e.currentTarget.style.background = 'var(--surface)'; }}
+              onMouseLeave={(e) => { if (!active) e.currentTarget.style.background = 'transparent'; }}
+            >
+              <span style={{ width: 11, height: 11, borderRadius: 3, background: j.color, flexShrink: 0 }} />
+              <span style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{j.name}</span>
+              <span style={{ fontFamily: 'var(--mono)', fontSize: 11, color: active ? 'var(--accent-ink)' : 'var(--ink-3)' }}>{j.count}</span>
+            </button>
+          );
+        })}
       </div>
 
       {/* Footer: the identity row IS the preferences button — every vault
@@ -144,8 +165,12 @@ function Sidebar({ flow, setFlow, journals, onOpenJournal, status, ownerId, onTe
               {ownerId ? `${ownerId.slice(0, 8)}…` : 'Your vault'}
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-              <ConnectionDot status={status} size={7} />
-              <span style={{ fontFamily: 'var(--mono)', fontSize: 10.5, color: 'var(--ink-3)' }}>{connLabel(status).toLowerCase()}</span>
+              {syncing ? (
+                <span class="mneme-pulse" style={{ width: 7, height: 7, borderRadius: 999, background: 'var(--accent)', flexShrink: 0, display: 'inline-block' }} />
+              ) : (
+                <ConnectionDot status={status} size={7} />
+              )}
+              <span style={{ fontFamily: 'var(--mono)', fontSize: 10.5, color: 'var(--ink-3)' }}>{syncing ? `syncing ${pendingCount}…` : connLabel(status).toLowerCase()}</span>
             </div>
           </div>
           <Icon name="settings" size={17} color="var(--ink-3)" />
@@ -308,6 +333,11 @@ export function App(): VNode {
 
   const openJournalObj = journals.find((j) => j.id === openJournalId);
 
+  // While the editor is open, the active context is the notebook its entry lives
+  // in — the sidebar lights that row instead of the redundant "Write" item.
+  const activeJournalId =
+    flow === 'editor' ? entries.find((e) => e.id === openEntryId)?.journalId ?? null : null;
+
   const screen = (() => {
     if (flow === 'calendar') return <CalendarScreen desk={desk} onOpenEntry={(id) => (id ? openEntry(id) : newEntry())} />;
     if (flow === 'editor') {
@@ -389,16 +419,10 @@ export function App(): VNode {
     if (template) newEntryFromTemplate(template, j.id);
   };
 
-  // Selecting "Write" with nothing open starts a fresh entry rather than a blank screen.
-  const navTo = (f: Flow) => {
-    if (f === 'editor' && !openEntryId) newEntry();
-    else setFlow(f);
-  };
-
   if (desk) {
     return (
       <div style={{ height: '100%', display: 'flex', background: 'var(--paper)', position: 'relative' }}>
-        <Sidebar flow={flow} setFlow={navTo} journals={journals} onOpenJournal={openJournal} status={status} ownerId={ownerId} onTemplates={() => setTemplatesOpen(true)} onSearch={() => setSearchOpen(true)} onPreferences={() => setPrefsOpen(true)} onAsk={aiSettings?.enabled ? () => setAskOpen(true) : null} onInterview={aiSettings?.enabled ? () => setInterviewOpen(true) : null} />
+        <Sidebar flow={flow} setFlow={setFlow} journals={journals} activeJournalId={activeJournalId} onNew={() => newEntry(activeJournalId ?? undefined)} onOpenJournal={openJournal} status={status} ownerId={ownerId} onTemplates={() => setTemplatesOpen(true)} onSearch={() => setSearchOpen(true)} onPreferences={() => setPrefsOpen(true)} onAsk={aiSettings?.enabled ? () => setAskOpen(true) : null} onInterview={aiSettings?.enabled ? () => setInterviewOpen(true) : null} />
         <div style={{ flex: 1, minWidth: 0 }}>{screen}</div>
         {/* Non-modal companions: flex siblings, so the app stays usable beside them. */}
         {askOpen && <AskJournalSheet desk onClose={() => setAskOpen(false)} />}
@@ -426,7 +450,7 @@ export function App(): VNode {
       {/* Inside a notebook the Journals tab stays lit and compose writes into it. */}
       {/* Settings in the bottom nav goes straight to the preferences sheet —
           it holds the journal/assistant/vault rows the old settings sheet had. */}
-      {showNav && <MobileNav flow={flow === 'journal' ? 'journals' : flow} setFlow={navTo} onCompose={() => newEntry(flow === 'journal' ? openJournalObj?.id : undefined)} onSettings={() => setPrefsOpen(true)} onSearch={() => setSearchOpen(true)} />}
+      {showNav && <MobileNav flow={flow === 'journal' ? 'journals' : flow} setFlow={setFlow} onCompose={() => newEntry(flow === 'journal' ? openJournalObj?.id : undefined)} onSettings={() => setPrefsOpen(true)} onSearch={() => setSearchOpen(true)} />}
       {searchSheet}
       {deleteJournalSheet}
       {modal && <NewJournalSheet desk={false} templates={templates.filter((t) => !t.deleted)} onClose={() => setModal(false)} onCreate={onCreateJournal} />}

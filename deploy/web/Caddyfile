@@ -1,0 +1,58 @@
+# LAN-facing entry point. SITE_ADDRESS comes from .env.prod and may list
+# several addresses (IP, hostname) separated by commas.
+#
+# `tls internal` uses Caddy's own CA: browsers warn once per device (proceed,
+# or install the root cert from the caddy_data volume under
+# pki/authorities/local/root.crt to make the warning go away). HTTPS is not
+# optional — the client needs a secure context for OPFS storage and media
+# capture, which plain http:// on a LAN IP does not provide.
+#
+# default_sni: browsers hitting a bare IP send no SNI; without this Caddy
+# can't pick a certificate and aborts the handshake.
+
+{
+	default_sni {$DEFAULT_SNI}
+	fallback_sni {$DEFAULT_SNI}
+}
+
+{$SITE_ADDRESS} {
+	tls internal
+	encode zstd gzip
+
+	# Everything lives under /mneme; the rest of the origin stays free for
+	# other services on this host. Bare / redirects for convenience (302 so a
+	# future root site isn't shadowed by a cached permanent redirect).
+	redir / /mneme/ 302
+	redir /mneme /mneme/
+
+	handle_path /mneme/* {
+		# handle_path strips the /mneme prefix, so the relay and the SPA
+		# see root-relative paths exactly as before.
+
+		# Relay API + health + operator admin surface → Go server.
+		handle /v1/* {
+			reverse_proxy server:8080
+		}
+		handle /healthz {
+			reverse_proxy server:8080
+		}
+		handle /readyz {
+			reverse_proxy server:8080
+		}
+		handle /admin* {
+			reverse_proxy server:8080
+		}
+
+		# Everything else is the client SPA.
+		handle {
+			root * /srv
+			try_files {path} /index.html
+			file_server
+		}
+	}
+
+	# Nothing lives outside /mneme (yet) — don't answer with empty 200s.
+	handle {
+		respond 404
+	}
+}

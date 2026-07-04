@@ -1,0 +1,10 @@
+.git
+node_modules
+**/node_modules
+apps/client/dist
+apps/desktop/src-tauri/target
+server/journald
+backups
+*.log
+.env
+.env.*

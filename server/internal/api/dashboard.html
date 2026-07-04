@@ -224,6 +224,9 @@
 (() => {
   const $ = id => document.getElementById(id);
   const KEY = 'mneme-admin-token';
+  // The relay may sit behind a reverse-proxy path prefix (e.g. /mneme/admin), so
+  // derive the admin API base from the page's own URL instead of hardcoding /admin.
+  const API = location.pathname.replace(/\/$/, '');
   const METRICS = [
     ['requests', 'Requests'],
     ['requests_failed', 'Failed requests'],
@@ -293,7 +296,7 @@
 
   async function loadBackups() {
     try {
-      const res = await fetch('/admin/backups', { headers: authHeaders() });
+      const res = await fetch(API + '/backups', { headers: authHeaders() });
       if (!res.ok) throw new Error('HTTP ' + res.status);
       renderBackups(await res.json());
     } catch (e) {
@@ -332,7 +335,7 @@
     $('bkNow').disabled = true;
     $('bkNow').textContent = 'Backing up…';
     try {
-      const res = await fetch('/admin/backups', { method: 'POST', headers: authHeaders() });
+      const res = await fetch(API + '/backups', { method: 'POST', headers: authHeaders() });
       if (!res.ok && res.status !== 202) throw new Error('HTTP ' + res.status);
     } catch (e) {
       $('bkStatus').className = 'bk-status err';
@@ -348,7 +351,7 @@
 
   async function downloadBackup(name) {
     try {
-      const res = await fetch('/admin/backups/' + encodeURIComponent(name), { headers: authHeaders() });
+      const res = await fetch(API + '/backups/' + encodeURIComponent(name), { headers: authHeaders() });
       if (!res.ok) throw new Error('HTTP ' + res.status);
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
@@ -371,7 +374,7 @@
     if (del) {
       if (!confirm('Delete archive ' + del.dataset.delbk + '? The vault data it holds is not affected.')) return;
       try {
-        const res = await fetch('/admin/backups/' + encodeURIComponent(del.dataset.delbk),
+        const res = await fetch(API + '/backups/' + encodeURIComponent(del.dataset.delbk),
           { method: 'DELETE', headers: authHeaders() });
         if (!res.ok && res.status !== 404) throw new Error('HTTP ' + res.status);
         loadBackups();
@@ -401,7 +404,7 @@
     $('restoreGo').disabled = true;
     $('restoreErr').textContent = 'restoring… do not close this tab';
     try {
-      const res = await fetch('/admin/backups/' + encodeURIComponent(restoreName) + '/restore', {
+      const res = await fetch(API + '/backups/' + encodeURIComponent(restoreName) + '/restore', {
         method: 'POST',
         headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ confirm: 'restore' }),
@@ -445,7 +448,7 @@
     if ($('modalInput').value.trim() !== 'delete' || !delOwner) return;
     $('modalGo').disabled = true;
     try {
-      const res = await fetch('/admin/vaults/' + encodeURIComponent(delOwner), {
+      const res = await fetch(API + '/vaults/' + encodeURIComponent(delOwner), {
         method: 'DELETE',
         headers: { Authorization: 'Bearer ' + sessionStorage.getItem(KEY), 'Content-Type': 'application/json' },
         body: JSON.stringify({ confirm: 'delete' }),
@@ -492,7 +495,7 @@
     const token = sessionStorage.getItem(KEY);
     if (!token) return gate();
     try {
-      const res = await fetch('/admin/stats', { headers: { Authorization: 'Bearer ' + token } });
+      const res = await fetch(API + '/stats', { headers: { Authorization: 'Bearer ' + token } });
       if (res.status === 401) { sessionStorage.removeItem(KEY); return gate(true); }
       if (!res.ok) throw new Error('HTTP ' + res.status);
       render(await res.json());

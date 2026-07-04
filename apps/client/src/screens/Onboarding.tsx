@@ -4,6 +4,8 @@ import { Icon } from '../ui/Icon';
 import { Btn } from '../ui/primitives';
 import { Wordmark } from '../ui/Wordmark';
 import { generateMnemonic, mnemonicWords, validateMnemonic, wordsToMnemonic } from '../crypto/mnemonic';
+import { webauthnAvailable, PrfUnsupportedError } from '../platform/webauthn';
+import type { SealChoice } from '../state/data';
 
 type View = 'welcome' | 'create' | 'confirm' | 'restore' | 'passphrase' | 'unlock';
 
@@ -53,14 +55,19 @@ const hStyle = (desk: boolean): JSX.CSSProperties => ({
 });
 const pStyle: JSX.CSSProperties = { fontFamily: 'var(--ui)', fontSize: 14, lineHeight: 1.55, color: 'var(--ink-2)', margin: 0 };
 
-export function Onboarding({ desk, hasVault, onEnter, onUnlock }: {
+export function Onboarding({ desk, hasVault, unlockMethod, onEnter, onUnlock, onUnlockWithKey }: {
   desk: boolean;
-  /** True when an Argon2id-sealed seed exists on this device → start on unlock. */
+  /** True when a sealed seed exists on this device → start on unlock. */
   hasVault: boolean;
-  /** With `passphrase`, the seed is sealed at rest; without, nothing persists. */
-  onEnter: (mnemonic: string, passphrase?: string) => void;
+  /** Which factor seals the seed — drives what the unlock view asks for. */
+  unlockMethod: 'passphrase' | 'securityKey' | null;
+  /** With a `seal` choice the seed is sealed at rest; without, nothing persists.
+   * Rejects when the security-key enrollment fails — the view shows it inline. */
+  onEnter: (mnemonic: string, seal?: SealChoice) => Promise<void>;
   /** Rejects on a wrong passphrase — the unlock view shows the error inline. */
   onUnlock: (passphrase: string) => Promise<void>;
+  /** Runs the WebAuthn ceremony; rejects on cancel / absent key / wrong key. */
+  onUnlockWithKey: () => Promise<void>;
 }): VNode {
   const [view, setView] = useState<View>(hasVault ? 'unlock' : 'welcome');
   const [revealed, setRevealed] = useState(false);
@@ -132,6 +139,7 @@ export function Onboarding({ desk, hasVault, onEnter, onUnlock }: {
   const [pass1, setPass1] = useState('');
   const [pass2, setPass2] = useState('');
   const [busy, setBusy] = useState(false);
+  const [setupError, setSetupError] = useState('');
 
   // unlock step (returning device with a sealed seed)
   const [unlockPass, setUnlockPass] = useState('');
@@ -405,13 +413,29 @@ export function Onboarding({ desk, hasVault, onEnter, onUnlock }: {
     const minLen = 8;
     const valid = pass1.length >= minLen && pass1 === pass2;
     const mismatch = pass2.length > 0 && pass1 !== pass2;
+    // Shared tail of the three ways out of this view: run the sign-in, surface
+    // a failure inline (a cancelled/unsupported security-key ceremony rejects
+    // before any state changes, so staying on the view is safe).
+    const enter = (seal?: SealChoice): void => {
+      if (busy) return;
+      setBusy(true);
+      setSetupError('');
+      onEnter(pendingMnemonic, seal).catch((err: unknown) => {
+        setBusy(false);
+        setSetupError(
+          err instanceof PrfUnsupportedError
+            ? 'This key doesn’t support the required PRF extension — use a passphrase instead.'
+            : seal?.method === 'securityKey'
+              ? 'Security key setup didn’t complete — try again or use a passphrase.'
+              : 'Something went wrong — try again.',
+        );
+      });
+    };
     return wrap(
       <form
         onSubmit={(e) => {
           e.preventDefault();
-          if (!valid || busy) return;
-          setBusy(true);
-          onEnter(pendingMnemonic, pass1);
+          if (valid) enter({ method: 'passphrase', passphrase: pass1 });
         }}
         style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}
       >
@@ -427,6 +451,9 @@ export function Onboarding({ desk, hasVault, onEnter, onUnlock }: {
         </div>
         {mismatch && (
           <p style={{ fontFamily: 'var(--ui)', fontSize: 12.5, color: 'var(--accent-ink)', margin: '8px 2px 0' }}>The two passphrases don’t match yet.</p>
+        )}
+        {setupError && (
+          <p style={{ fontFamily: 'var(--ui)', fontSize: 12.5, color: 'var(--accent-ink)', margin: '8px 2px 0' }}>{setupError}</p>
         )}
 
         <Callout>
@@ -446,7 +473,12 @@ export function Onboarding({ desk, hasVault, onEnter, onUnlock }: {
         >
           {busy ? 'Encrypting…' : 'Encrypt & stay signed in'}
         </Btn>
-        <Btn kind="ghost" size="lg" full onClick={() => !busy && onEnter(pendingMnemonic)} style={{ marginTop: 10 }}>
+        {webauthnAvailable() && (
+          <Btn kind="ghost" size="lg" full icon="key" onClick={() => enter({ method: 'securityKey' })} style={{ marginTop: 10, opacity: busy ? 0.55 : 1, pointerEvents: busy ? 'none' : 'auto' }}>
+            Use a security key instead
+          </Btn>
+        )}
+        <Btn kind="ghost" size="lg" full onClick={() => enter()} style={{ marginTop: 10, opacity: busy ? 0.55 : 1, pointerEvents: busy ? 'none' : 'auto' }}>
           Skip — ask for my phrase each time
         </Btn>
       </form>,
@@ -455,11 +487,23 @@ export function Onboarding({ desk, hasVault, onEnter, onUnlock }: {
   }
 
   // ─────────────── UNLOCK (returning device with a sealed seed) ───────────────
+  const keyUnlock = unlockMethod === 'securityKey';
+  const unlockWithKey = (): void => {
+    if (unlockBusy) return;
+    setUnlockBusy(true);
+    setUnlockError('');
+    // One message for every failure mode — cancelled ceremony, absent key, or
+    // the wrong key (AEAD tag mismatch). The phrase link below is the way out.
+    onUnlockWithKey().catch(() => {
+      setUnlockBusy(false);
+      setUnlockError('That security key didn’t unlock this device.');
+    });
+  };
   return wrap(
     <form
       onSubmit={(e) => {
         e.preventDefault();
-        if (unlockBusy || unlockPass.length === 0) return;
+        if (keyUnlock || unlockBusy || unlockPass.length === 0) return;
         setUnlockBusy(true);
         setUnlockError('');
         onUnlock(unlockPass).catch(() => {
@@ -473,26 +517,41 @@ export function Onboarding({ desk, hasVault, onEnter, onUnlock }: {
       <Wordmark size={24} />
       <div style={{ marginTop: 40, marginBottom: 6, color: 'var(--ink-2)' }}>
         <div style={{ width: 76, height: 76, borderRadius: 999, border: '1.5px solid var(--line)', background: 'var(--surface)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto' }}>
-          <Icon name="lock" size={30} color="var(--accent)" />
+          <Icon name={keyUnlock ? 'key' : 'lock'} size={30} color="var(--accent)" />
         </div>
       </div>
       <h2 style={{ fontFamily: 'var(--serif)', fontSize: 24, color: 'var(--ink)', margin: '18px 0 4px', fontWeight: 500 }}>Welcome back</h2>
-      <p style={{ fontFamily: 'var(--ui)', fontSize: 13.5, color: 'var(--ink-3)', margin: 0 }}>Enter the passphrase for this device</p>
+      <p style={{ fontFamily: 'var(--ui)', fontSize: 13.5, color: 'var(--ink-3)', margin: 0 }}>
+        {keyUnlock ? 'Unlock this device with your security key' : 'Enter the passphrase for this device'}
+      </p>
 
       <div style={{ width: '100%', maxWidth: 340, marginTop: 26 }}>
-        <PassField value={unlockPass} placeholder="Passphrase" onInput={setUnlockPass} disabled={unlockBusy} noManager={noManager} autoFocus />
+        {!keyUnlock && <PassField value={unlockPass} placeholder="Passphrase" onInput={setUnlockPass} disabled={unlockBusy} noManager={noManager} autoFocus />}
         {unlockError && (
           <p style={{ fontFamily: 'var(--ui)', fontSize: 12.5, color: 'var(--accent-ink)', margin: '10px 2px 0' }}>{unlockError}</p>
         )}
-        <Btn
-          kind="primary"
-          size="lg"
-          full
-          type="submit"
-          style={{ marginTop: 14, opacity: unlockBusy || unlockPass.length === 0 ? 0.55 : 1, pointerEvents: unlockBusy || unlockPass.length === 0 ? 'none' : 'auto' }}
-        >
-          {unlockBusy ? 'Unlocking…' : 'Unlock'}
-        </Btn>
+        {keyUnlock ? (
+          <Btn
+            kind="primary"
+            size="lg"
+            full
+            icon="key"
+            onClick={unlockWithKey}
+            style={{ marginTop: 14, opacity: unlockBusy ? 0.55 : 1, pointerEvents: unlockBusy ? 'none' : 'auto' }}
+          >
+            {unlockBusy ? 'Waiting for your key…' : 'Unlock with security key'}
+          </Btn>
+        ) : (
+          <Btn
+            kind="primary"
+            size="lg"
+            full
+            type="submit"
+            style={{ marginTop: 14, opacity: unlockBusy || unlockPass.length === 0 ? 0.55 : 1, pointerEvents: unlockBusy || unlockPass.length === 0 ? 'none' : 'auto' }}
+          >
+            {unlockBusy ? 'Unlocking…' : 'Unlock'}
+          </Btn>
+        )}
       </div>
 
       <button
@@ -509,8 +568,8 @@ export function Onboarding({ desk, hasVault, onEnter, onUnlock }: {
 // ── small parts ─────────────────────────────────────────────
 // A passphrase input in the restore-field style. `noManager` keeps password
 // managers away from it (the device passphrase must not overwrite the saved
-// recovery-phrase credential).
-function PassField({ value, placeholder, onInput, disabled, noManager, autoFocus }: {
+// recovery-phrase credential). Also used by the Preferences device-unlock sheet.
+export function PassField({ value, placeholder, onInput, disabled, noManager, autoFocus }: {
   value: string;
   placeholder: string;
   onInput: (v: string) => void;

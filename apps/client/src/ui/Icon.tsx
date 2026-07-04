@@ -10,7 +10,7 @@ export type IconName =
   | 'pin' | 'clock' | 'copy' | 'eye' | 'eyeoff' | 'shield' | 'arrowR' | 'sun'
   | 'grid' | 'timeline' | 'x' | 'video' | 'olist' | 'code' | 'divider' | 'trash'
   | 'file' | 'download' | 'math' | 'monitor' | 'table' | 'link' | 'edit'
-  | 'rowplus' | 'colplus' | 'rowminus' | 'colminus';
+  | 'rowplus' | 'colplus' | 'rowminus' | 'colminus' | 'key';
 
 interface IconProps {
   name: IconName;
@@ -79,6 +79,7 @@ export function Icon({ name, size = 20, stroke = 1.7, style = {}, color = 'curre
     colplus: <><rect x="3.5" y="3.5" width="8" height="17" rx="2" {...P} /><path d="M7.5 3.5v17M15.5 12h5M18 9.5v5" {...P} /></>,
     rowminus: <><rect x="3.5" y="4.5" width="17" height="8" rx="2" {...P} /><path d="M3.5 8.5h17M9.5 18h5" {...P} /></>,
     colminus: <><rect x="3.5" y="3.5" width="8" height="17" rx="2" {...P} /><path d="M7.5 3.5v17M15.5 12h5" {...P} /></>,
+    key: <><circle cx="8" cy="14.5" r="4.5" {...P} /><path d="M11.2 11.3L19.5 3M15.5 7l3 3M13 9.5l2 2" {...P} /></>,
   };
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" style={{ display: 'block', flexShrink: 0, ...style }}>

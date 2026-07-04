@@ -2,7 +2,7 @@
 // Argon2id-sealed seed (§6 at-rest) and the seed-key-sealed AI settings.
 // IndexedDB rather than localStorage because the records carry binary fields
 // and IDB is async.
-import type { SealedSeed } from '../crypto/seedlock';
+import { isSealedSeed, type SealedSeed } from '../crypto/seedlock';
 import type { SealedAiSettings } from '../ai/settings';
 
 const DB_NAME = 'mneme-keystore';
@@ -37,7 +37,7 @@ export async function loadSealedSeed(): Promise<SealedSeed | null> {
   if (typeof indexedDB === 'undefined') return null;
   try {
     const rec = (await run('readonly', (s) => s.get(KEY))) as SealedSeed | undefined;
-    return rec && rec.v === 1 ? rec : null;
+    return rec && isSealedSeed(rec) ? rec : null;
   } catch {
     return null;
   }

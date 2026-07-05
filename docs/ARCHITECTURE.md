@@ -228,6 +228,8 @@ device, and only version-prefixed ciphertext ever syncs (CLAUDE.md §5a).
 | `entries` | id, journal, timestamps, title, `body_text`, `body_json` (TipTap), labels, `deleted`, `dirty` | `dirty=1` is the sync outbox; `updated_at` doubles as the LWW clock |
 | `media` | id, entry, mime, size, duration, plaintext `data` blob, `synced` | `synced=0` is the upload outbox; `data` is NULL until lazily downloaded |
 | `templates` | id, name, body, `builtin` slug, `pristine`, `dirty` | pristine built-in seeds are local-only; edits make them synced records |
+| `journals` | id, name, subtitle, color, cover, `pristine`, `dirty`, `record_id` | notebooks sync as encrypted records; `record_id` is the random wire id — the journal id itself (well-known for seeds, date-encoded for user notebooks) stays inside the ciphertext |
+| `interview_types` | id, name, intro, prompt, `builtin` slug, `pristine`, `dirty` | same pristine/builtin semantics as templates |
 | `media_tombstones` | media ids awaiting relay-side deletion | offline deletes retry until the relay acknowledges |
 
 Full-text search is still substring-based: the published wa-sqlite wasm lacks the FTS5 module, so the
@@ -239,7 +241,7 @@ FTS5 table (CLAUDE.md §3) waits on a custom build — the planned migration is 
 |---|---|---|
 | `owners` | `owner_id`, `owner_pubkey` (X25519) | identity derived from the seed |
 | `devices` | `device_id`, `owner_id`, `device_pubkey` (Ed25519) | challenge-response auth |
-| `entry_blobs` | `owner_id`, `entry_id`, `lww_clock`, `ciphertext`, `deleted`, `seq` | the LWW oplog; server compares only `lww_clock`. Templates ride this same oplog — the record kind is *inside* the ciphertext, so the relay can't tell them apart |
+| `entry_blobs` | `owner_id`, `entry_id`, `lww_clock`, `ciphertext`, `deleted`, `seq` | the LWW oplog; server compares only `lww_clock`. Templates, interview types, journal metadata and the AI-settings singleton ride this same oplog — the record kind is *inside* the ciphertext, so the relay can't tell any of them apart |
 | `media_blobs` | `owner_id`, `media_id`, `s3_key`, `bytes`, `chunks` | media index; the encrypted chunks themselves live in S3/MinIO |
 | `reminders` | `owner_id`, `reminder_id`, `fire_at`, `dispatched` | `fire_at` is **cleartext** (accepted leak) |
 | `push_subs` | push endpoints per device | _(planned use)_ |

@@ -48,6 +48,8 @@ This is a deliberate availability tradeoff in exchange for confidentiality.
 | Entry title & body | ✅ | — |
 | Entry labels | ✅ (inside the blob) | — |
 | Entry templates | ✅ (ride the entry oplog; kind is inside the ciphertext) | — |
+| Journal metadata (name/colour/cover) | ✅ (rides the entry oplog; the journal id itself also stays inside the ciphertext — the wire record id is random) | — |
+| AI assistant settings (API key included) | ✅ (ride the entry oplog as an encrypted singleton record) | — |
 | Media bytes (video/audio/image/file) | ✅ chunked | size, chunk count |
 | Media mime/duration/entry-linkage | ✅ (inside the entry blob) | — |
 | — | — | ⚠️ number of entries (≈ writing frequency) |
@@ -77,7 +79,9 @@ choice — not a weakening of the relay threat model. Guardrails: the feature is
 consequence spelled out in the settings UI; a fully local backend (Ollama) is offered where nothing
 leaves the device; the API key is stored sealed (XChaCha20 under an HKDF key derived from the vault
 seed, `ai/settings.ts` — only openable while unlocked, re-sealed on phrase rotation, cleared on
-vault deletion); chat transcripts are memory-only and never persisted or synced. The one invariant
+vault deletion); chat transcripts are memory-only and never persisted or synced. The settings
+themselves (API key included) sync to the vault's other devices as an encrypted oplog record —
+indistinguishable from an entry to the relay, which still cannot use or read the key. The one invariant
 that must never break: **journal plaintext must never be routed through the relay as an AI proxy.**
 
 ### Location snapshots — a one-time, per-insert exception

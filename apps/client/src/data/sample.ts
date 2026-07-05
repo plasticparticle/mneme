@@ -15,6 +15,14 @@ export interface Journal {
   color: string;
   cover: CoverPattern;
   last: string;
+  // ── sync bookkeeping (filled by state/db; UI drafts may omit) ──
+  /** Cleartext oplog id (random, never the journal id — §3 leak-guard). */
+  recordId?: string;
+  /** Local-only: an untouched sample seed — never pushed until first edit. */
+  pristine?: boolean;
+  createdAt?: number; // ms
+  updatedAt?: number; // ms — also the lww_clock once synced
+  deleted?: boolean;
 }
 
 export type CoverPattern = 'lines' | 'dots' | 'grid' | 'plain' | 'photo';

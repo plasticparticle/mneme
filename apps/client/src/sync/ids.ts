@@ -21,3 +21,14 @@ export function newMediaId(): string {
 export function newTemplateId(): string {
   return randomId();
 }
+
+/**
+ * Wire id for a synced journal or AI-settings record. Always minted fresh —
+ * never the journal's own id: the builtin notebooks have well-known ids
+ * ('j-tutorial'/'j-personal') and user notebooks have timestamp-encoded ones
+ * ('j-<Date.now()>'), and either would leak in the cleartext oplog id (§3).
+ * The real id rides inside the ciphertext body instead.
+ */
+export function newRecordId(): string {
+  return randomId();
+}

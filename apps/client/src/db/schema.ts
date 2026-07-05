@@ -121,7 +121,30 @@ export const MIGRATIONS: string[] = [
   `
   ALTER TABLE media ADD COLUMN thumb BLOB;
   `,
-  // ── v8 (FUTURE) — FTS5 full-text index (§3 mandates FTS5 for search) ──
+  // ── v8 — journal sync bookkeeping ──
+  // Journals now sync through the entry oplog as encrypted records (kind:
+  // 'journal' inside the ciphertext). `record_id` is the journal's cleartext
+  // oplog id — always random, NEVER the journal id: the sample notebooks have
+  // well-known ids and user notebooks timestamp-encoded ones, either of which
+  // would leak in the oplog (§3); the journal id rides inside the ciphertext.
+  // Same pristine/dirty semantics as templates. Existing rows: untouched sample
+  // seeds stay local-only (pristine); everything the user shaped — created,
+  // renamed, restyled — is marked dirty so it pushes once and reaches the
+  // user's other devices. Pre-sync tombstones stay local (pushing an old local
+  // deletion could tombstone another device's identically-seeded notebook).
+  `
+  ALTER TABLE journals ADD COLUMN updated_at INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE journals ADD COLUMN pristine   INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE journals ADD COLUMN dirty      INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE journals ADD COLUMN record_id  TEXT;
+  UPDATE journals SET updated_at = created_at;
+  UPDATE journals SET pristine = 1 WHERE deleted = 0
+    AND ((id = 'j-tutorial' AND name = 'Tutorial' AND subtitle = 'How Mneme works')
+      OR (id = 'j-personal' AND name = 'My Journal' AND subtitle = 'Your first notebook'));
+  UPDATE journals SET dirty = 1 WHERE deleted = 0 AND pristine = 0;
+  CREATE INDEX journals_dirty ON journals(dirty) WHERE dirty = 1;
+  `,
+  // ── v9 (FUTURE) — FTS5 full-text index (§3 mandates FTS5 for search) ──
   // The published wa-sqlite 1.0.0 wasm builds are compiled WITHOUT the FTS5
   // module, so creating this table fails today ("no such module: fts5"). When we
   // ship an FTS5-enabled wasm, append the migration below as a forward-only step

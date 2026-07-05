@@ -18,11 +18,17 @@ project. Scaffolded so far:
   BIP39 onboarding → key derivation (`src/crypto/`) → device challenge-response auth + LWW
   encrypted-entry push/pull (`src/sync/`, `src/state/data.tsx`). Identity is in-memory while
   unlocked; at rest the seed is either nowhere (re-enter the mnemonic on cold start — the default)
-  or, opt-in ("stay signed in on this device"), **sealed under an Argon2id passphrase** (§6 at-rest:
-  `crypto/seedlock.ts` Argon2id→XChaCha20 with version byte + purpose AAD, stored in IndexedDB via
-  `platform/keystore.ts`; passphrase unlock on cold start, 15-min inactivity auto-lock + manual
-  "Lock journal", phrase rotation re-seals the new seed, and a mnemonic sign-in without a passphrase
-  clears the seal). Entries are **durable**: a
+  or, opt-in ("stay signed in on this device"), **sealed under an Argon2id passphrase or a FIDO2
+  security key** (§6 at-rest: `crypto/seedlock.ts` Argon2id→XChaCha20 v:1 records with version byte
+  + purpose AAD, or v:2 records wrapped by a WebAuthn **PRF-extension** secret from
+  `platform/webauthn.ts` — HKDF'd into the wrap key, not offline-brute-forceable; stored in
+  IndexedDB via `platform/keystore.ts`; passphrase/security-key unlock on cold start, 15-min
+  inactivity auto-lock + manual "Lock journal", phrase rotation re-seals the new seed under either
+  method without a new ceremony, a mnemonic sign-in without a seal choice clears the seal, and
+  Preferences → Vault → "Device unlock" (`ui/DeviceUnlock.tsx`, `setDeviceUnlock` in
+  `state/data.tsx`) switches passphrase ⇄ security key ⇄ off while unlocked. The key is strictly a
+  device-unlock convenience — the mnemonic remains the only account/recovery anchor. Regression
+  check: `pnpm --filter client exec tsx scripts/seedlock-methods.ts`). Entries are **durable**: a
   per-owner wa-sqlite DB on OPFS (`src/db/`, forward-only client migrations, currently v8 —
   entries, media, templates, media tombstones, journals (+sync bookkeeping), interview types; plaintext by §5a design) is the local source of
   truth, seeded once with sample content and merged with synced entries; dirty-flag outboxes let

@@ -72,7 +72,7 @@ function Row({ icon, label, value, danger, onClick }: {
   );
 }
 
-export function PreferencesSheet({ desk, theme, onClose, ownerId, status, onLock, onRotate, onImport, onDeleteVault, onAiSettings, onTemplates, onAsk, onInterview, onInterviewTypes }: {
+export function PreferencesSheet({ desk, theme, onClose, ownerId, status, onLock, onRotate, onDeviceUnlock, onImport, onDeleteVault, onAiSettings, onTemplates, onAsk, onInterview, onInterviewTypes }: {
   desk: boolean;
   theme: ThemeControls;
   onClose: () => void;
@@ -80,6 +80,7 @@ export function PreferencesSheet({ desk, theme, onClose, ownerId, status, onLock
   status: SyncStatus;
   onLock: () => void;
   onRotate: () => void;
+  onDeviceUnlock: () => void;
   onImport: () => void;
   onDeleteVault: () => void;
   onAiSettings: () => void;
@@ -92,7 +93,7 @@ export function PreferencesSheet({ desk, theme, onClose, ownerId, status, onLock
   /** Interview-types manager — reached from Preferences on both desktop and mobile; null when assistant is off. */
   onInterviewTypes?: (() => void) | null;
 }): VNode {
-  const { entries } = useAppData();
+  const { entries, vaultMethod } = useAppData();
   const [tab, setTab] = useState<TabId>('appearance');
   // Vault rows hand off to full-screen sheets — close this overlay first.
   const handOff = (fn: () => void) => () => {
@@ -242,6 +243,7 @@ export function PreferencesSheet({ desk, theme, onClose, ownerId, status, onLock
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         <Row icon="lock" label="Lock journal" onClick={handOff(onLock)} />
+        <Row icon="key" label="Device unlock" value={vaultMethod === 'securityKey' ? 'Security key' : vaultMethod === 'passphrase' ? 'Passphrase' : 'Off'} onClick={handOff(onDeviceUnlock)} />
         <Row icon="shield" label="Replace recovery phrase" onClick={handOff(onRotate)} />
       </div>
       {/* Data in/out — its own section (export will join import here). */}

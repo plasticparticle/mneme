@@ -150,6 +150,17 @@ mnemonic ──derive──▶ {data_key, owner X25519, device Ed25519}  (in RAM
   strength are all that stand in the way, and the UI says so. **Auto-lock after 15 min of
   inactivity** drops the in-memory keys whenever a seal exists; a manual "Lock journal" control
   exists on both layouts.
+- **Security-key seal (FIDO2/WebAuthn PRF):** ✅ as an alternative to the passphrase, the seed can be
+  sealed under a secret obtained from a FIDO2 authenticator (YubiKey, platform passkey) via the
+  WebAuthn **PRF extension** (`platform/webauthn.ts` runs the ceremonies; `crypto/seedlock.ts` turns
+  the 32-byte PRF output into the wrap key via HKDF, sealing with the same version-byte envelope
+  under a method-specific AAD, record `v:2`). Unlike the passphrase record this is **not offline
+  brute-forceable** — the secret only exists inside the authenticator. It is strictly a
+  device-unlock convenience: the mnemonic stays the only account/recovery anchor, and "Use my
+  recovery phrase instead" always works (lost/broken key, or the PWA moving domains — the credential
+  is rpId-bound). One seal method at a time; switching (passphrase ⇄ security key ⇄ off) lives in
+  Preferences → Vault → "Device unlock" and replaces the previous seal only after the new one
+  succeeds. Rotation re-seals PRF records under the kept wrap key with **no extra ceremony**.
 - **Data at rest, today:** the journal itself **is persisted in plaintext** on the device — a
   per-owner wa-sqlite database in the browser's origin-private file system (OPFS) holds entries,
   media bytes, and templates (CLAUDE.md §5a: "alles im Klartext, weil nur auf dem entsperrten

@@ -10,7 +10,7 @@ export type IconName =
   | 'pin' | 'clock' | 'copy' | 'eye' | 'eyeoff' | 'shield' | 'arrowR' | 'sun'
   | 'grid' | 'timeline' | 'x' | 'video' | 'olist' | 'code' | 'divider' | 'trash'
   | 'file' | 'download' | 'math' | 'monitor' | 'table' | 'link' | 'edit'
-  | 'rowplus' | 'colplus' | 'rowminus' | 'colminus';
+  | 'rowplus' | 'colplus' | 'rowminus' | 'colminus' | 'key';
 
 interface IconProps {
   name: IconName;
@@ -48,7 +48,7 @@ export function Icon({ name, size = 20, stroke = 1.7, style = {}, color = 'curre
     list: <><path d="M9 6h11M9 12h11M9 18h11M4.5 6h.01M4.5 12h.01M4.5 18h.01" {...P} /></>,
     checklist: <><path d="M11 6h9M11 12h9M11 18h9" {...P} /><path d="M4 6.5l1.3 1.3L7.5 5M4 17.5l1.3 1.3L7.5 16" {...P} /></>,
     heading: <><path d="M6 5v14M16 5v14M6 12h10" {...P} /></>,
-    settings: <><circle cx="12" cy="12" r="3" {...P} /><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.5 5.5l2 2M16.5 16.5l2 2M18.5 5.5l-2 2M7.5 16.5l-2 2" {...P} /></>,
+    settings: <><circle cx="12" cy="12" r="3" {...P} /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" {...P} /></>,
     more: <><circle cx="5" cy="12" r="1.4" fill={color} stroke="none" /><circle cx="12" cy="12" r="1.4" fill={color} stroke="none" /><circle cx="19" cy="12" r="1.4" fill={color} stroke="none" /></>,
     moon: <><path d="M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5z" {...P} /></>,
     feather: <><path d="M20 4C13 4 7 8 6 16l-2 4M9 13h7M6.5 16.5L17 6" {...P} /></>,
@@ -79,6 +79,7 @@ export function Icon({ name, size = 20, stroke = 1.7, style = {}, color = 'curre
     colplus: <><rect x="3.5" y="3.5" width="8" height="17" rx="2" {...P} /><path d="M7.5 3.5v17M15.5 12h5M18 9.5v5" {...P} /></>,
     rowminus: <><rect x="3.5" y="4.5" width="17" height="8" rx="2" {...P} /><path d="M3.5 8.5h17M9.5 18h5" {...P} /></>,
     colminus: <><rect x="3.5" y="3.5" width="8" height="17" rx="2" {...P} /><path d="M7.5 3.5v17M15.5 12h5" {...P} /></>,
+    key: <><circle cx="8" cy="14.5" r="4.5" {...P} /><path d="M11.2 11.3L19.5 3M15.5 7l3 3M13 9.5l2 2" {...P} /></>,
   };
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" style={{ display: 'block', flexShrink: 0, ...style }}>

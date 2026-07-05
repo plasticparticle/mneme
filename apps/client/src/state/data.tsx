@@ -1,8 +1,9 @@
 // AppData provider: holds the in-memory identity/session, the live entry list,
 // and the background sync loop. Seed/identity live in memory; at rest the seed
 // is either nowhere (re-enter the mnemonic on cold start — the default) or, if
-// the user opted in, sealed under an Argon2id passphrase in IndexedDB (§6).
-// Entry bodies are encrypted before they reach the relay either way.
+// the user opted in, sealed in IndexedDB under an Argon2id passphrase or a
+// WebAuthn PRF security key (§6). Entry bodies are encrypted before they reach
+// the relay either way.
 import type { ComponentChildren, VNode } from 'preact';
 import { createContext } from 'preact';
 import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'preact/hooks';
@@ -11,7 +12,8 @@ import { RelayClient, RelayError, defaultRelayUrl } from '../sync/relay';
 import { authenticate, type Session } from '../sync/identity';
 import { deriveIdentity, type Identity } from '../crypto/keys';
 import { mnemonicToSeed } from '../crypto/mnemonic';
-import { sealSeed, sealWithKey, openSeed, type WrapKey } from '../crypto/seedlock';
+import { sealSeed, sealSeedWithPrfSecret, sealWithKey, openSeed, openSeedWithPrfSecret, type WrapKey } from '../crypto/seedlock';
+import { enrollPrfCredential, evalPrf } from '../platform/webauthn';
 import { loadSealedSeed, storeSealedSeed, clearSealedSeed, loadAiSettingsRecord, storeAiSettingsRecord, clearAiSettingsRecord } from '../platform/keystore';
 import { sealAiSettings, openAiSettings, type AiSyncMeta } from '../ai/settings';
 import type { AiSettings } from '../ai/types';
@@ -29,12 +31,19 @@ import { makeThumbnail } from '../ui/thumbnail';
 
 export type SyncStatus = 'locked' | 'connecting' | 'online' | 'offline';
 
+/** How the seed gets sealed at rest when the user opts into staying signed in. */
+export type SealChoice = { method: 'passphrase'; passphrase: string } | { method: 'securityKey' };
+export type DeviceUnlockChoice = SealChoice | { method: 'off' };
+
 interface AppData {
   status: SyncStatus;
-  // Whether an Argon2id-sealed seed exists on this device: true → the lock
-  // screen offers passphrase unlock; null → the keystore check hasn't resolved
-  // yet (don't render onboarding until it has, or the unlock view flashes).
+  // Whether a sealed seed exists on this device: true → the lock screen offers
+  // an unlock path; null → the keystore check hasn't resolved yet (don't render
+  // onboarding until it has, or the unlock view flashes).
   hasVault: boolean | null;
+  // Which factor seals the seed on this device — drives the unlock view and the
+  // Preferences "Device unlock" row. null while unresolved or when no seal exists.
+  vaultMethod: 'passphrase' | 'securityKey' | null;
   // The vault's opaque owner id while unlocked (base64url(sha256(ownerPub)) —
   // already cleartext on the relay, so showing it leaks nothing). Its first 8
   // chars match the truncated vault label in the operator admin dashboard.
@@ -71,14 +80,25 @@ interface AppData {
   /** Persist (sealed) and apply new AI settings; null disables and clears the record. */
   saveAiSettings(s: AiSettings | null): Promise<void>;
   /**
-   * Enter with the recovery phrase. With `passphrase` set, the derived seed is
-   * additionally sealed (Argon2id → XChaCha20) into IndexedDB so later cold
-   * starts can unlock with the passphrase; without it, any previously stored
-   * seal is removed and nothing about the identity touches disk.
+   * Enter with the recovery phrase. With a `seal` choice, the derived seed is
+   * additionally sealed into IndexedDB — under an Argon2id passphrase or a
+   * WebAuthn PRF secret (the security-key ceremony runs first; a cancelled one
+   * rejects before any state changes) — so later cold starts can unlock with
+   * that factor. Without it, any previously stored seal is removed and nothing
+   * about the identity touches disk.
    */
-  signIn(mnemonic: string, passphrase?: string): Promise<void>;
-  /** Cold-start path when a sealed seed exists. Rejects on a wrong passphrase. */
+  signIn(mnemonic: string, seal?: SealChoice): Promise<void>;
+  /** Cold-start path when a passphrase-sealed seed exists. Rejects on a wrong passphrase. */
   unlock(passphrase: string): Promise<void>;
+  /** Cold-start path when a security-key-sealed seed exists. Runs the WebAuthn
+   * ceremony; rejects on cancel, an absent key, or the wrong key. */
+  unlockWithKey(): Promise<void>;
+  /**
+   * Switch the at-rest seal while unlocked (Preferences → Vault): enroll a
+   * security key, set a passphrase, or turn persistence off. The previous seal
+   * is only replaced after the new one succeeds.
+   */
+  setDeviceUnlock(choice: DeviceUnlockChoice): Promise<void>;
   /** Drop the in-memory identity and return to the lock screen. */
   lock(): void;
   createEntry(input: { journalId: string; title?: string; bodyText?: string; bodyJson?: string; labels?: string[] }): JournalEntry;
@@ -302,7 +322,10 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
   // reactive mirror of it; writes go to both so the UI updates synchronously.
   const db = useMemo(() => new LocalDb(), []);
   const [status, setStatus] = useState<SyncStatus>('locked');
-  const [hasVault, setHasVault] = useState<boolean | null>(null);
+  // 'none' → no seal stored; null → the startup keystore probe hasn't resolved.
+  const [sealMethod, setSealMethod] = useState<'passphrase' | 'securityKey' | 'none' | null>(null);
+  const hasVault = sealMethod === null ? null : sealMethod !== 'none';
+  const vaultMethod = sealMethod === 'none' ? null : sealMethod;
   const [ownerId, setOwnerId] = useState<string | null>(null);
   const [pendingCount, setPendingCount] = useState(0);
   const [pendingJournalIds, setPendingJournalIds] = useState<Set<string>>(new Set());
@@ -324,9 +347,14 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
   const session = useRef<Session | null>(null);
   // Kept after sign-in so the background loop can re-authenticate without the mnemonic.
   const identity = useRef<Identity | null>(null);
-  // The Argon2id wrap key while unlocked-with-persistence: lets phrase rotation
-  // re-seal the new seed without asking for the passphrase again.
+  // The wrap key (Argon2id or PRF) while unlocked-with-persistence: lets phrase
+  // rotation re-seal the new seed without re-asking for the factor.
   const wrap = useRef<WrapKey | null>(null);
+  // The raw seed while unlocked: lets Preferences switch the at-rest seal
+  // without re-entering the mnemonic. The in-memory identity keys are already
+  // seed-derived and decrypt everything, so holding the seed adds no practical
+  // exposure; auto-lock clears it with the rest.
+  const seedRef = useRef<Uint8Array | null>(null);
   // False when OPFS is unavailable (older browser / SSR): we degrade to an
   // in-memory session so the app still works, just without local persistence.
   const dbReady = useRef(false);
@@ -352,9 +380,10 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
   const mediaFlushing = useRef(false);
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // One async check at startup: does a sealed seed exist on this device?
+  // One async check at startup: does a sealed seed exist on this device, and
+  // under which factor?
   useEffect(() => {
-    void loadSealedSeed().then((rec) => setHasVault(rec !== null));
+    void loadSealedSeed().then((rec) => setSealMethod(!rec ? 'none' : rec.v === 2 ? 'securityKey' : 'passphrase'));
   }, []);
 
   // Connection-status setter for the background paths (flush/pull/connect):
@@ -625,6 +654,7 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
   const startSession = useCallback(
     async (seed: Uint8Array) => {
       const id = deriveIdentity(seed); // local, synchronous
+      seedRef.current = seed;
       identity.current = id;
       setOwnerId(id.ownerId);
       // Restore the AI settings, if this vault sealed any on this device. A
@@ -731,27 +761,41 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
   );
 
   const signIn: AppData['signIn'] = useCallback(
-    async (mnemonic, passphrase) => {
+    async (mnemonic, seal) => {
+      if (seal?.method === 'securityKey') {
+        // Ceremony first — a cancelled or unsupported enrollment rejects before
+        // any state changes, and the UI keeps its previous seal untouched.
+        // Errors surface (unlike the passphrase keystore-catch below): the user
+        // must know the key did NOT get set up.
+        const enrolled = await enrollPrfCredential();
+        const seed = mnemonicToSeed(mnemonic);
+        const sealed = sealSeedWithPrfSecret(enrolled.secret, enrolled, seed);
+        await storeSealedSeed(sealed.record);
+        wrap.current = sealed.wrap;
+        setSealMethod('securityKey');
+        await startSession(seed);
+        return;
+      }
       const seed = mnemonicToSeed(mnemonic);
-      if (passphrase) {
+      if (seal?.method === 'passphrase') {
         try {
           // Seal first, while the onboarding screen still shows its busy state
           // (argon2idAsync yields, so the UI keeps painting).
-          const sealed = await sealSeed(seed, passphrase);
+          const sealed = await sealSeed(seed, seal.passphrase);
           await storeSealedSeed(sealed.record);
           wrap.current = sealed.wrap;
-          setHasVault(true);
+          setSealMethod('passphrase');
         } catch {
           // Keystore unavailable — degrade to the nothing-persisted mode.
           wrap.current = null;
-          setHasVault(false);
+          setSealMethod('none');
         }
       } else {
-        // An explicit phrase entry without a passphrase replaces whatever
+        // An explicit phrase entry without a seal choice replaces whatever
         // choice was stored before — possibly even a different account's seed.
         wrap.current = null;
         void clearSealedSeed();
-        setHasVault(false);
+        setSealMethod('none');
       }
       await startSession(seed);
     },
@@ -762,15 +806,55 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
     async (passphrase) => {
       const record = await loadSealedSeed();
       if (!record) {
-        setHasVault(false);
+        setSealMethod('none');
         throw new Error('no sealed seed on this device');
       }
+      if (record.v !== 1) throw new Error('this device unlocks with a security key');
       const opened = await openSeed(record, passphrase); // throws on a wrong passphrase
       wrap.current = opened.wrap;
       await startSession(opened.seed);
     },
     [startSession],
   );
+
+  const unlockWithKey: AppData['unlockWithKey'] = useCallback(async () => {
+    const record = await loadSealedSeed();
+    if (!record) {
+      setSealMethod('none');
+      throw new Error('no sealed seed on this device');
+    }
+    if (record.v !== 2) throw new Error('this device unlocks with a passphrase');
+    const secret = await evalPrf(record.credentialId, record.prfSalt);
+    const opened = openSeedWithPrfSecret(record, secret); // throws on the wrong key (AEAD tag)
+    wrap.current = opened.wrap;
+    await startSession(opened.seed);
+  }, [startSession]);
+
+  const setDeviceUnlock: AppData['setDeviceUnlock'] = useCallback(async (choice) => {
+    const seed = seedRef.current;
+    if (!seed) throw new Error('not signed in');
+    if (choice.method === 'off') {
+      wrap.current = null;
+      await clearSealedSeed();
+      setSealMethod('none');
+      return;
+    }
+    // Both enroll paths: seal + store first, replace the in-memory wrap key and
+    // the stored record only on success — a failure leaves the previous seal
+    // fully working.
+    if (choice.method === 'securityKey') {
+      const enrolled = await enrollPrfCredential();
+      const sealed = sealSeedWithPrfSecret(enrolled.secret, enrolled, seed);
+      await storeSealedSeed(sealed.record);
+      wrap.current = sealed.wrap;
+      setSealMethod('securityKey');
+      return;
+    }
+    const sealed = await sealSeed(seed, choice.passphrase);
+    await storeSealedSeed(sealed.record);
+    wrap.current = sealed.wrap;
+    setSealMethod('passphrase');
+  }, []);
 
   const lock: AppData['lock'] = useCallback(() => {
     // Drop references rather than zeroing the key bytes: an in-flight flush
@@ -779,6 +863,7 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
     session.current = null;
     identity.current = null;
     wrap.current = null;
+    seedRef.current = null;
     setOwnerId(null);
     cursor.current = 0;
     pending.current.clear();
@@ -1277,6 +1362,7 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
         // The vault now lives under the new owner: swap the in-memory identity.
         identity.current = result.session.identity;
         session.current = result.session;
+        seedRef.current = mnemonicToSeed(newMnemonic);
         setOwnerId(result.session.ownerId);
         cursor.current = 0;
         pending.current.clear();
@@ -1334,18 +1420,18 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
           if (!rec.synced && rec.data) pendingMedia.current.set(rec.id, rec);
         }
 
-        // Keep the at-rest seal in step with the vault: same passphrase (same
-        // wrap key + salt), new seed. Left alone, the stored record would
-        // "unlock" into the old identity — wiped on the relay and with its
-        // local DB destroyed below. If re-sealing fails, clear it instead:
-        // a lying vault is worse than no vault.
+        // Keep the at-rest seal in step with the vault: same factor (same wrap
+        // key — no passphrase prompt, no WebAuthn ceremony), new seed. Left
+        // alone, the stored record would "unlock" into the old identity —
+        // wiped on the relay and with its local DB destroyed below. If
+        // re-sealing fails, clear it instead: a lying vault is worse than no vault.
         if (wrap.current) {
           try {
             await storeSealedSeed(sealWithKey(wrap.current, mnemonicToSeed(newMnemonic)));
           } catch {
             wrap.current = null;
             void clearSealedSeed();
-            setHasVault(false);
+            setSealMethod('none');
           }
         }
 
@@ -1403,7 +1489,7 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
     wrap.current = null;
     void clearSealedSeed();
     void clearAiSettingsRecord(); // the sealed API key must not survive the vault
-    setHasVault(false);
+    setSealMethod('none');
     lock(); // drops the in-memory identity and lands on onboarding
   }, [relay, db, lock]);
 
@@ -1453,6 +1539,6 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
   // and the outbox can push them) but every consumer sees only live entries.
   const liveEntries = useMemo(() => entries.filter((e) => !e.deleted), [entries]);
 
-  const value: AppData = { status, hasVault, ownerId, pendingCount, pendingJournalIds, syncTotal, saving, bootstrapping, entries: liveEntries, journals: journalsWithCounts, templates, interviewTypes, aiSettings, saveAiSettings, signIn, unlock, lock, createEntry, updateEntry, deleteEntry, newJournal, updateJournal, deleteJournal, createTemplate, updateTemplate, deleteTemplate, createInterviewType, updateInterviewType, deleteInterviewType, addMedia, removeMedia, mediaBlob, mediaThumb, rotatePhrase, deleteVault };
+  const value: AppData = { status, hasVault, vaultMethod, ownerId, pendingCount, pendingJournalIds, syncTotal, saving, bootstrapping, entries: liveEntries, journals: journalsWithCounts, templates, interviewTypes, aiSettings, saveAiSettings, signIn, unlock, unlockWithKey, setDeviceUnlock, lock, createEntry, updateEntry, deleteEntry, newJournal, updateJournal, deleteJournal, createTemplate, updateTemplate, deleteTemplate, createInterviewType, updateInterviewType, deleteInterviewType, addMedia, removeMedia, mediaBlob, mediaThumb, rotatePhrase, deleteVault };
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

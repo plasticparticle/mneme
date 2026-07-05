@@ -15,6 +15,7 @@ import { CalendarScreen } from './screens/Calendar';
 import { EditorScreen } from './screens/Editor';
 import { RotatePhraseSheet } from './ui/RotatePhrase';
 import { DeleteVaultSheet } from './ui/DeleteVault';
+import { DeviceUnlockSheet } from './ui/DeviceUnlock';
 import { ImportDayOneSheet } from './ui/ImportDayOne';
 import { TemplatesSheet } from './ui/Templates';
 import { SearchSheet } from './ui/Search';
@@ -218,11 +219,12 @@ function MobileNav({ flow, setFlow, onCompose, onSettings, onSearch }: {
 export function App(): VNode {
   const desk = useIsDesktop();
   const theme = useTheme();
-  const { status, hasVault, ownerId, bootstrapping, entries, journals, templates, aiSettings, newJournal, updateJournal, deleteJournal, signIn, unlock, lock, createEntry, rotatePhrase, deleteVault } = useAppData();
+  const { status, hasVault, vaultMethod, ownerId, bootstrapping, entries, journals, templates, aiSettings, newJournal, updateJournal, deleteJournal, signIn, unlock, unlockWithKey, setDeviceUnlock, lock, createEntry, rotatePhrase, deleteVault } = useAppData();
   const [flow, setFlowRaw] = useState<Flow>('journals');
   const [modal, setModal] = useState(false);
   const [rotateOpen, setRotateOpen] = useState(false);
   const [deleteVaultOpen, setDeleteVaultOpen] = useState(false);
+  const [deviceUnlockOpen, setDeviceUnlockOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [templatesOpen, setTemplatesOpen] = useState(false);
   const [prefsOpen, setPrefsOpen] = useState(false);
@@ -264,6 +266,7 @@ export function App(): VNode {
     setModal(false);
     setRotateOpen(false);
     setDeleteVaultOpen(false);
+    setDeviceUnlockOpen(false);
     setImportOpen(false);
     setTemplatesOpen(false);
     setPrefsOpen(false);
@@ -285,7 +288,7 @@ export function App(): VNode {
     if (hasVault === null) return <div style={{ height: '100%', background: 'var(--paper)' }} />;
     return (
       <div style={{ height: '100%' }}>
-        <Onboarding desk={desk} hasVault={hasVault} onEnter={(mnemonic, passphrase) => void signIn(mnemonic, passphrase)} onUnlock={unlock} />
+        <Onboarding desk={desk} hasVault={hasVault} unlockMethod={vaultMethod} onEnter={signIn} onUnlock={unlock} onUnlockWithKey={unlockWithKey} />
       </div>
     );
   }
@@ -433,11 +436,12 @@ export function App(): VNode {
         {searchSheet}
         {deleteJournalSheet}
         {editJournalSheet}
-        {prefsOpen && <PreferencesSheet desk theme={theme} onClose={() => setPrefsOpen(false)} ownerId={ownerId} status={status} onLock={lock} onRotate={() => setRotateOpen(true)} onImport={() => setImportOpen(true)} onDeleteVault={() => setDeleteVaultOpen(true)} onAiSettings={() => setAiSettingsOpen(true)} onInterviewTypes={aiSettings?.enabled ? () => setInterviewTypesOpen(true) : null} />}
+        {prefsOpen && <PreferencesSheet desk theme={theme} onClose={() => setPrefsOpen(false)} ownerId={ownerId} status={status} onLock={lock} onRotate={() => setRotateOpen(true)} onDeviceUnlock={() => setDeviceUnlockOpen(true)} onImport={() => setImportOpen(true)} onDeleteVault={() => setDeleteVaultOpen(true)} onAiSettings={() => setAiSettingsOpen(true)} onInterviewTypes={aiSettings?.enabled ? () => setInterviewTypesOpen(true) : null} />}
         {modal && <NewJournalSheet desk templates={templates.filter((t) => !t.deleted)} onClose={() => setModal(false)} onCreate={onCreateJournal} />}
         {templatesOpen && <TemplatesSheet desk onClose={() => setTemplatesOpen(false)} onUse={(t) => { setTemplatesOpen(false); newEntryFromTemplate(t); }} />}
         {rotateOpen && <RotatePhraseSheet desk onClose={() => setRotateOpen(false)} rotate={rotatePhrase} />}
         {deleteVaultOpen && <DeleteVaultSheet desk onClose={() => setDeleteVaultOpen(false)} deleteVault={deleteVault} />}
+        {deviceUnlockOpen && <DeviceUnlockSheet desk onClose={() => setDeviceUnlockOpen(false)} method={vaultMethod} apply={setDeviceUnlock} />}
         {importOpen && <ImportDayOneSheet desk onClose={() => setImportOpen(false)} />}
         {aiSettingsOpen && <AiSettingsSheet desk onClose={() => setAiSettingsOpen(false)} />}
         {interviewTypesOpen && <InterviewTypesSheet desk onClose={() => setInterviewTypesOpen(false)} />}
@@ -457,10 +461,11 @@ export function App(): VNode {
       {searchSheet}
       {deleteJournalSheet}
       {modal && <NewJournalSheet desk={false} templates={templates.filter((t) => !t.deleted)} onClose={() => setModal(false)} onCreate={onCreateJournal} />}
-      {prefsOpen && <PreferencesSheet desk={false} theme={theme} onClose={() => setPrefsOpen(false)} ownerId={ownerId} status={status} onLock={lock} onRotate={() => setRotateOpen(true)} onImport={() => setImportOpen(true)} onDeleteVault={() => setDeleteVaultOpen(true)} onAiSettings={() => setAiSettingsOpen(true)} onTemplates={() => setTemplatesOpen(true)} onAsk={aiSettings?.enabled ? () => setAskOpen(true) : null} onInterview={aiSettings?.enabled ? () => setInterviewOpen(true) : null} onInterviewTypes={aiSettings?.enabled ? () => setInterviewTypesOpen(true) : null} />}
+      {prefsOpen && <PreferencesSheet desk={false} theme={theme} onClose={() => setPrefsOpen(false)} ownerId={ownerId} status={status} onLock={lock} onRotate={() => setRotateOpen(true)} onDeviceUnlock={() => setDeviceUnlockOpen(true)} onImport={() => setImportOpen(true)} onDeleteVault={() => setDeleteVaultOpen(true)} onAiSettings={() => setAiSettingsOpen(true)} onTemplates={() => setTemplatesOpen(true)} onAsk={aiSettings?.enabled ? () => setAskOpen(true) : null} onInterview={aiSettings?.enabled ? () => setInterviewOpen(true) : null} onInterviewTypes={aiSettings?.enabled ? () => setInterviewTypesOpen(true) : null} />}
       {templatesOpen && <TemplatesSheet desk={false} onClose={() => setTemplatesOpen(false)} onUse={(t) => { setTemplatesOpen(false); newEntryFromTemplate(t); }} />}
       {rotateOpen && <RotatePhraseSheet desk={false} onClose={() => setRotateOpen(false)} rotate={rotatePhrase} />}
       {deleteVaultOpen && <DeleteVaultSheet desk={false} onClose={() => setDeleteVaultOpen(false)} deleteVault={deleteVault} />}
+      {deviceUnlockOpen && <DeviceUnlockSheet desk={false} onClose={() => setDeviceUnlockOpen(false)} method={vaultMethod} apply={setDeviceUnlock} />}
       {importOpen && <ImportDayOneSheet desk={false} onClose={() => setImportOpen(false)} />}
       {aiSettingsOpen && <AiSettingsSheet desk={false} onClose={() => setAiSettingsOpen(false)} />}
       {askOpen && <AskJournalSheet desk={false} onClose={() => setAskOpen(false)} />}

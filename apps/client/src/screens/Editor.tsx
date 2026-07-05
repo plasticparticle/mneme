@@ -415,11 +415,10 @@ function EntryEditor({
 
   return (
     <div style={mode === 'markdown' ? { flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' } : undefined}>
-      <LabelField
-        labels={entry.labels}
-        suggestions={labelSuggestions}
-        onChange={(labels) => updateEntry(entry.id, { labels })}
-      />
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 10 }}>
+        <EntryDateTime value={entry.createdAt} desk={desk} onChange={(ts) => updateEntry(entry.id, { createdAt: ts })} />
+        <SyncBadge dirty={dirty} />
+      </div>
 
       <textarea
         ref={(el) => { titleEl.current = el; if (el) fitTitle(el); }}
@@ -436,15 +435,18 @@ function EntryEditor({
         }}
       />
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap', margin: '10px 0 16px', color: 'var(--ink-3)' }}>
-        <EntryDateTime value={entry.createdAt} desk={desk} onChange={(ts) => updateEntry(entry.id, { createdAt: ts })} />
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', margin: '10px 0 16px', color: 'var(--ink-3)' }}>
         <JournalPicker
           journals={journals}
           currentId={entry.journalId}
           desk={desk}
           onChange={(journalId) => updateEntry(entry.id, { journalId })}
         />
-        <SyncBadge dirty={dirty} />
+        <LabelField
+          labels={entry.labels}
+          suggestions={labelSuggestions}
+          onChange={(labels) => updateEntry(entry.id, { labels })}
+        />
       </div>
 
       {/* TipTap stays mounted (hidden) in markdown mode so toggling back is instant. */}

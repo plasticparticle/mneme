@@ -1,10 +1,17 @@
 import { defineConfig } from 'vite';
 import preact from '@preact/preset-vite';
+import pkg from './package.json';
 
 // The single web codebase for the PWA and (later) the Tauri shells.
 // PWA/Workbox plugin and wa-sqlite COOP-free OPFS wiring land in later build steps (§10).
 export default defineConfig({
   plugins: [preact()],
+  // Build provenance, surfaced in src/buildinfo.ts (onboarding footer +
+  // Preferences → Info). In dev the timestamp is the dev-server start.
+  define: {
+    __APP_VERSION__: JSON.stringify(pkg.version),
+    __BUILD_TIME__: JSON.stringify(new Date().toISOString()),
+  },
   server: {
     port: 5173,
   },

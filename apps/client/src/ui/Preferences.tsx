@@ -12,6 +12,7 @@ import { ConnectionDot, connLabel } from './primitives';
 import { useAppData, type SyncStatus } from '../state/data';
 import { PALETTES, SKINS, type ThemeControls, type ThemeMode } from '../hooks/useTheme';
 import { compactCount, dayStreak, journaledDays, longestStreak, monthWords, totalWords } from '../state/stats';
+import { APP_VERSION, buildTimeLabel } from '../buildinfo';
 import { hexA } from './color';
 
 const MODES: { id: ThemeMode; label: string; icon: IconName }[] = [
@@ -20,7 +21,7 @@ const MODES: { id: ThemeMode; label: string; icon: IconName }[] = [
   { id: 'system', label: 'System', icon: 'monitor' },
 ];
 
-type TabId = 'appearance' | 'writing' | 'assistant' | 'vault';
+type TabId = 'appearance' | 'writing' | 'assistant' | 'vault' | 'info';
 // `short` is the mobile segmented label — full words don't fit four-across on a
 // phone, so the desktop rail uses `label` and the bottom sheet uses `short`.
 const TABS: { id: TabId; label: string; short: string; icon: IconName }[] = [
@@ -28,6 +29,7 @@ const TABS: { id: TabId; label: string; short: string; icon: IconName }[] = [
   { id: 'writing', label: 'Writing', short: 'Writing', icon: 'book' },
   { id: 'assistant', label: 'Assistant', short: 'Assist', icon: 'feather' },
   { id: 'vault', label: 'Vault', short: 'Vault', icon: 'shield' },
+  { id: 'info', label: 'Info', short: 'Info', icon: 'info' },
 ];
 
 /** Group heading inside a tab pane; `first` drops the top margin so a pane
@@ -45,6 +47,16 @@ function StatTile({ value, label }: { value: string; label: string }): VNode {
     <div style={{ background: 'var(--paper)', border: '1px solid var(--line)', borderRadius: 12, padding: '11px 13px', minWidth: 0 }}>
       <div style={{ fontFamily: 'var(--serif)', fontSize: 25, fontWeight: 600, color: 'var(--ink)', lineHeight: 1.1, whiteSpace: 'nowrap' }}>{value}</div>
       <div style={{ fontFamily: 'var(--ui)', fontSize: 10.5, fontWeight: 700, letterSpacing: 0.5, textTransform: 'uppercase', color: 'var(--ink-3)', marginTop: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{label}</div>
+    </div>
+  );
+}
+
+/** Read-only label/value line in the Info tab's grouped card. */
+function InfoRow({ label, value, last }: { label: string; value: string; last?: boolean }): VNode {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '11px 13px', borderBottom: last ? 'none' : '1px solid var(--line)' }}>
+      <span style={{ fontFamily: 'var(--ui)', fontSize: 13, fontWeight: 600, color: 'var(--ink)' }}>{label}</span>
+      <span style={{ fontFamily: 'var(--mono)', fontSize: 12, color: 'var(--ink-2)', textAlign: 'right' }}>{value}</span>
     </div>
   );
 }
@@ -258,7 +270,31 @@ export function PreferencesSheet({ desk, theme, onClose, ownerId, status, onLock
     </div>
   );
 
-  const panes: Record<TabId, VNode> = { appearance, writing, assistant, vault };
+  const info = (
+    <div>
+      <SectionLabel first>About</SectionLabel>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '11px 13px', borderRadius: 12, border: '1px solid var(--line)', background: 'var(--paper)', marginBottom: 8 }}>
+        <svg width="30" height="30" viewBox="0 0 24 24" style={{ flexShrink: 0 }}>
+          <circle cx="12" cy="12" r="9.5" fill="none" stroke="var(--accent)" strokeWidth="1.5" />
+          <circle cx="12" cy="12" r="3.4" fill="var(--accent)" />
+          <circle cx="12" cy="12" r="9.5" fill="none" stroke="var(--accent)" strokeWidth="1.5" strokeDasharray="2 3.2" opacity="0.4" />
+        </svg>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontFamily: 'var(--serif)', fontSize: 16, fontWeight: 500, color: 'var(--ink)' }}>Mneme</div>
+          <div style={{ fontFamily: 'var(--ui)', fontSize: 11.5, color: 'var(--ink-3)', marginTop: 1 }}>A private place to remember.</div>
+        </div>
+      </div>
+      <div style={{ border: '1px solid var(--line)', borderRadius: 12, background: 'var(--paper)', overflow: 'hidden' }}>
+        <InfoRow label="Version" value={`v${APP_VERSION}`} />
+        <InfoRow label="Built" value={buildTimeLabel()} last />
+      </div>
+      <p style={{ fontFamily: 'var(--ui)', fontSize: 11.5, color: 'var(--ink-3)', margin: '12px 2px 0', lineHeight: 1.5 }}>
+        End-to-end encrypted · local-first · open source.
+      </p>
+    </div>
+  );
+
+  const panes: Record<TabId, VNode> = { appearance, writing, assistant, vault, info };
 
   // Desktop: a left nav rail beside the content pane. Mobile: a segmented tab
   // bar above it. The header + tabs stay fixed; only the pane scrolls.

@@ -34,13 +34,15 @@ export function EntryDateTime({ value, desk, onChange }: { value: number; desk: 
       <button
         title="Change date & time"
         onClick={() => setOpen(true)}
-        style={{ display: 'inline-flex', alignItems: 'center', gap: 5, background: 'transparent', border: 'none', borderRadius: 8, padding: '3px 7px', margin: '-3px -7px', cursor: 'pointer', color: 'var(--ink-3)', transition: 'all .14s' }}
-        onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-2)'; e.currentTarget.style.color = 'var(--ink-2)'; }}
-        onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--ink-3)'; }}
+        style={{ display: 'inline-flex', alignItems: 'center', gap: 7, background: 'transparent', border: 'none', borderRadius: 8, padding: '3px 8px', margin: '-3px -8px', cursor: 'pointer', color: 'var(--ink-2)', transition: 'all .14s' }}
+        onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-2)'; e.currentTarget.style.color = 'var(--ink)'; }}
+        onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--ink-2)'; }}
       >
-        <Icon name="clock" size={14} />
-        <span style={{ fontFamily: 'var(--ui)', fontSize: 13 }}>{dateLabel(d)} · {timeLabel(d)}</span>
-        <Icon name="down" size={12} />
+        <Icon name="clock" size={15} />
+        <span style={{ fontFamily: 'var(--serif)', fontSize: desk ? 16.5 : 15.5, fontWeight: 500 }}>
+          {dateLabel(d)} <span style={{ color: 'var(--ink-3)' }}>· {timeLabel(d)}</span>
+        </span>
+        <Icon name="down" size={13} />
       </button>
       {open && (
         <DateTimeSheet

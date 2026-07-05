@@ -81,7 +81,7 @@ export function LabelField({
   };
 
   return (
-    <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
+    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
       {labels.map((l) => <LabelChip key={l} id={l} onRemove={() => remove(l)} />)}
 
       {!editing && (

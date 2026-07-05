@@ -5,6 +5,7 @@ import { Btn } from '../ui/primitives';
 import { Wordmark } from '../ui/Wordmark';
 import { generateMnemonic, mnemonicWords, validateMnemonic, wordsToMnemonic } from '../crypto/mnemonic';
 import { webauthnAvailable, PrfUnsupportedError } from '../platform/webauthn';
+import { APP_VERSION, buildTimeLabel } from '../buildinfo';
 import type { SealChoice } from '../state/data';
 
 type View = 'welcome' | 'create' | 'confirm' | 'restore' | 'passphrase' | 'unlock';
@@ -178,6 +179,13 @@ export function Onboarding({ desk, hasVault, unlockMethod, onEnter, onUnlock, on
       >
         {content}
       </div>
+      {/* Build provenance on the entry pages (welcome / unlock — the centered
+          views); the inner flow steps use the full height, so it stays off them. */}
+      {!opts.top && (
+        <div style={{ position: 'absolute', bottom: 'calc(env(safe-area-inset-bottom, 0px) + 12px)', left: 0, right: 0, textAlign: 'center', fontFamily: 'var(--mono)', fontSize: 10.5, color: 'var(--ink-3)', pointerEvents: 'none' }}>
+          v{APP_VERSION} · built {buildTimeLabel()}
+        </div>
+      )}
     </div>
   );
 

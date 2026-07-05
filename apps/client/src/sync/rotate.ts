@@ -16,10 +16,14 @@ import {
   pushEntries,
   pushTemplates,
   pushInterviewTypes,
+  pushJournals,
+  pushAiSettings,
   pullEntries,
   type JournalEntry,
   type TemplateRecord,
   type InterviewType,
+  type JournalRecord,
+  type AiSettingsRecord,
 } from './engine';
 import { uploadMedia, downloadMedia } from './media';
 import { RelayError, type RelayClient } from './relay';
@@ -43,6 +47,10 @@ export interface RotationInput {
   localDirtyTemplates?: TemplateRecord[];
   /** Local outbox interview types that may never have reached the relay. */
   localDirtyInterviewTypes?: InterviewType[];
+  /** Local outbox journals that may never have reached the relay. */
+  localDirtyJournals?: JournalRecord[];
+  /** The local AI-settings record when it still waits in the outbox. */
+  localDirtyAiSettings?: AiSettingsRecord;
   /** Plaintext media bytes from local storage; null when this device lacks them. */
   localMediaBytes?: (mediaId: string) => Promise<Uint8Array | null>;
   onProgress?: (p: RotationProgress) => void;
@@ -57,6 +65,10 @@ export interface RotationResult {
   templates: TemplateRecord[];
   /** Every synced interview type (tombstones included) now stored under the new owner. */
   interviewTypes: InterviewType[];
+  /** Every synced journal record (tombstones included) now stored under the new owner. */
+  journals: JournalRecord[];
+  /** Every synced AI-settings record now stored under the new owner. */
+  aiSettings: AiSettingsRecord[];
   /** Media fully re-uploaded under the new media key. */
   uploadedMedia: Set<string>;
   /** Media whose bytes stayed local-only (relay without object storage) or were unreachable. */
@@ -75,14 +87,21 @@ export async function rotateAccount(input: RotationInput): Promise<RotationResul
   const byId = new Map<string, JournalEntry>();
   const tplById = new Map<string, TemplateRecord>();
   const itvById = new Map<string, InterviewType>();
+  // Journal + AI-settings records key on their WIRE record id — several records
+  // may describe the same journal (or the settings singleton); the set is
+  // re-pushed as-is so receivers' LWW-by-updatedAt keeps working unchanged.
+  const jrnByRecord = new Map<string, JournalRecord>();
+  const aiByRecord = new Map<string, AiSettingsRecord>();
   let cursor = 0;
   for (;;) {
     const res = await pullEntries(relay, old.token, old.identity.dataKey, cursor);
     for (const e of res.entries) byId.set(e.id, e);
     for (const t of res.templates) tplById.set(t.id, t);
     for (const t of res.interviewTypes) itvById.set(t.id, t);
+    for (const j of res.journals) if (j.recordId) jrnByRecord.set(j.recordId, j);
+    for (const a of res.aiSettings) aiByRecord.set(a.recordId, a);
     cursor = res.cursor;
-    const pulled = byId.size + tplById.size + itvById.size;
+    const pulled = byId.size + tplById.size + itvById.size + jrnByRecord.size + aiByRecord.size;
     onProgress?.({ phase: 'pull', done: pulled, total: pulled });
     if (!res.more) break;
   }
@@ -98,16 +117,28 @@ export async function rotateAccount(input: RotationInput): Promise<RotationResul
     const cur = itvById.get(t.id);
     if (!cur || t.updatedAt > cur.updatedAt) itvById.set(t.id, t);
   }
+  for (const j of input.localDirtyJournals ?? []) {
+    if (!j.recordId) continue;
+    const cur = jrnByRecord.get(j.recordId);
+    if (!cur || j.updatedAt > cur.updatedAt) jrnByRecord.set(j.recordId, j);
+  }
+  if (input.localDirtyAiSettings) {
+    const a = input.localDirtyAiSettings;
+    const cur = aiByRecord.get(a.recordId);
+    if (!cur || a.updatedAt > cur.updatedAt) aiByRecord.set(a.recordId, a);
+  }
   const entries = [...byId.values()];
   const templates = [...tplById.values()];
   const interviewTypes = [...itvById.values()];
+  const journals = [...jrnByRecord.values()];
+  const aiSettings = [...aiByRecord.values()];
 
   // 2. Open the new account (TOFU registration + challenge-response).
   const session = await authenticate(relay, next);
 
   // 3. Re-encrypt every entry and template under the new data key and push in
   //    batches. Both record kinds count toward the same progress total.
-  const recordTotal = entries.length + templates.length + interviewTypes.length;
+  const recordTotal = entries.length + templates.length + interviewTypes.length + journals.length + aiSettings.length;
   for (let i = 0; i < entries.length; i += PUSH_BATCH) {
     await pushEntries(relay, session.token, next.dataKey, entries.slice(i, i + PUSH_BATCH));
     onProgress?.({ phase: 'entries', done: Math.min(i + PUSH_BATCH, entries.length), total: recordTotal });
@@ -123,6 +154,16 @@ export async function rotateAccount(input: RotationInput): Promise<RotationResul
       done: entries.length + templates.length + Math.min(i + PUSH_BATCH, interviewTypes.length),
       total: recordTotal,
     });
+  }
+  let migratedRecords = entries.length + templates.length + interviewTypes.length;
+  for (let i = 0; i < journals.length; i += PUSH_BATCH) {
+    await pushJournals(relay, session.token, next.dataKey, journals.slice(i, i + PUSH_BATCH));
+    onProgress?.({ phase: 'entries', done: migratedRecords + Math.min(i + PUSH_BATCH, journals.length), total: recordTotal });
+  }
+  migratedRecords += journals.length;
+  for (const a of aiSettings) {
+    await pushAiSettings(relay, session.token, next.dataKey, a);
+    onProgress?.({ phase: 'entries', done: ++migratedRecords, total: recordTotal });
   }
 
   // 4. Re-encrypt media under the new media key. Bytes come from local storage
@@ -184,5 +225,5 @@ export async function rotateAccount(input: RotationInput): Promise<RotationResul
   await relay.deleteAccount(old.token);
   onProgress?.({ phase: 'wipe', done: 1, total: 1 });
 
-  return { session, entries, templates, interviewTypes, uploadedMedia, skippedMedia };
+  return { session, entries, templates, interviewTypes, journals, aiSettings, uploadedMedia, skippedMedia };
 }

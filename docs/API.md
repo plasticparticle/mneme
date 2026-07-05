@@ -211,10 +211,11 @@ Requires `Authorization: Bearer <ADMIN_TOKEN>` (constant-time compared; wrong to
   Only `/v1/*` traffic counts as a request — health probes and admin polling are excluded.
 - `runtime` — since-process-start health figures (kept in memory, reset on restart).
 
-Honest limits of an E2EE relay: "records" are encrypted oplog rows — entries, templates and journal
-metadata are **indistinguishable** on purpose. "Journals created" is not measurable at all (a journal
-is a client-side grouping inside the ciphertext), and media kinds (video/audio/image/file) are
-unknowable — the mime type never reaches the relay.
+Honest limits of an E2EE relay: "records" are encrypted oplog rows — entries, templates, journal
+metadata and AI-settings records are **indistinguishable** on purpose (the record kind lives inside
+the ciphertext). "Journals created" is not measurable at all — journal metadata syncs under a random
+wire id with the journal's identity inside the ciphertext — and media kinds (video/audio/image/file)
+are unknowable — the mime type never reaches the relay.
 
 ### `DELETE /admin/vaults/{id}` → `204 No Content`
 

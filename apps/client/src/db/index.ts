@@ -134,9 +134,12 @@ const ITV_UPSERT_SET =
   `builtin=excluded.builtin, pristine=excluded.pristine, created_at=excluded.created_at, ` +
   `updated_at=excluded.updated_at, deleted=excluded.deleted, dirty=excluded.dirty`;
 
-// ── journal rows (schema v5): the local notebook grouping — never syncs ──
+// ── journal rows (schema v5 + v8 sync bookkeeping) ──
+// Journals sync through the entry oplog (kind: 'journal' inside the ciphertext).
+// record_id is the random cleartext oplog id; the journal id itself never
+// leaves the ciphertext (§3 — sample ids are well-known, user ids date-encoded).
 
-const JOURNAL_COLS = 'id, name, subtitle, color, cover, created_at, deleted';
+const JOURNAL_COLS = 'id, name, subtitle, color, cover, created_at, updated_at, deleted, pristine, dirty, record_id';
 
 function rowToJournal(r: SqlValue[]): Journal {
   return {
@@ -145,11 +148,39 @@ function rowToJournal(r: SqlValue[]): Journal {
     subtitle: (r[2] as string) ?? '',
     color: (r[3] as string) ?? '',
     cover: ((r[4] as string) || 'plain') as CoverPattern,
+    createdAt: r[5] as number,
+    updatedAt: (r[6] as number) || (r[5] as number),
+    deleted: !!(r[7] as number),
+    pristine: !!(r[8] as number),
+    recordId: (r[10] as string | null) ?? undefined,
     // Derived live from the entries by the provider (journalsWithCounts).
     count: 0,
     last: '',
   };
 }
+
+function journalParams(j: Journal, dirty: 0 | 1, pristine: 0 | 1): SqlParam[] {
+  return [
+    j.id,
+    j.name ?? '',
+    j.subtitle ?? '',
+    j.color ?? '',
+    j.cover ?? 'plain',
+    j.createdAt ?? Date.now(),
+    j.updatedAt ?? j.createdAt ?? Date.now(),
+    j.deleted ? 1 : 0,
+    pristine,
+    dirty,
+    j.recordId ?? null,
+  ];
+}
+
+const JOURNAL_PLACEHOLDERS = '(?,?,?,?,?,?,?,?,?,?,?)';
+
+const JOURNAL_UPSERT_SET =
+  `name=excluded.name, subtitle=excluded.subtitle, color=excluded.color, cover=excluded.cover, ` +
+  `created_at=excluded.created_at, updated_at=excluded.updated_at, deleted=excluded.deleted, ` +
+  `pristine=excluded.pristine, dirty=excluded.dirty, record_id=excluded.record_id`;
 
 // ── media rows (schema v2): plaintext bytes + upload-outbox flag ──
 
@@ -478,11 +509,15 @@ export class LocalDb {
     if (!res.ok) throw new Error(res.error);
   }
 
-  // ── journals (schema v5) ──
+  // ── journals (schema v5 + v8) ──
 
-  /** All non-deleted journals in creation order (count/last are derived live by the provider). */
+  /**
+   * Every journal row in creation order, tombstones included — they stay in the
+   * provider's raw list so pulled stale copies can't resurrect a deleted
+   * notebook (count/last are derived live by the provider).
+   */
   async allJournals(): Promise<Journal[]> {
-    const rows = await this.#query(`SELECT ${JOURNAL_COLS} FROM journals WHERE deleted = 0 ORDER BY rowid ASC`);
+    const rows = await this.#query(`SELECT ${JOURNAL_COLS} FROM journals ORDER BY rowid ASC`);
     return rows.map(rowToJournal);
   }
 
@@ -492,30 +527,44 @@ export class LocalDb {
     return (rows[0]?.[0] as number) ?? 0;
   }
 
-  /** Create (or restyle) a journal. Local-only — journals never reach the relay. */
-  async putJournal(j: Journal): Promise<void> {
+  /** Journals still awaiting a relay push (rebuilds the outbox after a reload). */
+  async dirtyJournals(): Promise<Journal[]> {
+    const rows = await this.#query(`SELECT ${JOURNAL_COLS} FROM journals WHERE dirty = 1`);
+    return rows.map(rowToJournal);
+  }
+
+  /**
+   * Unguarded upsert — the provider computes the LWW/pristine merge in memory
+   * (journal volume is tiny) and persists the decided row with explicit flags.
+   */
+  async putJournalRow(j: Journal, flags: { dirty: 0 | 1; pristine: 0 | 1 }): Promise<void> {
     await this.#run(
-      `INSERT INTO journals (${JOURNAL_COLS}) VALUES (?,?,?,?,?,?,0) ` +
-        `ON CONFLICT(id) DO UPDATE SET name=excluded.name, subtitle=excluded.subtitle, ` +
-        `color=excluded.color, cover=excluded.cover, deleted=0`,
-      [j.id, j.name, j.subtitle, j.color, j.cover, Date.now()],
+      `INSERT INTO journals (${JOURNAL_COLS}) VALUES ${JOURNAL_PLACEHOLDERS} ` +
+        `ON CONFLICT(id) DO UPDATE SET ${JOURNAL_UPSERT_SET}`,
+      journalParams(j, flags.dirty, flags.pristine),
     );
   }
 
-  /** Lay down the sample notebooks once per device. Existing rows — tombstones included — win. */
+  /** Lay down the sample notebooks once per device (pristine, non-dirty). Existing rows win. */
   async seedJournals(journals: Journal[]): Promise<void> {
     if (!journals.length) return;
     const statements = journals.map((j) => ({
-      sql: `INSERT OR IGNORE INTO journals (${JOURNAL_COLS}) VALUES (?,?,?,?,?,?,0)`,
-      params: [j.id, j.name, j.subtitle, j.color, j.cover, Date.now()] as SqlParam[],
+      sql: `INSERT OR IGNORE INTO journals (${JOURNAL_COLS}) VALUES ${JOURNAL_PLACEHOLDERS}`,
+      params: journalParams(j, 0, 1),
     }));
     const res = await this.#send({ kind: 'batch', statements });
     if (!res.ok) throw new Error(res.error);
   }
 
-  /** Tombstone a journal — the kept row stops a deleted sample notebook from re-seeding. */
-  async deleteJournal(id: string): Promise<void> {
-    await this.#run(`UPDATE journals SET deleted = 1 WHERE id = ?`, [id]);
+  /** Clear the dirty flag for versions the relay acknowledged (precise on updated_at). */
+  async markJournalsSynced(journals: Journal[]): Promise<void> {
+    if (!journals.length) return;
+    const statements = journals.map((j) => ({
+      sql: `UPDATE journals SET dirty = 0 WHERE id = ? AND updated_at = ?`,
+      params: [j.id, j.updatedAt ?? 0] as SqlParam[],
+    }));
+    const res = await this.#send({ kind: 'batch', statements });
+    if (!res.ok) throw new Error(res.error);
   }
 
   // ── media (schema v2) ──

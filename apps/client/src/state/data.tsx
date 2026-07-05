@@ -13,12 +13,12 @@ import { deriveIdentity, type Identity } from '../crypto/keys';
 import { mnemonicToSeed } from '../crypto/mnemonic';
 import { sealSeed, sealWithKey, openSeed, type WrapKey } from '../crypto/seedlock';
 import { loadSealedSeed, storeSealedSeed, clearSealedSeed, loadAiSettingsRecord, storeAiSettingsRecord, clearAiSettingsRecord } from '../platform/keystore';
-import { sealAiSettings, openAiSettings } from '../ai/settings';
+import { sealAiSettings, openAiSettings, type AiSyncMeta } from '../ai/settings';
 import type { AiSettings } from '../ai/types';
-import { pushEntries, pushTemplates, pushInterviewTypes, pullEntries, type JournalEntry, type MediaAttachment, type TemplateRecord, type InterviewType } from '../sync/engine';
+import { pushEntries, pushTemplates, pushInterviewTypes, pushJournals, pushAiSettings, pullEntries, type JournalEntry, type MediaAttachment, type TemplateRecord, type InterviewType, type JournalRecord, type AiSettingsRecord } from '../sync/engine';
 import { uploadMedia, downloadMedia } from '../sync/media';
 import { rotateAccount, type RotationProgress } from '../sync/rotate';
-import { newEntryId, newMediaId, newTemplateId } from '../sync/ids';
+import { newEntryId, newMediaId, newTemplateId, newRecordId } from '../sync/ids';
 import { ENTRIES, JOURNALS, type Journal, type CoverPattern } from '../data/sample';
 import { seedBuiltinTemplates } from '../data/templates';
 import { seedBuiltinInterviews } from '../data/interviews';
@@ -92,15 +92,15 @@ interface AppData {
   newJournal(j: Journal): void;
   /**
    * Restyle an existing notebook — rename it and/or change its colour or cover.
-   * Journals are a local-only grouping, so this only touches this device's
-   * `journals` table (nothing syncs). `count`/`last` are derived and ignored.
+   * Journals sync as encrypted `kind:'journal'` records through the LWW oplog
+   * (the journal id itself never appears in cleartext — §3), so the change
+   * reaches the vault's other devices. `count`/`last` are derived and ignored.
    */
   updateJournal(id: string, patch: { name?: string; subtitle?: string; color?: string; cover?: CoverPattern }): void;
   /**
-   * After the user typed "delete": remove the notebook and tombstone every entry
-   * in it (the deletions sync to other devices through the LWW oplog, and the
-   * entries' recordings are purged locally and on the relay). The journal row
-   * itself is a local grouping — it disappears from this device immediately.
+   * After the user typed "delete": tombstone the notebook and every entry in it
+   * (both sync to other devices through the LWW oplog, and the entries'
+   * recordings are purged locally and on the relay).
    */
   deleteJournal(id: string): void;
   createTemplate(input: { name: string; bodyText?: string; bodyJson?: string }): TemplateRecord;
@@ -201,6 +201,58 @@ function seedEntries(): JournalEntry[] {
   });
 }
 
+// Sample notebooks as seed rows — pristine and local-only until the first edit
+// makes one a real synced record (mirrors the template/interview-type seeds).
+function seedJournalRows(now: number): Journal[] {
+  return JOURNALS.map((j) => ({ ...j, createdAt: now, updatedAt: now, pristine: true }));
+}
+
+const COVER_PATTERNS: readonly string[] = ['lines', 'dots', 'grid', 'plain', 'photo'];
+
+// A pulled journal record, shaped for the UI list. Cover strings from the wire
+// are validated back into the CoverPattern union (fail-safe to 'plain').
+function journalFromRecord(r: JournalRecord): Journal {
+  return {
+    id: r.id,
+    name: r.name,
+    subtitle: r.subtitle,
+    color: r.color,
+    cover: (COVER_PATTERNS.includes(r.cover) ? r.cover : 'plain') as CoverPattern,
+    count: 0,
+    last: '',
+    recordId: r.recordId,
+    createdAt: r.createdAt,
+    updatedAt: r.updatedAt,
+    deleted: r.deleted,
+  };
+}
+
+// The wire shape of a local journal (what the outbox pushes). Callers guarantee
+// recordId is minted; count/last never leave the device.
+function journalToRecord(j: Journal): JournalRecord {
+  const created = j.createdAt ?? j.updatedAt ?? 0;
+  return {
+    id: j.id,
+    recordId: j.recordId,
+    name: j.name,
+    subtitle: j.subtitle,
+    color: j.color,
+    cover: j.cover,
+    createdAt: created,
+    updatedAt: j.updatedAt ?? created,
+    deleted: j.deleted,
+  };
+}
+
+// Concurrent first-syncs of the same journal mint different record ids on each
+// device. Receivers adopt the smallest id they have seen so every device
+// converges onto one record; the losers go stale on the relay and lose LWW.
+function adoptRecordId(local: string | undefined, pulled: string | undefined): string | undefined {
+  if (!local) return pulled;
+  if (!pulled) return local;
+  return pulled < local ? pulled : local;
+}
+
 function mergeByLWW<T extends { id: string; updatedAt: number }>(prev: T[], incoming: T[]): T[] {
   const byId = new Map(prev.map((e) => [e.id, e]));
   for (const e of incoming) {
@@ -261,8 +313,9 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
   const [saving, setSaving] = useState(false);
   const [bootstrapping, setBootstrapping] = useState(false);
   const [entries, setEntries] = useState<JournalEntry[]>([]);
-  // Journals live in the local DB only (a per-device grouping, §3) — loaded on
-  // unlock; the sample notebooks seed once per device like entries/templates.
+  // Journals — tombstones included, like `entries` (stale pulled copies must not
+  // resurrect a deleted notebook); consumers see the filtered live list. The
+  // sample notebooks seed once per device, pristine until first edit.
   const [journals, setJournals] = useState<Journal[]>([]);
   const [templates, setTemplates] = useState<TemplateRecord[]>([]);
   const [interviewTypes, setInterviewTypes] = useState<InterviewType[]>([]);
@@ -283,6 +336,14 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
   const pendingTemplates = useRef<Map<string, TemplateRecord>>(new Map());
   // Interview-type outbox: created/edited/tombstoned types not yet on the relay.
   const pendingInterviewTypes = useRef<Map<string, InterviewType>>(new Map());
+  // Journal outbox: created/restyled/tombstoned notebooks not yet on the relay
+  // (keyed by journal id; each carries its minted wire recordId).
+  const pendingJournals = useRef<Map<string, Journal>>(new Map());
+  // AI-settings outbox: the one record still waiting for a push, if any.
+  const pendingAi = useRef<AiSettingsRecord | null>(null);
+  // Sync bookkeeping for the AI-settings singleton (mirrored into the sealed
+  // keystore record so it survives reloads).
+  const aiSync = useRef<AiSyncMeta>({ updatedAt: 0, dirty: false });
   // Media upload outbox: recordings (with bytes) not yet fully on the relay.
   const pendingMedia = useRef<Map<string, MediaRecord>>(new Map());
   // Media deletion queue: confirmed deletes the relay hasn't acknowledged yet
@@ -309,6 +370,8 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
       pending.current.size +
       pendingTemplates.current.size +
       pendingInterviewTypes.current.size +
+      pendingJournals.current.size +
+      (pendingAi.current ? 1 : 0) +
       pendingMedia.current.size +
       pendingMediaDeletes.current.size;
     setPendingCount(total);
@@ -368,7 +431,9 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
     if (
       pending.current.size === 0 &&
       pendingTemplates.current.size === 0 &&
-      pendingInterviewTypes.current.size === 0
+      pendingInterviewTypes.current.size === 0 &&
+      pendingJournals.current.size === 0 &&
+      pendingAi.current === null
     ) {
       void flushMedia(); // no dirty records, but recordings may still be queued
       return;
@@ -376,6 +441,8 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
     const batch = [...pending.current.values()];
     const tplBatch = [...pendingTemplates.current.values()];
     const itvBatch = [...pendingInterviewTypes.current.values()];
+    const jrnBatch = [...pendingJournals.current.values()];
+    const aiBatch = pendingAi.current;
     setSaving(true);
     try {
       const applied = await pushEntries(relay, s.token, s.identity.dataKey, batch);
@@ -388,6 +455,25 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
       const appliedItv = await pushInterviewTypes(relay, s.token, s.identity.dataKey, itvBatch);
       for (const id of appliedItv) pendingInterviewTypes.current.delete(id);
       if (dbReady.current) void db.markInterviewTypesSynced(itvBatch.filter((t) => appliedItv.has(t.id)));
+      // Journals push under their random wire record ids (§3 — the journal id
+      // itself stays inside the ciphertext).
+      const appliedJrn = await pushJournals(relay, s.token, s.identity.dataKey, jrnBatch.map(journalToRecord));
+      const ackedJrn = jrnBatch.filter((j) => j.recordId && appliedJrn.has(j.recordId));
+      for (const j of ackedJrn) pendingJournals.current.delete(j.id);
+      if (dbReady.current) void db.markJournalsSynced(ackedJrn);
+      if (aiBatch) {
+        // Either outcome retires the queued record: accepted → it's on the relay;
+        // rejected as stale → the relay already holds something newer and the
+        // next pull brings it here.
+        await pushAiSettings(relay, s.token, s.identity.dataKey, aiBatch);
+        if (pendingAi.current === aiBatch) {
+          pendingAi.current = null;
+          aiSync.current = { recordId: aiBatch.recordId, updatedAt: aiBatch.updatedAt, dirty: false };
+          if (aiBatch.settings && identity.current) {
+            void storeAiSettingsRecord(sealAiSettings(identity.current.aiKey, aiBatch.settings, aiSync.current)).catch(() => undefined);
+          }
+        }
+      }
       syncPendingCount();
       setStatusLive('online');
     } catch {
@@ -440,11 +526,77 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
           return merged.filter((t) => !superseded.has(t.id));
         });
       }
+      if (res.journals.length) {
+        // Journals match across devices by the journal id INSIDE the ciphertext
+        // (the builtin seeds share fixed ids everywhere), so no slug machinery:
+        // a pulled record beats a pristine seed outright and otherwise merges by
+        // LWW. Volume is tiny, so the merge is decided here and each decided row
+        // is persisted with explicit flags.
+        setJournals((prev) => {
+          let next = prev;
+          const persist = (row: Journal, dirty: 0 | 1): void => {
+            if (dbReady.current) void db.putJournalRow(row, { dirty, pristine: 0 });
+          };
+          for (const r of res.journals) {
+            const idx = next.findIndex((j) => j.id === r.id);
+            if (idx < 0) {
+              // A notebook this device has never seen — created on another
+              // device (tombstones land too, guarding against resurrection).
+              const row = journalFromRecord(r);
+              next = [...next, row];
+              persist(row, 0);
+              continue;
+            }
+            const local = next[idx];
+            const recordId = adoptRecordId(local.recordId, r.recordId);
+            if (local.pristine || r.updatedAt > (local.updatedAt ?? 0)) {
+              // A synced copy always beats an untouched seed; otherwise LWW.
+              // A queued local edit that just lost the race is retired with it.
+              const row = { ...journalFromRecord(r), recordId };
+              next = next.map((j, i) => (i === idx ? row : j));
+              persist(row, 0);
+              if (pendingJournals.current.delete(row.id)) syncPendingCount();
+            } else if (recordId !== local.recordId) {
+              // Content is stale but the smaller record id still gets adopted so
+              // concurrent first-syncs converge onto one record.
+              const row = { ...local, recordId };
+              next = next.map((j, i) => (i === idx ? row : j));
+              persist(row, pendingJournals.current.has(row.id) ? 1 : 0);
+              if (pendingJournals.current.has(row.id)) pendingJournals.current.set(row.id, row);
+            }
+          }
+          return next;
+        });
+      }
+      if (res.aiSettings.length) {
+        // The settings singleton: newest updatedAt wins; ids converge like journals.
+        const newest = res.aiSettings.reduce((a, b) => (b.updatedAt > a.updatedAt ? b : a));
+        const recordId = res.aiSettings.reduce(
+          (id, r) => adoptRecordId(id, r.recordId),
+          aiSync.current.recordId,
+        );
+        if (newest.updatedAt > aiSync.current.updatedAt) {
+          aiSync.current = { recordId, updatedAt: newest.updatedAt, dirty: false };
+          pendingAi.current = null; // a queued older edit lost the race
+          if (newest.deleted || newest.settings === null) {
+            void clearAiSettingsRecord();
+            setAiSettings(null);
+          } else {
+            setAiSettings(newest.settings);
+            if (identity.current) {
+              void storeAiSettingsRecord(sealAiSettings(identity.current.aiKey, newest.settings, aiSync.current)).catch(() => undefined);
+            }
+          }
+          syncPendingCount();
+        } else {
+          aiSync.current = { ...aiSync.current, recordId };
+        }
+      }
       setStatusLive('online');
     } catch {
       setStatusLive('offline');
     }
-  }, [relay, db, setStatusLive]);
+  }, [relay, db, setStatusLive, syncPendingCount]);
 
   // (Re)establish a relay session from the stored identity, then sync. `announce`
   // shows the "connecting…" state for a user-initiated attempt; background retries
@@ -480,7 +632,23 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
       void loadAiSettingsRecord().then((rec) => {
         if (!rec || identity.current !== id) return;
         try {
-          setAiSettings(openAiSettings(id.aiKey, rec));
+          const settings = openAiSettings(id.aiKey, rec);
+          setAiSettings(settings);
+          // Records sealed before AI-settings sync carry no meta: stamp them
+          // now and queue a one-time push so this device seeds the relay (a
+          // newer record from another device wins on the next pull anyway).
+          const meta = rec.sync ?? { recordId: undefined, updatedAt: Date.now(), dirty: true };
+          aiSync.current = meta;
+          if (meta.dirty) {
+            pendingAi.current = {
+              recordId: meta.recordId ?? newRecordId(),
+              settings,
+              updatedAt: meta.updatedAt,
+            };
+            aiSync.current = { ...meta, recordId: pendingAi.current.recordId };
+            syncPendingCount();
+            void flush();
+          }
         } catch {
           /* tampered or another vault's record — AI stays unconfigured */
         }
@@ -518,12 +686,22 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
           await db.seedInterviewTypes(localItv);
         }
         setInterviewTypes(localItv);
-        // Journals: same once-per-device seeding (a tombstoned sample notebook
-        // keeps its row, so deleting one sticks across unlocks).
+        // Journals: same once-per-device seeding — pristine until first edit (a
+        // tombstoned sample notebook keeps its row, so deleting one sticks).
         let localJournals = await db.allJournals();
         if ((await db.journalCount()) === 0) {
-          localJournals = JOURNALS;
+          localJournals = seedJournalRows(Date.now());
           await db.seedJournals(localJournals);
+        }
+        // Journal outbox first: rows marked dirty by the v8 migration predate
+        // wire ids — mint one and let the hydrated state carry it too.
+        for (const j of await db.dirtyJournals()) {
+          const row = j.recordId ? j : { ...j, recordId: newRecordId() };
+          if (!j.recordId) {
+            void db.putJournalRow(row, { dirty: 1, pristine: 0 });
+            localJournals = localJournals.map((x) => (x.id === row.id ? row : x));
+          }
+          pendingJournals.current.set(row.id, row);
         }
         setJournals(localJournals);
         // Rebuild the outboxes from work left unsynced by a previous offline session.
@@ -539,7 +717,7 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
         setEntries((prev) => (prev.length ? prev : seedEntries()));
         setTemplates((prev) => (prev.length ? prev : seedBuiltinTemplates(Date.now())));
         setInterviewTypes((prev) => (prev.length ? prev : seedBuiltinInterviews(Date.now())));
-        setJournals((prev) => (prev.length ? prev : JOURNALS));
+        setJournals((prev) => (prev.length ? prev : seedJournalRows(Date.now())));
       }
       try {
         await connect(true);
@@ -549,7 +727,7 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
         setBootstrapping(false);
       }
     },
-    [db, connect, syncPendingCount],
+    [db, connect, flush, syncPendingCount],
   );
 
   const signIn: AppData['signIn'] = useCallback(
@@ -606,6 +784,9 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
     pending.current.clear();
     pendingTemplates.current.clear();
     pendingInterviewTypes.current.clear();
+    pendingJournals.current.clear();
+    pendingAi.current = null;
+    aiSync.current = { updatedAt: 0, dirty: false };
     pendingMedia.current.clear();
     pendingMediaDeletes.current.clear();
     if (dbReady.current) db.close();
@@ -681,21 +862,38 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
 
   const newJournal = useCallback(
     (j: Journal) => {
-      setJournals((prev) => [...prev, j]);
-      if (dbReady.current) void db.putJournal(j);
+      const now = Date.now();
+      const rec: Journal = { ...j, createdAt: now, updatedAt: now, recordId: newRecordId(), pristine: false, deleted: false };
+      setJournals((prev) => [...prev, rec]);
+      if (dbReady.current) void db.putJournalRow(rec, { dirty: 1, pristine: 0 });
+      pendingJournals.current.set(rec.id, rec);
+      syncPendingCount();
+      void flush();
     },
-    [db],
+    [db, flush, syncPendingCount],
   );
 
   const updateJournal: AppData['updateJournal'] = useCallback(
     (id, patch) => {
       const cur = journals.find((j) => j.id === id);
       if (!cur) return;
-      const updated = { ...cur, ...patch };
+      // The first edit of a sample seed turns it into a real synced record
+      // (pristine cleared); the fixed seed id inside the ciphertext lets other
+      // devices pair it with their own copy of the same notebook.
+      const updated: Journal = {
+        ...cur,
+        ...patch,
+        pristine: false,
+        recordId: cur.recordId ?? newRecordId(),
+        updatedAt: Date.now(),
+      };
       setJournals((prev) => prev.map((j) => (j.id === id ? updated : j)));
-      if (dbReady.current) void db.putJournal(updated);
+      if (dbReady.current) void db.putJournalRow(updated, { dirty: 1, pristine: 0 });
+      pendingJournals.current.set(id, updated);
+      syncPendingCount();
+      void flush();
     },
-    [db, journals],
+    [db, flush, journals, syncPendingCount],
   );
 
   const createTemplate: AppData['createTemplate'] = useCallback(
@@ -817,19 +1015,33 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
     [db, flush, syncPendingCount],
   );
 
-  // Persist new AI settings sealed under the vault-derived key. The plaintext
-  // (API key included) only ever lives in this state object while unlocked.
-  const saveAiSettings: AppData['saveAiSettings'] = useCallback(async (s) => {
-    const id = identity.current;
-    if (!id) throw new Error('not signed in');
-    if (s === null) {
-      await clearAiSettingsRecord();
-      setAiSettings(null);
-      return;
-    }
-    await storeAiSettingsRecord(sealAiSettings(id.aiKey, s));
-    setAiSettings(s);
-  }, []);
+  // Persist new AI settings sealed under the vault-derived key, and queue them
+  // for the oplog (kind: 'aiSettings' inside the ciphertext) so the assistant
+  // configuration — API key included — follows the vault to its other devices.
+  // The plaintext only ever lives in this state object while unlocked; on the
+  // wire and on the relay it is ciphertext like everything else.
+  const saveAiSettings: AppData['saveAiSettings'] = useCallback(
+    async (s) => {
+      const id = identity.current;
+      if (!id) throw new Error('not signed in');
+      const now = Date.now();
+      const recordId = aiSync.current.recordId ?? newRecordId();
+      aiSync.current = { recordId, updatedAt: now, dirty: true };
+      if (s === null) {
+        await clearAiSettingsRecord();
+        setAiSettings(null);
+        // Tombstone so the clearing reaches the other devices too.
+        pendingAi.current = { recordId, settings: null, updatedAt: now, deleted: true };
+      } else {
+        await storeAiSettingsRecord(sealAiSettings(id.aiKey, s, aiSync.current));
+        setAiSettings(s);
+        pendingAi.current = { recordId, settings: s, updatedAt: now };
+      }
+      syncPendingCount();
+      void flush();
+    },
+    [flush, syncPendingCount],
+  );
 
   // Store a recording: bytes go to the local DB + media outbox. The attachment
   // metadata is returned for the editor to embed as an inline node in the entry
@@ -927,7 +1139,8 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
 
   // Delete a whole notebook (the caller has shown the typed-"delete" sheet).
   // Every entry in it tombstones like a single entry delete — one batch, one
-  // flush — and the journal row itself is dropped locally (it never synced).
+  // flush — and the journal itself tombstones through the oplog so the notebook
+  // disappears from the vault's other devices too.
   const deleteJournal: AppData['deleteJournal'] = useCallback(
     (id) => {
       const now = Date.now();
@@ -953,8 +1166,20 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
         return mergeByLWW(prev, tombstones);
       });
       for (const m of mediaIds) removeMedia(m);
-      setJournals((prev) => prev.filter((j) => j.id !== id));
-      if (dbReady.current) void db.deleteJournal(id);
+      setJournals((prev) => {
+        const cur = prev.find((j) => j.id === id);
+        if (!cur || cur.deleted) return prev;
+        const tombstone: Journal = {
+          ...cur,
+          deleted: true,
+          pristine: false,
+          recordId: cur.recordId ?? newRecordId(),
+          updatedAt: now,
+        };
+        if (dbReady.current) void db.putJournalRow(tombstone, { dirty: 1, pristine: 0 });
+        pendingJournals.current.set(id, tombstone);
+        return prev.map((j) => (j.id === id ? tombstone : j));
+      });
       syncPendingCount();
       void flush();
     },
@@ -1043,6 +1268,8 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
           localDirty: [...pending.current.values()],
           localDirtyTemplates: [...pendingTemplates.current.values()],
           localDirtyInterviewTypes: [...pendingInterviewTypes.current.values()],
+          localDirtyJournals: [...pendingJournals.current.values()].map(journalToRecord),
+          localDirtyAiSettings: pendingAi.current ?? undefined,
           localMediaBytes: (id) => Promise.resolve(mediaById.get(id)?.data ?? null),
           onProgress,
         });
@@ -1055,6 +1282,9 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
         pending.current.clear();
         pendingTemplates.current.clear();
         pendingInterviewTypes.current.clear();
+        pendingJournals.current.clear();
+        pendingAi.current = null;
+        aiSync.current = { ...aiSync.current, dirty: false };
         pendingMedia.current.clear();
 
         // Everything the relay holds lands non-dirty; local-only rows (e.g. the
@@ -1062,6 +1292,15 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
         const all = mergeByLWW(entries, result.entries);
         const allTpl = mergeByLWW(templates, result.templates);
         const allItv = mergeByLWW(interviewTypes, result.interviewTypes);
+        // Journals merge by the id inside the ciphertext, same rules as pull.
+        const jrnById = new Map(journals.map((j) => [j.id, j]));
+        for (const r of result.journals) {
+          const local = jrnById.get(r.id);
+          if (!local || local.pristine || r.updatedAt > (local.updatedAt ?? 0)) {
+            jrnById.set(r.id, { ...journalFromRecord(r), recordId: adoptRecordId(local?.recordId, r.recordId) });
+          }
+        }
+        const allJrn = [...jrnById.values()];
 
         // Re-home the local DB under the new owner_id, then destroy the old
         // per-owner directory — it holds plaintext under a possibly-leaked identity.
@@ -1076,9 +1315,12 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
             await db.mergeRemoteTemplates(allTpl.filter((t) => !t.pristine));
             await db.seedInterviewTypes(allItv.filter((t) => t.pristine));
             await db.mergeRemoteInterviewTypes(allItv.filter((t) => !t.pristine));
-            // Journals are local-only — carry the current set into the new DB
-            // (marked as seeded, so the samples don't re-appear on top).
-            await db.seedJournals(journals);
+            // Journals: pristine seeds keep their local-only standing; everything
+            // else was re-pushed by the rotation, so it lands non-dirty.
+            await db.seedJournals(allJrn.filter((j) => j.pristine));
+            for (const j of allJrn.filter((j) => !j.pristine)) {
+              await db.putJournalRow(j, { dirty: 0, pristine: 0 });
+            }
           } catch {
             dbReady.current = false;
           }
@@ -1108,11 +1350,12 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
         }
 
         // Same for the sealed AI settings: their wrap key derives from the seed,
-        // so the old record would no longer open. Re-seal under the new identity;
+        // so the old record would no longer open. Re-seal under the new identity
+        // (sync meta rides along — the rotation re-pushed the records already);
         // on failure, clear — AI falls back to "not configured".
         if (aiSettings) {
           try {
-            await storeAiSettingsRecord(sealAiSettings(result.session.identity.aiKey, aiSettings));
+            await storeAiSettingsRecord(sealAiSettings(result.session.identity.aiKey, aiSettings, aiSync.current));
           } catch {
             void clearAiSettingsRecord();
             setAiSettings(null);
@@ -1122,6 +1365,7 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
         setEntries(all);
         setTemplates(allTpl);
         setInterviewTypes(allItv);
+        setJournals(allJrn);
         syncPendingCount();
         setStatus('online'); // re-arms the background loop against the new account
       } catch (e) {
@@ -1195,10 +1439,14 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
       latest.set(e.journalId, Math.max(latest.get(e.journalId) ?? 0, e.updatedAt));
     }
     const now = Date.now();
-    return journals.map((j) => {
-      const last = latest.get(j.id);
-      return { ...j, count: counts.get(j.id) ?? 0, last: last ? relativeDay(last, now) : '' };
-    });
+    // Tombstones stay in the raw list (LWW guard against stale pulled copies)
+    // but consumers only see live notebooks.
+    return journals
+      .filter((j) => !j.deleted)
+      .map((j) => {
+        const last = latest.get(j.id);
+        return { ...j, count: counts.get(j.id) ?? 0, last: last ? relativeDay(last, now) : '' };
+      });
   }, [journals, entries]);
 
   // Tombstones stay in the raw list (so LWW keeps winning against stale copies

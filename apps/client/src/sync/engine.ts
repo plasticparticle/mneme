@@ -5,6 +5,7 @@ import { encrypt, decrypt } from '../crypto/aead';
 import { utf8, fromUtf8 } from '../crypto/bytes';
 import { toBase64, fromBase64 } from '../crypto/base64';
 import type { PushEntry, RelayClient } from './relay';
+import type { AiSettings } from '../ai/types';
 
 // One media object attached to an entry. This metadata travels INSIDE the
 // encrypted entry body — the relay sees only the random media id and the
@@ -77,6 +78,41 @@ export interface InterviewType {
   deleted?: boolean;
 }
 
+// A notebook, synced through the same oplog (`kind: 'journal'` inside the
+// ciphertext — no server changes). Unlike templates, the wire record id is NOT
+// the journal's id: builtin notebooks have well-known ids and user notebooks
+// have timestamp-encoded ones, so `recordId` is a fresh random id and the real
+// `id` (what entries reference in their encrypted bodies) travels inside the
+// ciphertext. Cross-device identity therefore matches by `id`, no builtin-slug
+// machinery needed — the builtin seeds share their fixed ids on every device.
+export interface JournalRecord {
+  /** The id entries reference (ciphertext-only — may be well-known or date-encoded). */
+  id: string;
+  /** Cleartext oplog id — always random (newRecordId), minted on first push. */
+  recordId?: string;
+  name: string;
+  subtitle: string;
+  color: string;
+  cover: string;
+  /** Local-only: an untouched sample seed. Never serialized; cleared on first edit. */
+  pristine?: boolean;
+  createdAt: number; // ms
+  updatedAt: number; // ms — also the lww_clock
+  deleted?: boolean;
+}
+
+// The AI-assistant settings as a synced singleton (`kind: 'aiSettings'` inside
+// the ciphertext). Every device pushes under its own random record id; receivers
+// keep whichever record carries the newest `updatedAt` and adopt the smallest
+// record id they have seen so edits converge onto one record. `settings` is null
+// on a tombstone (the user cleared the assistant configuration).
+export interface AiSettingsRecord {
+  recordId: string;
+  settings: AiSettings | null;
+  updatedAt: number; // ms — also the lww_clock
+  deleted?: boolean;
+}
+
 // What actually gets encrypted (everything except the cleartext id/clock/deleted flag).
 // `kind` is absent on entries (the original wire shape), 'template' on templates, and
 // 'interviewType' on interview types; decoding routes on it, so pre-template blobs keep
@@ -113,7 +149,24 @@ interface InterviewTypeBody {
   updatedAt: number;
 }
 
-type RecordBody = EntryBody | TemplateBody | InterviewTypeBody;
+interface JournalBody {
+  kind: 'journal';
+  journalId: string; // the id entries reference — kept off the cleartext oplog
+  name: string;
+  subtitle: string;
+  color: string;
+  cover: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+interface AiSettingsBody {
+  kind: 'aiSettings';
+  settings?: AiSettings; // absent on a tombstone
+  updatedAt: number;
+}
+
+type RecordBody = EntryBody | TemplateBody | InterviewTypeBody | JournalBody | AiSettingsBody;
 
 export function encryptEntry(dataKey: Uint8Array, e: JournalEntry): Uint8Array {
   const body: EntryBody = {
@@ -210,10 +263,69 @@ export async function pushInterviewTypes(
   return new Set(resp.results.filter((r) => r.applied).map((r) => r.entry_id));
 }
 
+export function toPushJournal(dataKey: Uint8Array, j: JournalRecord): PushEntry {
+  if (!j.recordId) throw new Error('journal record has no wire id');
+  const body: JournalBody = {
+    kind: 'journal',
+    journalId: j.id,
+    name: j.name,
+    subtitle: j.subtitle,
+    color: j.color,
+    cover: j.cover,
+    createdAt: j.createdAt,
+    updatedAt: j.updatedAt,
+  };
+  return {
+    entry_id: j.recordId,
+    lww_clock: j.updatedAt,
+    ciphertext: toBase64(encrypt(dataKey, utf8(JSON.stringify(body)))),
+    deleted: j.deleted ?? false,
+  };
+}
+
+/** Push journals through the same oplog; returns the accepted RECORD ids (not journal ids). */
+export async function pushJournals(
+  relay: RelayClient,
+  token: string,
+  dataKey: Uint8Array,
+  journals: JournalRecord[],
+): Promise<Set<string>> {
+  if (journals.length === 0) return new Set();
+  const resp = await relay.push(token, journals.map((j) => toPushJournal(dataKey, j)));
+  return new Set(resp.results.filter((r) => r.applied).map((r) => r.entry_id));
+}
+
+export function toPushAiSettings(dataKey: Uint8Array, rec: AiSettingsRecord): PushEntry {
+  const body: AiSettingsBody = {
+    kind: 'aiSettings',
+    settings: rec.settings ?? undefined,
+    updatedAt: rec.updatedAt,
+  };
+  return {
+    entry_id: rec.recordId,
+    lww_clock: rec.updatedAt,
+    ciphertext: toBase64(encrypt(dataKey, utf8(JSON.stringify(body)))),
+    deleted: rec.deleted ?? rec.settings === null,
+  };
+}
+
+/** Push the AI-settings singleton; returns true when the relay accepted it. */
+export async function pushAiSettings(
+  relay: RelayClient,
+  token: string,
+  dataKey: Uint8Array,
+  rec: AiSettingsRecord,
+): Promise<boolean> {
+  const resp = await relay.push(token, [toPushAiSettings(dataKey, rec)]);
+  return resp.results.some((r) => r.applied && r.entry_id === rec.recordId);
+}
+
 export interface PullResult {
   entries: JournalEntry[];
   templates: TemplateRecord[];
   interviewTypes: InterviewType[];
+  journals: JournalRecord[];
+  aiSettings: AiSettingsRecord[];
   cursor: number;
   more: boolean;
 }
@@ -229,6 +341,8 @@ export async function pullEntries(
   const entries: JournalEntry[] = [];
   const templates: TemplateRecord[] = [];
   const interviewTypes: InterviewType[] = [];
+  const journals: JournalRecord[] = [];
+  const aiSettings: AiSettingsRecord[] = [];
   for (const item of resp.entries) {
     const body = JSON.parse(fromUtf8(decrypt(dataKey, fromBase64(item.ciphertext)))) as RecordBody;
     if (body.kind === 'template') {
@@ -253,6 +367,25 @@ export async function pullEntries(
         updatedAt: body.updatedAt,
         deleted: item.deleted,
       });
+    } else if (body.kind === 'journal') {
+      journals.push({
+        id: body.journalId,
+        recordId: item.entry_id,
+        name: body.name,
+        subtitle: body.subtitle,
+        color: body.color,
+        cover: body.cover,
+        createdAt: body.createdAt,
+        updatedAt: body.updatedAt,
+        deleted: item.deleted,
+      });
+    } else if (body.kind === 'aiSettings') {
+      aiSettings.push({
+        recordId: item.entry_id,
+        settings: item.deleted ? null : (body.settings ?? null),
+        updatedAt: body.updatedAt,
+        deleted: item.deleted,
+      });
     } else {
       entries.push({
         id: item.entry_id,
@@ -268,5 +401,5 @@ export async function pullEntries(
       });
     }
   }
-  return { entries, templates, interviewTypes, cursor: resp.cursor, more: resp.more };
+  return { entries, templates, interviewTypes, journals, aiSettings, cursor: resp.cursor, more: resp.more };
 }

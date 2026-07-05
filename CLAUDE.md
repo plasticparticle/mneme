@@ -23,8 +23,8 @@ project. Scaffolded so far:
   `platform/keystore.ts`; passphrase unlock on cold start, 15-min inactivity auto-lock + manual
   "Lock journal", phrase rotation re-seals the new seed, and a mnemonic sign-in without a passphrase
   clears the seal). Entries are **durable**: a
-  per-owner wa-sqlite DB on OPFS (`src/db/`, forward-only client migrations, currently v6 —
-  entries, media, templates, media tombstones, journals, interview types; plaintext by §5a design) is the local source of
+  per-owner wa-sqlite DB on OPFS (`src/db/`, forward-only client migrations, currently v8 —
+  entries, media, templates, media tombstones, journals (+sync bookkeeping), interview types; plaintext by §5a design) is the local source of
   truth, seeded once with sample content and merged with synced entries; dirty-flag outboxes let
   edits, deletes, and media uploads survive offline restarts. The editor is real **TipTap**
   (`src/editor/`: toolbar, `/` slash palette, inline media nodes). Entry bodies are
@@ -103,10 +103,17 @@ through the LWW oplog, purges referenced media locally and on the relay; tombsto
 the raw provider list so LWW keeps winning, consumers see a filtered list), **journal deletion**
 behind a typed-"delete" sheet (`ui/DeleteJournal.tsx`, desktop journal-card trash / mobile drill-in
 header; `deleteJournal` in `state/data.tsx` tombstones every entry in the notebook through the LWW
-oplog and purges their media local + relay. Journals themselves now persist in the local `journals`
-table — schema v5, seeded once per device, carried across phrase rotation — as a per-device grouping
-per §3: they never sync, and a deleted journal keeps its tombstone row so the sample seed can't
-resurrect it), a visible
+oplog and purges their media local + relay. Journals themselves persist in the local `journals`
+table — schema v5+v8, seeded once per device pristine, carried across phrase rotation — and **sync
+across the vault's devices** as encrypted `kind: 'journal'` records through the entry oplog (no
+server changes; `sync/engine.ts`). Leak-guard twist vs. templates: the wire record id is a fresh
+random `recordId` and the journal's real id rides INSIDE the ciphertext — the sample notebooks have
+well-known ids (`j-tutorial`/`j-personal`) and user notebooks timestamp-encoded ones (`'j-'+Date.now()`),
+either of which would leak in the cleartext oplog (§3). Cross-device identity pairs by that inner id
+(seeds share fixed ids everywhere), so no builtin-slug machinery: a pulled record beats a pristine
+seed outright, otherwise LWW by `updatedAt`; concurrent first-syncs converge by adopting the smallest
+record id. Journal deletion tombstones through the oplog like entries, and a deleted journal keeps
+its tombstone row so stale copies can't resurrect it), a visible
 password-manager autofill target on phrase restore, and **math typesetting** (`editor/math.tsx` —
 `@tiptap/extension-mathematics` + KaTeX; type `$$x$$` inline / `$$$x$$$` block, or the `/` Math
 commands; click a formula to edit it in a live-preview LaTeX dialog. The formula is a `latex` attr
@@ -175,8 +182,15 @@ The API key is sealed at rest: `Identity.aiKey` (HKDF info="ai-settings", `crypt
 the settings JSON via `crypto/aead.ts` (version byte + AAD `mneme:ai-settings:v1`, `ai/settings.ts`)
 into the IndexedDB keystore slot `'ai-settings'`; lifecycle in `state/data.tsx` (load on unlock,
 drop on lock, re-seal under the new seed on phrase rotation, cleared on vault deletion; a different
-vault's record fails the AEAD tag → unconfigured). Wire-path check:
-`pnpm --filter client exec tsx scripts/ai-roundtrip.ts` (Ollama chat step skips when not running).
+vault's record fails the AEAD tag → unconfigured). The settings also **sync across the vault's
+devices** as an encrypted `kind: 'aiSettings'` singleton through the entry oplog (no relay
+involvement in AI requests changes — only the encrypted config blob syncs): random wire record id
+per device with smallest-id adoption, LWW by `updatedAt`, sync bookkeeping (`AiSyncMeta`) stored
+cleartext next to the sealed blob in the keystore record, records from before sync get stamped +
+pushed once on unlock, and clearing the settings tombstones the record so the clearing propagates.
+Wire-path checks: `pnpm --filter client exec tsx scripts/ai-roundtrip.ts` (Ollama chat step skips
+when not running) and `scripts/journal-sync-roundtrip.ts` (journal + aiSettings record routing,
+relay must be running).
 
 **Guided interview + AI entry writing** (extends the opt-in assistant; off unless AI is enabled) is
 in: the AI now *writes* entries, not just reads them. **"Daily interview"** (`ui/GuidedInterview.tsx`,
@@ -227,7 +241,9 @@ real responsive shell instead. The design system is implemented in `apps/client/
 - **Type:** Hanken Grotesk (UI) · Newsreader serif (editor/headings) · Spline Sans Mono (mnemonic/metadata).
 - Design tokens live in `src/styles/tokens.css` (`:root` CSS variables); port new design values there.
 - The prototype models **multiple notebooks inside one mnemonic account** — this is a UI convenience;
-  it does **not** override the §3 "isolated tenants" crypto decision (journals are just a local grouping).
+  it does **not** override the §3 "isolated tenants" crypto decision. Journals sync across one
+  vault's devices as encrypted records (isolated tenants is about sharing between *owners*, which
+  remains a non-goal); their metadata — the journal id included — stays inside the ciphertext.
 
 ### What this is (one line)
 Open-source, local-first, **end-to-end-encrypted** journal (a Day One replacement). The server is a

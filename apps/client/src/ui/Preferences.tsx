@@ -7,7 +7,7 @@
 // and never syncs; the vault rows just hand off to their existing sheets
 // (RotatePhrase, DeleteVault…).
 import type { VNode } from 'preact';
-import { useMemo, useState } from 'preact/hooks';
+import { useMemo, useRef, useState } from 'preact/hooks';
 import { Icon, type IconName } from './Icon';
 import { ConnectionDot, connLabel } from './primitives';
 import { useAppData, type SyncStatus } from '../state/data';
@@ -111,6 +111,13 @@ export function PreferencesSheet({ desk, theme, onClose, ownerId, status, onLock
   const { entries, vaultMethod } = useAppData();
   const i18n = useI18n();
   const [tab, setTab] = useState<TabId>('appearance');
+  // Dismiss only on a click that both *starts* and *ends* on the backdrop
+  // itself. A plain onClick={onClose} also fires when a press begins inside the
+  // card and the release lands on the backdrop (a sloppy click, a text-selection
+  // drag, or a click near the card edge) — the browser then dispatches `click`
+  // on the common ancestor, which is the backdrop. Tracking the mousedown target
+  // closes that gap so the panel only dismisses on a genuine outside click.
+  const pressedOnBackdrop = useRef(false);
   // Vault rows hand off to full-screen sheets — close this overlay first.
   const handOff = (fn: () => void) => () => {
     onClose();
@@ -399,7 +406,8 @@ export function PreferencesSheet({ desk, theme, onClose, ownerId, status, onLock
   return (
     <div
       role="dialog"
-      onClick={onClose}
+      onMouseDown={(e) => { pressedOnBackdrop.current = e.target === e.currentTarget; }}
+      onClick={(e) => { if (pressedOnBackdrop.current && e.target === e.currentTarget) onClose(); }}
       style={{ position: 'fixed', inset: 0, zIndex: 70, background: 'rgba(30,22,16,.45)', backdropFilter: 'blur(2px)', display: 'flex', alignItems: desk ? 'center' : 'flex-end', justifyContent: 'center', padding: desk ? 18 : 0 }}
     >
       {card}

@@ -16,4 +16,8 @@ if [[ ! -f .env.prod ]]; then
   exit 1
 fi
 
+# Stamp the source version into the server image at build time so the admin
+# dashboard can report it and compare against the latest GitHub release.
+export MNEME_VERSION="$(git describe --tags --always --dirty 2>/dev/null || echo dev)"
+
 exec docker compose -f docker-compose.prod.yml --env-file .env.prod "$@"

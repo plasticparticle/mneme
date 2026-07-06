@@ -21,6 +21,7 @@ type Server struct {
 	cfg     config.Config
 	metrics *metrics
 	backup  *backup.Service
+	updates *updateChecker
 }
 
 func New(st *store.Store, bl blobs.Store, cfg config.Config) *Server {
@@ -33,6 +34,7 @@ func New(st *store.Store, bl blobs.Store, cfg config.Config) *Server {
 		cfg:     cfg,
 		metrics: newMetrics(),
 		backup:  backup.NewService(cfg.Backup.Dir, cfg.Backup.Keep, st, bl),
+		updates: newUpdateChecker(cfg.Version, cfg.UpdateCheck),
 	}
 }
 
@@ -71,6 +73,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /admin", s.handleAdminPage)
 	mux.HandleFunc("GET /admin/{$}", s.handleAdminPage)
 	mux.Handle("GET /admin/stats", s.adminAuth(http.HandlerFunc(s.handleAdminStats)))
+	mux.Handle("GET /admin/version", s.adminAuth(http.HandlerFunc(s.handleAdminVersion)))
 	mux.Handle("DELETE /admin/vaults/{id}", s.adminAuth(http.HandlerFunc(s.handleAdminDeleteVault)))
 	mux.Handle("GET /admin/backups", s.adminAuth(http.HandlerFunc(s.handleAdminListBackups)))
 	mux.Handle("POST /admin/backups", s.adminAuth(http.HandlerFunc(s.handleAdminCreateBackup)))

@@ -6,7 +6,11 @@ WORKDIR /src
 COPY server/go.* ./
 RUN go mod download
 COPY server/ ./
-RUN CGO_ENABLED=0 go build -o /journald ./cmd/journald
+# Build identifier stamped into the binary (main.version). The release workflow
+# passes the git tag; plain builds default to "dev". Surfaced by the admin
+# dashboard and compared against the latest GitHub release.
+ARG VERSION=dev
+RUN CGO_ENABLED=0 go build -ldflags "-X main.version=${VERSION}" -o /journald ./cmd/journald
 
 FROM gcr.io/distroless/static-debian12
 COPY --from=build /journald /journald

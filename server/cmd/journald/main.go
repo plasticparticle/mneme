@@ -31,6 +31,15 @@ import (
 	"github.com/plasticparticle/mneme/server/internal/store"
 )
 
+// version is the relay's build identifier, stamped at build time via
+//
+//	go build -ldflags "-X main.version=<tag>"
+//
+// (see server/Dockerfile and .github/workflows/release.yml). It defaults to
+// "dev" for plain source builds. The admin dashboard reports it and compares it
+// against the latest GitHub release.
+var version = "dev"
+
 func main() {
 	if err := dispatch(os.Args[1:]); err != nil {
 		log.Fatalf("journald: %v", err)
@@ -52,6 +61,9 @@ func dispatch(args []string) error {
 		return cmdRestore(args)
 	case "list-backups":
 		return cmdListBackups(args)
+	case "version", "--version", "-v":
+		fmt.Println(version)
+		return nil
 	case "-h", "--help", "help":
 		usage()
 		return nil
@@ -70,6 +82,7 @@ usage:
   journald restore ARCHIVE [--yes]
                                 replace ALL relay data from ARCHIVE (destructive)
   journald list-backups         list archives in BACKUP_DIR
+  journald version              print the build version
 
 Backups archive every vault's opaque ciphertext + media chunks. They contain no
 keys and no plaintext. Configure with BACKUP_DIR / BACKUP_INTERVAL / BACKUP_KEEP.
@@ -78,6 +91,7 @@ keys and no plaintext. Configure with BACKUP_DIR / BACKUP_INTERVAL / BACKUP_KEEP
 
 func runServer() error {
 	cfg := config.Load()
+	cfg.Version = version
 
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()

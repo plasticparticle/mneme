@@ -1,0 +1,49 @@
+# Cut a release: on a pushed vX.Y.Z tag, build + publish the relay image and
+# create the GitHub Release. The Release is what the admin dashboard's update
+# check reads (GET /repos/plasticparticle/mneme/releases/latest), so the
+# "newer version available" banner only lights up once a tag has been released.
+#
+#   git tag v0.3.0 && git push origin v0.3.0
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write # create the GitHub Release
+  packages: write # push the image to GHCR
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-qemu-action@v3 # emulation for the arm64 leg
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # The version is stamped into the binary (main.version) via the Dockerfile
+      # ARG, so `journald version` and the dashboard report the released tag.
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: server/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          build-args: |
+            VERSION=${{ github.ref_name }}
+          tags: |
+            ghcr.io/plasticparticle/mneme-server:${{ github.ref_name }}
+            ghcr.io/plasticparticle/mneme-server:latest
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true

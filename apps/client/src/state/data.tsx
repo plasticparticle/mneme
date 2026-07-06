@@ -22,13 +22,13 @@ import { uploadMedia, downloadMedia } from '../sync/media';
 import { rotateAccount, type RotationProgress } from '../sync/rotate';
 import { newEntryId, newMediaId, newTemplateId, newRecordId } from '../sync/ids';
 import { ENTRIES, JOURNALS, type Journal, type CoverPattern } from '../data/sample';
-import { seedBuiltinTemplates } from '../data/templates';
+import { seedBuiltinTemplates, localizeBuiltinTemplate } from '../data/templates';
 import { seedBuiltinInterviews } from '../data/interviews';
 import type { JSONContent } from '@tiptap/core';
 import { blocksToDoc, textToDoc, docToText, docMediaIds } from '../editor/doc';
 import { LocalDb, destroyOwnerDb, type MediaRecord } from '../db';
 import { makeThumbnail } from '../ui/thumbnail';
-import { t, tp, fmtDate } from '../i18n';
+import { t, tp, fmtDate, useI18n } from '../i18n';
 
 export type SyncStatus = 'locked' | 'connecting' | 'online' | 'offline';
 
@@ -1540,6 +1540,16 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
   // and the outbox can push them) but every consumer sees only live entries.
   const liveEntries = useMemo(() => entries.filter((e) => !e.deleted), [entries]);
 
-  const value: AppData = { status, hasVault, vaultMethod, ownerId, pendingCount, pendingJournalIds, syncTotal, saving, bootstrapping, entries: liveEntries, journals: journalsWithCounts, templates, interviewTypes, aiSettings, saveAiSettings, signIn, unlock, unlockWithKey, setDeviceUnlock, lock, createEntry, updateEntry, deleteEntry, newJournal, updateJournal, deleteJournal, createTemplate, updateTemplate, deleteTemplate, createInterviewType, updateInterviewType, deleteInterviewType, addMedia, removeMedia, mediaBlob, mediaThumb, rotatePhrase, deleteVault };
+  // Built-in template seeds render in the active language until the user forks
+  // one by editing; localizeBuiltinTemplate is a no-op for owned records. The
+  // raw `templates` state stays the seed language for sync/DB — only this
+  // exposed projection follows the locale. `locale` is the memo trigger.
+  const { locale } = useI18n();
+  const localizedTemplates = useMemo(
+    () => templates.map(localizeBuiltinTemplate),
+    [templates, locale],
+  );
+
+  const value: AppData = { status, hasVault, vaultMethod, ownerId, pendingCount, pendingJournalIds, syncTotal, saving, bootstrapping, entries: liveEntries, journals: journalsWithCounts, templates: localizedTemplates, interviewTypes, aiSettings, saveAiSettings, signIn, unlock, unlockWithKey, setDeviceUnlock, lock, createEntry, updateEntry, deleteEntry, newJournal, updateJournal, deleteJournal, createTemplate, updateTemplate, deleteTemplate, createInterviewType, updateInterviewType, deleteInterviewType, addMedia, removeMedia, mediaBlob, mediaThumb, rotatePhrase, deleteVault };
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

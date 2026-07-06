@@ -85,7 +85,12 @@ kind (`kind: 'template'`) lives inside the ciphertext (`sync/engine.ts`), so the
 templates from entries and **no server changes were needed**. Built-ins (`data/templates.ts`) seed
 once per device as pristine, local-only rows (random ids — a well-known id would leak the record
 type); the first edit/delete makes one a real synced record, and its `builtin` slug lets other
-devices retire their own pristine seed of it (supersede pass in `state/data.tsx` pull). Local store:
+devices retire their own pristine seed of it (supersede pass in `state/data.tsx` pull). Built-in
+seed **content is localized**: each doc is built from `templates.builtin.*` catalog keys, and a
+still-pristine seed re-renders in the active language via `localizeBuiltinTemplate` (a display
+projection in the `state/data.tsx` context value, keyed on the locale) — the first edit forks it into
+a real synced record in whatever language it was showing, and user/forked templates are content that
+stays as written. Local store:
 `templates` table (schema v3); rotation carries templates (`sync/rotate.ts`). UI: manager sheet
 (`ui/Templates.tsx`, sidebar "Templates" / mobile settings) with create/edit/rename/delete/use, the
 `/` slash palette has a single **Template** command that opens the same picker and inserts the

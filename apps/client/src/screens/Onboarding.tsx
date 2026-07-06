@@ -6,6 +6,7 @@ import { Wordmark } from '../ui/Wordmark';
 import { generateMnemonic, mnemonicWords, validateMnemonic, wordsToMnemonic } from '../crypto/mnemonic';
 import { webauthnAvailable, PrfUnsupportedError } from '../platform/webauthn';
 import { APP_VERSION, buildTimeLabel } from '../buildinfo';
+import { t, tp, type MessageKey } from '../i18n';
 import type { SealChoice } from '../state/data';
 
 type View = 'welcome' | 'create' | 'confirm' | 'restore' | 'passphrase' | 'unlock';
@@ -140,12 +141,14 @@ export function Onboarding({ desk, hasVault, unlockMethod, onEnter, onUnlock, on
   const [pass1, setPass1] = useState('');
   const [pass2, setPass2] = useState('');
   const [busy, setBusy] = useState(false);
-  const [setupError, setSetupError] = useState('');
+  // Errors are stored as message keys and translated at render time, so an
+  // error shown across a locale switch re-renders in the new language.
+  const [setupError, setSetupError] = useState<MessageKey | ''>('');
 
   // unlock step (returning device with a sealed seed)
   const [unlockPass, setUnlockPass] = useState('');
   const [unlockBusy, setUnlockBusy] = useState(false);
-  const [unlockError, setUnlockError] = useState('');
+  const [unlockError, setUnlockError] = useState<MessageKey | ''>('');
 
   // Both fields deliberately opt out of password managers: the saved credential
   // for this app is the recovery phrase ("mneme journal"), and a manager
@@ -183,7 +186,7 @@ export function Onboarding({ desk, hasVault, unlockMethod, onEnter, onUnlock, on
           views); the inner flow steps use the full height, so it stays off them. */}
       {!opts.top && (
         <div style={{ position: 'absolute', bottom: 'calc(env(safe-area-inset-bottom, 0px) + 12px)', left: 0, right: 0, textAlign: 'center', fontFamily: 'var(--mono)', fontSize: 10.5, color: 'var(--ink-3)', pointerEvents: 'none' }}>
-          v{APP_VERSION} · built {buildTimeLabel()}
+          {t('onboarding.build', { version: APP_VERSION, built: buildTimeLabel() })}
         </div>
       )}
     </div>
@@ -202,18 +205,18 @@ export function Onboarding({ desk, hasVault, unlockMethod, onEnter, onUnlock, on
         </div>
         <h1 style={{ fontFamily: 'var(--serif)', fontWeight: 500, fontSize: desk ? 46 : 40, color: 'var(--ink)', margin: 0, letterSpacing: 0.3 }}>Mneme</h1>
         <p style={{ fontFamily: 'var(--serif)', fontStyle: 'italic', fontSize: desk ? 19 : 17, color: 'var(--ink-2)', margin: '14px 0 0', maxWidth: 320 }}>
-          A private place to remember.
+          {t('onboarding.tagline')}
         </p>
         <p style={{ fontFamily: 'var(--ui)', fontSize: 13.5, color: 'var(--ink-3)', margin: '10px 0 0', lineHeight: 1.6, maxWidth: 300 }}>
-          Everything you write is encrypted on this device before it ever leaves it. No account, no email, no password.
+          {t('onboarding.intro')}
         </p>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12, width: '100%', maxWidth: 340, marginTop: 34 }}>
-          <Btn kind="primary" size="lg" full onClick={() => setView('create')}>Start a new journal</Btn>
-          <Btn kind="ghost" size="lg" full onClick={() => setView('restore')}>I have a recovery phrase</Btn>
+          <Btn kind="primary" size="lg" full onClick={() => setView('create')}>{t('onboarding.startNew')}</Btn>
+          <Btn kind="ghost" size="lg" full onClick={() => setView('restore')}>{t('onboarding.haveRecovery')}</Btn>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginTop: 30, color: 'var(--ink-3)' }}>
           <Icon name="shield" size={15} color="var(--accent)" />
-          <span style={{ fontFamily: 'var(--ui)', fontSize: 12 }}>End-to-end encrypted · local-first · open source</span>
+          <span style={{ fontFamily: 'var(--ui)', fontSize: 12 }}>{t('onboarding.trustLine')}</span>
         </div>
       </div>,
     );
@@ -227,10 +230,10 @@ export function Onboarding({ desk, hasVault, unlockMethod, onEnter, onUnlock, on
         style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, position: 'relative' }}
       >
         <ManagerCredential phrase={mnemonic} />
-        <BackRow onClick={() => setView('welcome')} step="Step 1 of 3" />
-        <h2 style={hStyle(desk)}>Your recovery phrase</h2>
+        <BackRow onClick={() => setView('welcome')} step={t('onboarding.step', { current: 1, total: 3 })} />
+        <h2 style={hStyle(desk)}>{t('onboarding.create.title')}</h2>
         <p style={pStyle}>
-          These twelve words <strong style={{ color: 'var(--ink)' }}>are</strong> your journal. Write them down in order and keep them somewhere safe — they’re the only way back in.
+          <strong style={{ color: 'var(--ink)' }}>{t('onboarding.create.lead')}</strong> {t('onboarding.create.body')}
         </p>
 
         <div style={{ position: 'relative', marginTop: 18 }}>
@@ -255,24 +258,24 @@ export function Onboarding({ desk, hasVault, unlockMethod, onEnter, onUnlock, on
               style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--ink)' }}
             >
               <Icon name="eye" size={22} color="var(--ink)" />
-              <span style={{ fontFamily: 'var(--ui)', fontWeight: 600, fontSize: 14 }}>Tap to reveal</span>
-              <span style={{ fontFamily: 'var(--ui)', fontSize: 12, color: 'var(--ink-2)' }}>Make sure no one is watching</span>
+              <span style={{ fontFamily: 'var(--ui)', fontWeight: 600, fontSize: 14 }}>{t('onboarding.tapToReveal')}</span>
+              <span style={{ fontFamily: 'var(--ui)', fontSize: 12, color: 'var(--ink-2)' }}>{t('onboarding.noOneWatching')}</span>
             </button>
           )}
         </div>
 
         <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-          <Btn kind="ghost" size="sm" icon={revealed ? 'eyeoff' : 'eye'} onClick={() => setRevealed((r) => !r)}>{revealed ? 'Hide' : 'Reveal'}</Btn>
-          <Btn kind="ghost" size="sm" icon="copy" onClick={async () => { try { await navigator.clipboard.writeText(words.join(' ')); } catch { /* clipboard unavailable */ } setCopied(true); setTimeout(() => setCopied(false), 1400); }}>{copied ? 'Copied' : 'Copy'}</Btn>
+          <Btn kind="ghost" size="sm" icon={revealed ? 'eyeoff' : 'eye'} onClick={() => setRevealed((r) => !r)}>{revealed ? t('onboarding.hide') : t('onboarding.reveal')}</Btn>
+          <Btn kind="ghost" size="sm" icon="copy" onClick={async () => { try { await navigator.clipboard.writeText(words.join(' ')); } catch { /* clipboard unavailable */ } setCopied(true); setTimeout(() => setCopied(false), 1400); }}>{copied ? t('common.copied') : t('common.copy')}</Btn>
         </div>
 
         <Callout>
           <Icon name="shield" size={16} color="var(--accent)" />
-          <span>We can’t reset this for you. There’s no “forgot password” — that’s the point.</span>
+          <span>{t('onboarding.create.callout')}</span>
         </Callout>
 
         <div style={{ flex: 1 }} />
-        <Btn kind="primary" size="lg" full icon="arrowR" type="submit" style={{ marginTop: 16 }}>I’ve written it down</Btn>
+        <Btn kind="primary" size="lg" full icon="arrowR" type="submit" style={{ marginTop: 16 }}>{t('onboarding.writtenDown')}</Btn>
       </form>,
       { top: true },
     );
@@ -282,15 +285,15 @@ export function Onboarding({ desk, hasVault, unlockMethod, onEnter, onUnlock, on
   if (view === 'confirm') {
     return wrap(
       <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
-        <BackRow onClick={() => setView('create')} step="Step 2 of 3" />
-        <h2 style={hStyle(desk)}>Confirm a few words</h2>
-        <p style={pStyle}>Just to be sure it’s saved. Tap the correct word for each position.</p>
+        <BackRow onClick={() => setView('create')} step={t('onboarding.step', { current: 2, total: 3 })} />
+        <h2 style={hStyle(desk)}>{t('onboarding.confirm.title')}</h2>
+        <p style={pStyle}>{t('onboarding.confirm.body')}</p>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16, marginTop: 20 }}>
           {quizIdx.map((i) => (
             <div key={i}>
               <div style={{ fontFamily: 'var(--ui)', fontSize: 12.5, fontWeight: 600, color: 'var(--ink-2)', marginBottom: 8 }}>
-                Word <span style={{ fontFamily: 'var(--mono)', color: 'var(--accent-ink)' }}>#{i + 1}</span>
+                {t('onboarding.confirm.word', { num: i + 1 })}
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
                 {options(i).map((opt) => {
@@ -301,7 +304,7 @@ export function Onboarding({ desk, hasVault, unlockMethod, onEnter, onUnlock, on
                       onClick={() => setPicks((p) => ({ ...p, [i]: opt }))}
                       style={{
                         fontFamily: 'var(--mono)', fontSize: 14, fontWeight: 500, padding: '11px 12px', borderRadius: 11, cursor: 'pointer',
-                        textAlign: 'left', transition: 'all .12s',
+                        textAlign: 'start', transition: 'all .12s',
                         background: sel ? 'var(--accent-soft)' : 'var(--surface)',
                         border: `1.5px solid ${sel ? 'var(--accent)' : 'var(--line)'}`,
                         color: sel ? 'var(--accent-ink)' : 'var(--ink)',
@@ -325,7 +328,7 @@ export function Onboarding({ desk, hasVault, unlockMethod, onEnter, onUnlock, on
           onClick={() => allCorrect && goToPassphrase(mnemonic, 'confirm')}
           style={{ marginTop: 18, opacity: allCorrect ? 1 : 0.55, pointerEvents: allCorrect ? 'auto' : 'none' }}
         >
-          {allCorrect ? 'Continue' : 'Select all three words'}
+          {allCorrect ? t('onboarding.continue') : t('onboarding.confirm.selectAll')}
         </Btn>
       </div>,
       { top: true },
@@ -342,9 +345,9 @@ export function Onboarding({ desk, hasVault, unlockMethod, onEnter, onUnlock, on
         {/* Account context for password managers; the visible phrase field below is their fill target. */}
         <input type="text" name="username" autocomplete="username" value="mneme journal" readOnly tabIndex={-1} aria-hidden="true" style={managerOnly} />
         {/* Back returns to unlock when this device has a sealed seed (that's where the user came from). */}
-        <BackRow onClick={() => setView(hasVault ? 'unlock' : 'welcome')} step="Restore" />
-        <h2 style={{ ...hStyle(desk), flexShrink: 0 }}>Enter your phrase</h2>
-        <p style={{ ...pStyle, flexShrink: 0 }}>Type the twelve words from any device where this journal already lives. Order matters.</p>
+        <BackRow onClick={() => setView(hasVault ? 'unlock' : 'welcome')} step={t('onboarding.step.restore')} />
+        <h2 style={{ ...hStyle(desk), flexShrink: 0 }}>{t('onboarding.restore.title')}</h2>
+        <p style={{ ...pStyle, flexShrink: 0 }}>{t('onboarding.restore.body')}</p>
 
         {/* Visible so password managers offer the saved phrase on click; filling it spreads the words into the grid. */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 16, padding: '0 12px', height: 42, borderRadius: 10, background: 'var(--surface)', border: '1px solid var(--line)', flexShrink: 0 }}>
@@ -354,7 +357,7 @@ export function Onboarding({ desk, hasVault, unlockMethod, onEnter, onUnlock, on
             name="password"
             autocomplete="current-password"
             value={phraseField}
-            placeholder="Fill the whole phrase from your password manager"
+            placeholder={t('onboarding.restore.managerFill')}
             onInput={(e) => syncFromPhrase((e.target as HTMLInputElement).value)}
             style={{ flex: 1, minWidth: 0, border: 'none', outline: 'none', background: 'transparent', fontFamily: 'var(--mono)', fontSize: 13.5, color: 'var(--ink)' }}
           />
@@ -393,12 +396,12 @@ export function Onboarding({ desk, hasVault, unlockMethod, onEnter, onUnlock, on
             onClick={pasteFromClipboard}
             style={{ alignSelf: 'flex-start', marginTop: 12, background: 'transparent', border: 'none', cursor: 'pointer', fontFamily: 'var(--ui)', fontSize: 12.5, color: 'var(--accent-ink)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}
           >
-            <Icon name="copy" size={14} /> Paste from clipboard
+            <Icon name="copy" size={14} /> {t('onboarding.restore.paste')}
           </button>
 
           <Callout>
             <Icon name="lock" size={16} color="var(--accent)" />
-            <span>Your phrase is never sent anywhere. It only unlocks the encrypted data already on the server.</span>
+            <span>{t('onboarding.restore.callout')}</span>
           </Callout>
 
           <Btn
@@ -408,7 +411,7 @@ export function Onboarding({ desk, hasVault, unlockMethod, onEnter, onUnlock, on
             type="submit"
             style={{ marginTop: 16, opacity: restoreValid ? 1 : 0.55, pointerEvents: restoreValid ? 'auto' : 'none' }}
           >
-            {restoreFilled < 12 ? `${restoreFilled} / 12 words` : restoreValid ? 'Continue' : 'Phrase not valid'}
+            {restoreFilled < 12 ? tp('onboarding.restore.progress', restoreFilled) : restoreValid ? t('onboarding.continue') : t('onboarding.restore.invalid')}
           </Btn>
         </div>
       </form>,
@@ -432,10 +435,10 @@ export function Onboarding({ desk, hasVault, unlockMethod, onEnter, onUnlock, on
         setBusy(false);
         setSetupError(
           err instanceof PrfUnsupportedError
-            ? 'This key doesn’t support the required PRF extension — use a passphrase instead.'
+            ? 'onboarding.err.prf'
             : seal?.method === 'securityKey'
-              ? 'Security key setup didn’t complete — try again or use a passphrase.'
-              : 'Something went wrong — try again.',
+              ? 'onboarding.err.keySetup'
+              : 'onboarding.err.generic',
         );
       });
     };
@@ -447,27 +450,27 @@ export function Onboarding({ desk, hasVault, unlockMethod, onEnter, onUnlock, on
         }}
         style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}
       >
-        <BackRow onClick={() => !busy && setView(setupReturn)} step={setupReturn === 'confirm' ? 'Step 3 of 3' : 'Last step'} />
-        <h2 style={hStyle(desk)}>Stay signed in on this device?</h2>
+        <BackRow onClick={() => !busy && setView(setupReturn)} step={setupReturn === 'confirm' ? t('onboarding.step', { current: 3, total: 3 }) : t('onboarding.step.last')} />
+        <h2 style={hStyle(desk)}>{t('onboarding.seal.title')}</h2>
         <p style={pStyle}>
-          Set a passphrase and your key stays here, encrypted, so opening the app only asks for the passphrase. Skip it and nothing is stored — you’ll enter your twelve words on every cold start.
+          {t('onboarding.seal.body')}
         </p>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 18 }}>
-          <PassField value={pass1} placeholder={`Passphrase (at least ${minLen} characters)`} onInput={setPass1} disabled={busy} noManager={noManager} />
-          <PassField value={pass2} placeholder="Repeat the passphrase" onInput={setPass2} disabled={busy} noManager={noManager} />
+          <PassField value={pass1} placeholder={t('onboarding.seal.passPlaceholder', { min: minLen })} onInput={setPass1} disabled={busy} noManager={noManager} />
+          <PassField value={pass2} placeholder={t('onboarding.seal.repeatPlaceholder')} onInput={setPass2} disabled={busy} noManager={noManager} />
         </div>
         {mismatch && (
-          <p style={{ fontFamily: 'var(--ui)', fontSize: 12.5, color: 'var(--accent-ink)', margin: '8px 2px 0' }}>The two passphrases don’t match yet.</p>
+          <p style={{ fontFamily: 'var(--ui)', fontSize: 12.5, color: 'var(--accent-ink)', margin: '8px 2px 0' }}>{t('onboarding.seal.mismatch')}</p>
         )}
         {setupError && (
-          <p style={{ fontFamily: 'var(--ui)', fontSize: 12.5, color: 'var(--accent-ink)', margin: '8px 2px 0' }}>{setupError}</p>
+          <p style={{ fontFamily: 'var(--ui)', fontSize: 12.5, color: 'var(--accent-ink)', margin: '8px 2px 0' }}>{t(setupError)}</p>
         )}
 
         <Callout>
           <Icon name="shield" size={16} color="var(--accent)" />
           <span>
-            The passphrase only guards the copy on this device — it can’t recover your journal and it isn’t your recovery phrase. Anyone with this device gets as many guesses as they like, so pick something long.
+            {t('onboarding.seal.callout')}
           </span>
         </Callout>
 
@@ -479,15 +482,15 @@ export function Onboarding({ desk, hasVault, unlockMethod, onEnter, onUnlock, on
           type="submit"
           style={{ marginTop: 16, opacity: valid && !busy ? 1 : 0.55, pointerEvents: valid && !busy ? 'auto' : 'none' }}
         >
-          {busy ? 'Encrypting…' : 'Encrypt & stay signed in'}
+          {busy ? t('onboarding.seal.encrypting') : t('onboarding.seal.encryptStay')}
         </Btn>
         {webauthnAvailable() && (
           <Btn kind="ghost" size="lg" full icon="key" onClick={() => enter({ method: 'securityKey' })} style={{ marginTop: 10, opacity: busy ? 0.55 : 1, pointerEvents: busy ? 'none' : 'auto' }}>
-            Use a security key instead
+            {t('onboarding.seal.useKey')}
           </Btn>
         )}
         <Btn kind="ghost" size="lg" full onClick={() => enter()} style={{ marginTop: 10, opacity: busy ? 0.55 : 1, pointerEvents: busy ? 'none' : 'auto' }}>
-          Skip — ask for my phrase each time
+          {t('onboarding.seal.skip')}
         </Btn>
       </form>,
       { top: true },
@@ -504,7 +507,7 @@ export function Onboarding({ desk, hasVault, unlockMethod, onEnter, onUnlock, on
     // the wrong key (AEAD tag mismatch). The phrase link below is the way out.
     onUnlockWithKey().catch(() => {
       setUnlockBusy(false);
-      setUnlockError('That security key didn’t unlock this device.');
+      setUnlockError('onboarding.err.keyUnlock');
     });
   };
   return wrap(
@@ -517,7 +520,7 @@ export function Onboarding({ desk, hasVault, unlockMethod, onEnter, onUnlock, on
         onUnlock(unlockPass).catch(() => {
           setUnlockBusy(false);
           setUnlockPass('');
-          setUnlockError('That passphrase didn’t unlock this device.');
+          setUnlockError('onboarding.err.passUnlock');
         });
       }}
       style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', margin: 'auto 0', width: '100%' }}
@@ -528,15 +531,15 @@ export function Onboarding({ desk, hasVault, unlockMethod, onEnter, onUnlock, on
           <Icon name={keyUnlock ? 'key' : 'lock'} size={30} color="var(--accent)" />
         </div>
       </div>
-      <h2 style={{ fontFamily: 'var(--serif)', fontSize: 24, color: 'var(--ink)', margin: '18px 0 4px', fontWeight: 500 }}>Welcome back</h2>
+      <h2 style={{ fontFamily: 'var(--serif)', fontSize: 24, color: 'var(--ink)', margin: '18px 0 4px', fontWeight: 500 }}>{t('onboarding.unlock.welcomeBack')}</h2>
       <p style={{ fontFamily: 'var(--ui)', fontSize: 13.5, color: 'var(--ink-3)', margin: 0 }}>
-        {keyUnlock ? 'Unlock this device with your security key' : 'Enter the passphrase for this device'}
+        {keyUnlock ? t('onboarding.unlock.keyHint') : t('onboarding.unlock.passHint')}
       </p>
 
       <div style={{ width: '100%', maxWidth: 340, marginTop: 26 }}>
-        {!keyUnlock && <PassField value={unlockPass} placeholder="Passphrase" onInput={setUnlockPass} disabled={unlockBusy} noManager={noManager} autoFocus />}
+        {!keyUnlock && <PassField value={unlockPass} placeholder={t('onboarding.unlock.passPlaceholder')} onInput={setUnlockPass} disabled={unlockBusy} noManager={noManager} autoFocus />}
         {unlockError && (
-          <p style={{ fontFamily: 'var(--ui)', fontSize: 12.5, color: 'var(--accent-ink)', margin: '10px 2px 0' }}>{unlockError}</p>
+          <p style={{ fontFamily: 'var(--ui)', fontSize: 12.5, color: 'var(--accent-ink)', margin: '10px 2px 0' }}>{t(unlockError)}</p>
         )}
         {keyUnlock ? (
           <Btn
@@ -547,7 +550,7 @@ export function Onboarding({ desk, hasVault, unlockMethod, onEnter, onUnlock, on
             onClick={unlockWithKey}
             style={{ marginTop: 14, opacity: unlockBusy ? 0.55 : 1, pointerEvents: unlockBusy ? 'none' : 'auto' }}
           >
-            {unlockBusy ? 'Waiting for your key…' : 'Unlock with security key'}
+            {unlockBusy ? t('onboarding.unlock.waitingKey') : t('onboarding.unlock.withKey')}
           </Btn>
         ) : (
           <Btn
@@ -557,7 +560,7 @@ export function Onboarding({ desk, hasVault, unlockMethod, onEnter, onUnlock, on
             type="submit"
             style={{ marginTop: 14, opacity: unlockBusy || unlockPass.length === 0 ? 0.55 : 1, pointerEvents: unlockBusy || unlockPass.length === 0 ? 'none' : 'auto' }}
           >
-            {unlockBusy ? 'Unlocking…' : 'Unlock'}
+            {unlockBusy ? t('onboarding.unlock.unlocking') : t('onboarding.unlock.unlock')}
           </Btn>
         )}
       </div>
@@ -567,7 +570,7 @@ export function Onboarding({ desk, hasVault, unlockMethod, onEnter, onUnlock, on
         onClick={() => setView('restore')}
         style={{ marginTop: 26, background: 'transparent', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, color: 'var(--accent-ink)', fontFamily: 'var(--ui)', fontSize: 14, fontWeight: 600 }}
       >
-        <Icon name="shield" size={18} color="var(--accent-ink)" /> Use my recovery phrase instead
+        <Icon name="shield" size={18} color="var(--accent-ink)" /> {t('onboarding.unlock.usePhrase')}
       </button>
     </form>,
   );
@@ -605,8 +608,8 @@ export function PassField({ value, placeholder, onInput, disabled, noManager, au
 function BackRow({ onClick, step }: { onClick: () => void; step?: string }): VNode {
   return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 22 }}>
-      <button type="button" onClick={onClick} style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--ink-2)', fontFamily: 'var(--ui)', fontSize: 14, fontWeight: 600, marginLeft: -6 }}>
-        <Icon name="left" size={20} /> Back
+      <button type="button" onClick={onClick} style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--ink-2)', fontFamily: 'var(--ui)', fontSize: 14, fontWeight: 600, marginInlineStart: -6 }}>
+        <Icon name="left" size={20} dirFlip /> {t('common.back')}
       </button>
       {step && <span style={{ fontFamily: 'var(--ui)', fontSize: 12, fontWeight: 600, color: 'var(--ink-3)', letterSpacing: 0.4 }}>{step}</span>}
     </div>

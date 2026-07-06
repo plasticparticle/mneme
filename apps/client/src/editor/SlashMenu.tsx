@@ -95,7 +95,7 @@ export function SlashMenu({ handle }: { handle: SlashHandle }): VNode | null {
             }}
             onMouseEnter={() => setIndex(i)}
             style={{
-              display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left',
+              display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'start',
               padding: '7px 9px', borderRadius: 10, border: 'none', cursor: 'pointer',
               background: active ? 'var(--accent-soft)' : 'transparent',
             }}

@@ -231,6 +231,30 @@ through real wa-sqlite under the worker's serialized dispatch — guards the `sr
 request queue: an unserialized worker interleaves the import's fire-and-forget `putLocal` runs with
 `flush`'s `markSynced` BEGIN/COMMIT batches on the single connection and corrupts/loses rows).
 
+**Internationalization** (client UI only) is in: **12 languages** — English (source), German, French,
+Spanish, Italian, Dutch, Finnish, Mandarin Chinese, Japanese, Korean, Hindi, and **Arabic (full RTL)**.
+`src/i18n/`: the English catalog (`en.ts`, composed of per-area fragments under `messages/`) is the
+**source of truth** — its keys type every `t()` call (`MessageKey`), so a missing/renamed key is a
+compile error. `t(key, {params})` does `{placeholder}` interpolation; `tp(base, count)` picks CLDR
+plural variants (`#one`/`#other`) via `Intl.PluralRules`; `fmtDate`/`monthName`/`weekdayName`/
+`fmtNumber` replaced every hardcoded English month array with `Intl`, following the app language (not
+the OS). Non-English catalogs live in `locales/<code>.ts` (`Partial<Record<MessageKey,string>>`,
+default-export) and **lazy-load** — `import.meta.glob('./locales/*.ts')` code-splits each into its own
+chunk (only English is in the main bundle). The call must stay **unconditional** — it's a Vite
+compile-time macro, so a `typeof import.meta.glob` guard reads as `undefined` at runtime and silently
+disables all translation; the tsx repro scripts are handled by a try/catch (English-only fallback)
+instead. `main.tsx` wraps the app in `<I18nProvider>` and a `Root` subscriber so a live language switch
+re-renders the whole tree (bare `t()` reads stay fresh); `initI18n()` restores the persisted language +
+RTL direction before first paint. Language is **device-local** (`localStorage 'mneme.locale'`, like the
+theme) — never synced, never content. The switch is Preferences → Appearance (endonyms). RTL: Arabic
+sets `<html dir="rtl">`; layout uses **logical CSS properties** (inline-start/end) throughout and
+direction-bearing icons opt into mirroring via `<Icon dirFlip>` + the `[dir='rtl'] .dir-flip` rule in
+`tokens.css`. The AI assistant is told to reply in the app language (`ai/prompts.ts`,
+`currentLocale().english`). Coverage/regression check: `pnpm --filter client exec tsx scripts/i18n-dump.ts`
+(writes the flat English reference + prints per-locale `607/607` coverage). Known refinement: gendered
+languages get neutral phrasing around the shared `{noun}` media-delete placeholder; Arabic plurals use
+one/other with an `#other` fallback for two/few/many.
+
 Not yet: FTS5 (blocked on a custom wa-sqlite wasm build), push transport + reminders UI (step 6),
 export + non-Day-One import (step 7), Tauri shells (step 8) and their OS-keychain at-rest storage (§6).
 

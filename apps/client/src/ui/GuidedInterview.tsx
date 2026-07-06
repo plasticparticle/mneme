@@ -14,6 +14,7 @@ import type { JSX, VNode } from 'preact';
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { Icon } from './Icon';
 import { Btn } from './primitives';
+import { t } from '../i18n';
 import { useAppData } from '../state/data';
 import type { InterviewType } from '../sync/engine';
 import { makeProvider } from '../ai/provider';
@@ -64,7 +65,7 @@ export function GuidedInterviewSheet({
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   const provider = useMemo(() => (aiSettings?.enabled ? makeProvider(aiSettings) : null), [aiSettings]);
-  const alive = useMemo(() => interviewTypes.filter((t) => !t.deleted), [interviewTypes]);
+  const alive = useMemo(() => interviewTypes.filter((it) => !it.deleted), [interviewTypes]);
 
   useEffect(() => () => abortRef.current?.abort(), []);
   useEffect(() => {
@@ -80,12 +81,12 @@ export function GuidedInterviewSheet({
     const err = toAiError(e);
     if (err.hint === 'aborted') return '';
     return err.hint === 'auth'
-      ? 'The API key was rejected — check it in AI settings.'
+      ? t('assistant.error.keyRejected')
       : err.hint === 'refused'
-        ? 'The model declined to respond.'
+        ? t('assistant.error.refusedRespond')
         : provider.local
-          ? 'Could not reach Ollama — is it running? (ollama serve)'
-          : `Request failed: ${err.message}`;
+          ? t('assistant.error.ollamaUnreachable')
+          : t('assistant.error.requestFailed', { message: err.message });
   };
 
   // Stream one assistant turn onto `messages` (the interview Q&A). On
@@ -102,11 +103,11 @@ export function GuidedInterviewSheet({
         messages: history,
         maxTokens: 512,
         signal: ac.signal,
-        onToken: (t) =>
+        onToken: (tok) =>
           setMessages((prev) => {
             const next = [...prev];
             const last = next[next.length - 1];
-            next[next.length - 1] = { ...last, content: last.content + t };
+            next[next.length - 1] = { ...last, content: last.content + tok };
             return next;
           }),
       });
@@ -121,11 +122,11 @@ export function GuidedInterviewSheet({
     }
   };
 
-  const startInterview = (t: InterviewType): void => {
-    setType(t);
+  const startInterview = (it: InterviewType): void => {
+    setType(it);
     setPhase('interview');
-    const history = buildInterviewHistory(entries, t.name, provider.local ? Math.round(HISTORY_BUDGET_CHARS / 2) : HISTORY_BUDGET_CHARS);
-    void askTurn(interviewSystemPrompt(t, history.text), [SEED]);
+    const history = buildInterviewHistory(entries, it.name, provider.local ? Math.round(HISTORY_BUDGET_CHARS / 2) : HISTORY_BUDGET_CHARS);
+    void askTurn(interviewSystemPrompt(it, history.text), [SEED]);
   };
 
   const sendAnswer = (): void => {
@@ -150,7 +151,7 @@ export function GuidedInterviewSheet({
         messages: history,
         maxTokens: 1536,
         signal: ac.signal,
-        onToken: (t) => setDraft((prev) => prev + t),
+        onToken: (tok) => setDraft((prev) => prev + tok),
       });
     } catch (e) {
       const msg = errorText(e);
@@ -203,9 +204,9 @@ export function GuidedInterviewSheet({
         <Icon name="mic" size={17} color="var(--accent)" />
         <h3 style={{ fontFamily: 'var(--serif)', fontSize: 18, fontWeight: 500, color: 'var(--ink)', margin: 0, flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{title}</h3>
         <span style={{ fontFamily: 'var(--mono)', fontSize: 10, letterSpacing: 0.4, textTransform: 'uppercase', color: provider.local ? 'var(--accent-ink)' : 'var(--ink-3)', background: provider.local ? 'var(--accent-soft)' : 'var(--paper)', border: `1px solid ${provider.local ? 'var(--accent-line)' : 'var(--line)'}`, borderRadius: 6, padding: '2px 7px' }}>
-          {provider.local ? 'on this device' : 'sent to Anthropic'}
+          {provider.local ? t('assistant.badge.onDevice') : t('assistant.badge.sentToAnthropic')}
         </span>
-        <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, color: 'var(--ink-3)' }} aria-label="Close">
+        <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, color: 'var(--ink-3)' }} aria-label={t('common.close')}>
           <Icon name="x" size={16} />
         </button>
       </div>
@@ -216,32 +217,32 @@ export function GuidedInterviewSheet({
   const pickBody = (
     <div style={{ flex: 1, overflowY: 'auto', padding: desk ? '16px 22px' : '14px 18px', display: 'flex', flexDirection: 'column', gap: 9 }}>
       <p style={{ ...pStyle, marginBottom: 4 }}>
-        Pick an interview. I'll ask a few questions, then write your answers up as a journal entry you can review before saving.
+        {t('assistant.interview.pickIntro')}
       </p>
-      {alive.map((t) => (
+      {alive.map((it) => (
         <button
-          key={t.id}
-          onClick={() => startInterview(t)}
-          style={{ textAlign: 'left', cursor: 'pointer', padding: '12px 14px', borderRadius: 12, background: 'var(--paper)', border: '1px solid var(--line)', display: 'flex', flexDirection: 'column', gap: 3 }}
+          key={it.id}
+          onClick={() => startInterview(it)}
+          style={{ textAlign: 'start', cursor: 'pointer', padding: '12px 14px', borderRadius: 12, background: 'var(--paper)', border: '1px solid var(--line)', display: 'flex', flexDirection: 'column', gap: 3 }}
           onMouseEnter={(e) => (e.currentTarget.style.borderColor = 'var(--accent-line)')}
           onMouseLeave={(e) => (e.currentTarget.style.borderColor = 'var(--line)')}
         >
-          <span style={{ fontFamily: 'var(--serif)', fontSize: 15.5, fontWeight: 500, color: 'var(--ink)' }}>{t.name || 'Untitled'}</span>
-          {t.intro && <span style={{ ...pStyle, fontSize: 12.5, color: 'var(--ink-3)' }}>{t.intro}</span>}
+          <span style={{ fontFamily: 'var(--serif)', fontSize: 15.5, fontWeight: 500, color: 'var(--ink)' }}>{it.name || t('common.untitled')}</span>
+          {it.intro && <span style={{ ...pStyle, fontSize: 12.5, color: 'var(--ink-3)' }}>{it.intro}</span>}
         </button>
       ))}
       <button
         onClick={() => { setType(null); setInput(''); setPhase('brief'); }}
-        style={{ textAlign: 'left', cursor: 'pointer', padding: '12px 14px', borderRadius: 12, background: 'var(--surface-2)', border: '1px dashed var(--line)', display: 'flex', flexDirection: 'column', gap: 3 }}
+        style={{ textAlign: 'start', cursor: 'pointer', padding: '12px 14px', borderRadius: 12, background: 'var(--surface-2)', border: '1px dashed var(--line)', display: 'flex', flexDirection: 'column', gap: 3 }}
       >
-        <span style={{ fontFamily: 'var(--serif)', fontSize: 15.5, fontWeight: 500, color: 'var(--ink)' }}>Freeform draft</span>
-        <span style={{ ...pStyle, fontSize: 12.5, color: 'var(--ink-3)' }}>Describe an entry in a sentence and I'll draft it — no questions.</span>
+        <span style={{ fontFamily: 'var(--serif)', fontSize: 15.5, fontWeight: 500, color: 'var(--ink)' }}>{t('assistant.interview.freeform')}</span>
+        <span style={{ ...pStyle, fontSize: 12.5, color: 'var(--ink-3)' }}>{t('assistant.interview.freeformHint')}</span>
       </button>
       <button
         onClick={() => { onClose(); onManageTypes(); }}
         style={{ alignSelf: 'flex-start', marginTop: 4, background: 'none', border: 'none', cursor: 'pointer', color: 'var(--ink-3)', fontFamily: 'var(--ui)', fontSize: 12.5, display: 'inline-flex', alignItems: 'center', gap: 6 }}
       >
-        <Icon name="list" size={14} /> Manage interview types
+        <Icon name="list" size={14} /> {t('assistant.interview.manageTypes')}
       </button>
     </div>
   );
@@ -275,17 +276,17 @@ export function GuidedInterviewSheet({
             rows={1}
             onInput={(e) => setInput((e.target as HTMLTextAreaElement).value)}
             onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendAnswer(); } }}
-            placeholder="Your answer…"
+            placeholder={t('assistant.interview.answerPlaceholder')}
             style={{ flex: 1, resize: 'none', fontFamily: 'var(--ui)', fontSize: 14, lineHeight: 1.5, color: 'var(--ink)', padding: '11px 14px', borderRadius: 12, background: 'var(--paper)', border: '1px solid var(--line)', outline: 'none', maxHeight: 120 }}
           />
           {busy ? (
-            <Btn kind="ghost" size="md" onClick={() => abortRef.current?.abort()}>Stop</Btn>
+            <Btn kind="ghost" size="md" onClick={() => abortRef.current?.abort()}>{t('assistant.stop')}</Btn>
           ) : (
-            <Btn kind="primary" size="md" type="submit" style={{ opacity: input.trim() ? 1 : 0.55 }}>Send</Btn>
+            <Btn kind="primary" size="md" type="submit" style={{ opacity: input.trim() ? 1 : 0.55 }}>{t('assistant.interview.send')}</Btn>
           )}
         </form>
         <Btn kind="ghost" size="md" onClick={() => canFinish && finishInterview()} style={{ opacity: canFinish ? 1 : 0.5 }}>
-          Finish &amp; write entry
+          {t('assistant.interview.finish')}
         </Btn>
       </div>
     </>
@@ -295,7 +296,7 @@ export function GuidedInterviewSheet({
   const briefBody = (
     <>
       <div style={{ flex: 1, overflowY: 'auto', padding: desk ? '16px 22px' : '14px 18px' }}>
-        <p style={{ ...pStyle }}>What should this entry be about? One or two sentences is plenty — I'll draft the rest in your voice.</p>
+        <p style={{ ...pStyle }}>{t('assistant.interview.briefHint')}</p>
       </div>
       <div style={{ borderTop: '1px solid var(--line)', padding: desk ? '12px 22px 16px' : '10px 18px 18px' }}>
         <form onSubmit={(e) => { e.preventDefault(); submitBrief(); }} style={{ display: 'flex', gap: 9, alignItems: 'flex-end' }}>
@@ -305,10 +306,10 @@ export function GuidedInterviewSheet({
             rows={2}
             onInput={(e) => setInput((e.target as HTMLTextAreaElement).value)}
             onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submitBrief(); } }}
-            placeholder="e.g. My hike up the coast trail this morning…"
+            placeholder={t('assistant.interview.briefPlaceholder')}
             style={{ flex: 1, resize: 'none', fontFamily: 'var(--ui)', fontSize: 14, lineHeight: 1.5, color: 'var(--ink)', padding: '11px 14px', borderRadius: 12, background: 'var(--paper)', border: '1px solid var(--line)', outline: 'none', maxHeight: 160 }}
           />
-          <Btn kind="primary" size="md" type="submit" style={{ opacity: input.trim() ? 1 : 0.55 }}>Draft</Btn>
+          <Btn kind="primary" size="md" type="submit" style={{ opacity: input.trim() ? 1 : 0.55 }}>{t('assistant.interview.draft')}</Btn>
         </form>
       </div>
     </>
@@ -321,18 +322,18 @@ export function GuidedInterviewSheet({
         {draft ? (
           <DocPreview json={JSON.stringify(markdownToDoc(draft))} text={draft} />
         ) : (
-          <p style={{ ...pStyle, color: 'var(--ink-3)' }}>{busy ? 'Writing your entry…' : error ? '' : '(nothing written)'}</p>
+          <p style={{ ...pStyle, color: 'var(--ink-3)' }}>{busy ? t('assistant.interview.writing') : error ? '' : t('assistant.interview.nothingWritten')}</p>
         )}
         {error && <p style={{ ...pStyle, color: 'var(--accent-ink)', marginTop: 12 }}>{error}</p>}
       </div>
       <div style={{ borderTop: '1px solid var(--line)', padding: desk ? '12px 22px 16px' : '10px 18px 18px', display: 'flex', gap: 10 }}>
         {busy ? (
-          <Btn kind="ghost" size="md" onClick={() => abortRef.current?.abort()} style={{ flex: 1 }}>Stop</Btn>
+          <Btn kind="ghost" size="md" onClick={() => abortRef.current?.abort()} style={{ flex: 1 }}>{t('assistant.stop')}</Btn>
         ) : (
           <>
-            <Btn kind="ghost" size="md" onClick={onClose} style={{ flex: 1 }}>Discard</Btn>
+            <Btn kind="ghost" size="md" onClick={onClose} style={{ flex: 1 }}>{t('assistant.discard')}</Btn>
             <Btn kind="primary" size="md" onClick={save} style={{ flex: 2, opacity: draft.trim() ? 1 : 0.55 }}>
-              Save entry
+              {t('assistant.interview.save')}
             </Btn>
           </>
         )}
@@ -341,15 +342,15 @@ export function GuidedInterviewSheet({
   );
 
   const title =
-    phase === 'pick' ? 'Guided interview'
-    : phase === 'brief' ? 'Freeform draft'
-    : phase === 'review' ? (type ? type.name : 'Your draft')
-    : type?.name || 'Interview';
+    phase === 'pick' ? t('assistant.interview.title')
+    : phase === 'brief' ? t('assistant.interview.freeform')
+    : phase === 'review' ? (type ? type.name : t('assistant.interview.yourDraft'))
+    : type?.name || t('assistant.interview.fallbackTitle');
 
   const panel = (
     <div
       onClick={(e) => e.stopPropagation()}
-      style={{ width: desk ? 'min(440px, 40vw)' : '100%', flexShrink: 0, height: desk ? '100%' : '88%', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', background: 'var(--surface)', borderRadius: desk ? 0 : '24px 24px 0 0', border: desk ? 'none' : '1px solid var(--line)', borderLeft: '1px solid var(--line)', boxShadow: desk ? 'none' : '0 20px 60px rgba(30,20,12,.3)', overflow: 'hidden' }}
+      style={{ width: desk ? 'min(440px, 40vw)' : '100%', flexShrink: 0, height: desk ? '100%' : '88%', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', background: 'var(--surface)', borderRadius: desk ? 0 : '24px 24px 0 0', border: desk ? 'none' : '1px solid var(--line)', borderInlineStart: '1px solid var(--line)', boxShadow: desk ? 'none' : '0 20px 60px rgba(30,20,12,.3)', overflow: 'hidden' }}
     >
       {header(title)}
       {phase === 'pick' ? pickBody : phase === 'interview' ? interviewBody : phase === 'brief' ? briefBody : reviewBody}

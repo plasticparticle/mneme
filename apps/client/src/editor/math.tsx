@@ -9,6 +9,7 @@ import type { Editor } from '@tiptap/core';
 import type { AnyExtension } from '@tiptap/core';
 import { Mathematics } from '@tiptap/extension-mathematics';
 import katex from 'katex';
+import { t, type MessageKey } from '../i18n';
 import { Btn } from '../ui/primitives';
 import { Icon } from '../ui/Icon';
 // KaTeX's stylesheet rides in editor.css (a CSS import here would break
@@ -54,26 +55,28 @@ export function renderLatex(latex: string, kind: MathKind): string {
 }
 
 /** The in-dialog LaTeX cheatsheet: each snippet is KaTeX-rendered as its own
- * preview and clicking it inserts the source at the textarea cursor. */
-const CHEATSHEET: ReadonlyArray<{ title: string; items: readonly string[] }> = [
+ * preview and clicking it inserts the source at the textarea cursor.
+ * Section titles are message keys, resolved via t() at render time; the
+ * snippets themselves are LaTeX source and deliberately not translated. */
+const CHEATSHEET: ReadonlyArray<{ title: MessageKey; items: readonly string[] }> = [
   {
-    title: 'Basics',
+    title: 'editorx.math.sheet.basics',
     items: ['x^{2}', 'x_{i}', '\\frac{a}{b}', '\\sqrt{x}', '\\sqrt[n]{x}', '\\binom{n}{k}', '\\vec{v}', '\\hat{x}', '\\overline{x}'],
   },
   {
-    title: 'Calculus',
+    title: 'editorx.math.sheet.calculus',
     items: ['\\sum_{i=1}^{n}', '\\prod_{i=1}^{n}', '\\int_{a}^{b}', '\\oint', '\\lim_{x \\to \\infty}', '\\frac{dy}{dx}', '\\frac{\\partial f}{\\partial x}', '\\nabla'],
   },
   {
-    title: 'Symbols',
+    title: 'editorx.math.sheet.symbols',
     items: ['\\times', '\\cdot', '\\pm', '\\leq', '\\geq', '\\neq', '\\approx', '\\equiv', '\\in', '\\notin', '\\subset', '\\cup', '\\cap', '\\infty', '\\to', '\\Rightarrow', '\\Leftrightarrow', '\\forall', '\\exists', '\\emptyset'],
   },
   {
-    title: 'Greek',
+    title: 'editorx.math.sheet.greek',
     items: ['\\alpha', '\\beta', '\\gamma', '\\delta', '\\epsilon', '\\theta', '\\lambda', '\\mu', '\\pi', '\\sigma', '\\tau', '\\phi', '\\omega', '\\Gamma', '\\Delta', '\\Sigma', '\\Omega'],
   },
   {
-    title: 'Layout',
+    title: 'editorx.math.sheet.layout',
     items: [
       '\\begin{pmatrix} a & b \\\\ c & d \\end{pmatrix}',
       '\\begin{cases} a & x > 0 \\\\ b & x \\leq 0 \\end{cases}',
@@ -111,16 +114,16 @@ export function MathDialog({ handle, editor }: { handle: MathHandle; editor: Edi
   const close = (): void => setReq(null);
 
   const apply = (): void => {
-    const t = latex.trim();
+    const src = latex.trim();
     if (editor) {
       const chain = editor.chain().focus();
       if (req.pos === null) {
-        if (t) (req.kind === 'inline' ? chain.insertInlineMath({ latex: t }) : chain.insertBlockMath({ latex: t })).run();
-      } else if (!t) {
+        if (src) (req.kind === 'inline' ? chain.insertInlineMath({ latex: src }) : chain.insertBlockMath({ latex: src })).run();
+      } else if (!src) {
         // Saving an emptied formula removes the node rather than leaving a blank atom.
         (req.kind === 'inline' ? chain.deleteInlineMath({ pos: req.pos }) : chain.deleteBlockMath({ pos: req.pos })).run();
       } else {
-        (req.kind === 'inline' ? chain.updateInlineMath({ latex: t, pos: req.pos }) : chain.updateBlockMath({ latex: t, pos: req.pos })).run();
+        (req.kind === 'inline' ? chain.updateInlineMath({ latex: src, pos: req.pos }) : chain.updateBlockMath({ latex: src, pos: req.pos })).run();
       }
     }
     close();
@@ -172,7 +175,7 @@ export function MathDialog({ handle, editor }: { handle: MathHandle; editor: Edi
             <Icon name="math" size={17} color="var(--accent-ink)" />
           </span>
           <h3 style={{ fontFamily: 'var(--serif)', fontSize: 19, fontWeight: 500, color: 'var(--ink)', margin: 0 }}>
-            {editing ? 'Edit math' : req.kind === 'block' ? 'Insert math block' : 'Insert math'}
+            {editing ? t('editorx.math.edit') : req.kind === 'block' ? t('editorx.math.insertBlock') : t('editorx.math.insertInline')}
           </h3>
         </div>
 
@@ -191,7 +194,7 @@ export function MathDialog({ handle, editor }: { handle: MathHandle; editor: Edi
           {latex.trim() ? (
             <div style={{ color: 'var(--ink)' }} dangerouslySetInnerHTML={{ __html: renderLatex(latex, req.kind) }} />
           ) : (
-            <span style={{ fontFamily: 'var(--ui)', fontSize: 12.5, color: 'var(--ink-3)' }}>LaTeX preview</span>
+            <span style={{ fontFamily: 'var(--ui)', fontSize: 12.5, color: 'var(--ink-3)' }}>{t('editorx.math.preview')}</span>
           )}
         </div>
 
@@ -201,8 +204,8 @@ export function MathDialog({ handle, editor }: { handle: MathHandle; editor: Edi
           aria-expanded={showCheatsheet}
           style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginBottom: showCheatsheet ? 10 : 16, padding: 0, background: 'none', border: 'none', cursor: 'pointer', fontFamily: 'var(--ui)', fontSize: 12.5, fontWeight: 600, color: 'var(--ink-2)' }}
         >
-          <Icon name={showCheatsheet ? 'down' : 'right'} size={12} color="var(--ink-3)" />
-          Cheatsheet
+          <Icon name={showCheatsheet ? 'down' : 'right'} size={12} color="var(--ink-3)" dirFlip />
+          {t('editorx.math.cheatsheet')}
         </button>
 
         {showCheatsheet && (
@@ -210,7 +213,7 @@ export function MathDialog({ handle, editor }: { handle: MathHandle; editor: Edi
             {CHEATSHEET.map((section) => (
               <div key={section.title} style={{ marginBottom: 10 }}>
                 <div style={{ fontFamily: 'var(--ui)', fontSize: 10.5, fontWeight: 700, letterSpacing: 0.6, textTransform: 'uppercase', color: 'var(--ink-3)', marginBottom: 6 }}>
-                  {section.title}
+                  {t(section.title)}
                 </div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                   {section.items.map((snippet) => (
@@ -227,18 +230,18 @@ export function MathDialog({ handle, editor }: { handle: MathHandle; editor: Edi
               </div>
             ))}
             <div style={{ fontFamily: 'var(--ui)', fontSize: 11.5, color: 'var(--ink-3)' }}>
-              Click a formula to insert its LaTeX at the cursor — hover to see the source.
+              {t('editorx.math.sheet.hint')}
             </div>
           </div>
         )}
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           {editing && (
-            <Btn kind="danger" size="sm" onClick={remove}>Remove</Btn>
+            <Btn kind="danger" size="sm" onClick={remove}>{t('common.remove')}</Btn>
           )}
           <span style={{ flex: 1 }} />
-          <Btn kind="ghost" size="sm" onClick={close}>Cancel</Btn>
-          <Btn kind="primary" size="sm" onClick={apply}>{editing ? 'Save' : 'Insert'}</Btn>
+          <Btn kind="ghost" size="sm" onClick={close}>{t('common.cancel')}</Btn>
+          <Btn kind="primary" size="sm" onClick={apply}>{editing ? t('common.save') : t('common.insert')}</Btn>
         </div>
       </div>
     </div>

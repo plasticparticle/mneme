@@ -9,6 +9,7 @@ import { Icon } from './Icon';
 import { LabelChip } from './primitives';
 import { labelInfo } from '../data/sample';
 import { hexA } from './color';
+import { t } from '../i18n';
 
 const MENU_W = 220;
 const MENU_MAX_H = 240;
@@ -94,7 +95,7 @@ export function LabelField({
             padding: '3px 9px', cursor: 'pointer',
           }}
         >
-          <Icon name="plus" size={13} /> label
+          <Icon name="plus" size={13} /> {t('editor.labels.add')}
         </button>
       )}
 
@@ -106,7 +107,7 @@ export function LabelField({
             onInput={(ev) => { setQuery((ev.target as HTMLInputElement).value); setIndex(0); }}
             onKeyDown={onKeyDown}
             onBlur={close}
-            placeholder="label…"
+            placeholder={t('editor.labels.placeholder')}
             style={{
               width: 110, fontFamily: 'var(--ui)', fontSize: 12, fontWeight: 600,
               color: 'var(--ink)', background: 'var(--surface)',
@@ -117,7 +118,7 @@ export function LabelField({
           {optionCount > 0 && (
             <div
               style={{
-                position: 'absolute', zIndex: 60, top: 'calc(100% + 6px)', left: 0,
+                position: 'absolute', zIndex: 60, top: 'calc(100% + 6px)', insetInlineStart: 0,
                 width: MENU_W, maxHeight: MENU_MAX_H, overflowY: 'auto', padding: 5,
                 background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 14,
                 boxShadow: '0 10px 30px rgba(40,28,18,.18)',
@@ -133,7 +134,7 @@ export function LabelField({
                     onMouseDown={(ev) => { ev.preventDefault(); add(s); }}
                     onMouseEnter={() => setIndex(i)}
                     style={{
-                      display: 'flex', alignItems: 'center', gap: 8, width: '100%', textAlign: 'left',
+                      display: 'flex', alignItems: 'center', gap: 8, width: '100%', textAlign: 'start',
                       padding: '6px 9px', borderRadius: 10, border: 'none', cursor: 'pointer',
                       background: hot ? 'var(--accent-soft)' : 'transparent',
                       fontFamily: 'var(--ui)', fontSize: 12.5, fontWeight: 600,
@@ -150,7 +151,7 @@ export function LabelField({
                   onMouseDown={(ev) => { ev.preventDefault(); add(q); }}
                   onMouseEnter={() => setIndex(matches.length)}
                   style={{
-                    display: 'flex', alignItems: 'center', gap: 8, width: '100%', textAlign: 'left',
+                    display: 'flex', alignItems: 'center', gap: 8, width: '100%', textAlign: 'start',
                     padding: '6px 9px', borderRadius: 10, border: 'none', cursor: 'pointer',
                     background: active === matches.length ? 'var(--accent-soft)' : 'transparent',
                     fontFamily: 'var(--ui)', fontSize: 12.5, fontWeight: 600,
@@ -158,7 +159,7 @@ export function LabelField({
                   }}
                 >
                   <Icon name="plus" size={13} />
-                  create “{q}”
+                  {t('editor.labels.create', { name: q })}
                 </button>
               )}
             </div>

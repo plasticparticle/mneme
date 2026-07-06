@@ -5,9 +5,18 @@
 // relay; the journal row itself is a local grouping and disappears immediately.
 import type { VNode } from 'preact';
 import { useState } from 'preact/hooks';
+import { t, tp } from '../i18n';
 import { Icon } from './Icon';
 import { Btn } from './primitives';
 import type { Journal } from '../data/sample';
+
+// Renders a catalog message around one styled placeholder: the raw template
+// (t() without params keeps `{token}` literal) is split on the token and the
+// given node is interleaved — no concatenation of translated fragments.
+function around(key: Parameters<typeof t>[0], token: string, node: VNode | string): (VNode | string)[] {
+  const [before, ...rest] = t(key).split(`{${token}}`);
+  return rest.length > 0 ? [before, node, rest.join(`{${token}}`)] : [before];
+}
 
 export function DeleteJournalSheet({ desk, journal, onClose, onDelete }: {
   desk: boolean;
@@ -18,14 +27,15 @@ export function DeleteJournalSheet({ desk, journal, onClose, onDelete }: {
   onDelete: () => void;
 }): VNode {
   const [typed, setTyped] = useState('');
-  const armed = typed.trim() === 'delete';
+  // The typed word comes from the catalog too — the check is purely
+  // client-side, so localizing it is safe. Case-insensitive on purpose.
+  const word = t('journals.delete.word');
+  const armed = typed.trim().toLowerCase() === word.toLowerCase();
 
   const what =
     journal.count === 0
-      ? 'This notebook is empty — only the notebook itself is removed.'
-      : journal.count === 1
-        ? 'Its entry — recordings included — is deleted from this device, the server, and (on their next sync) your other devices.'
-        : `All ${journal.count} entries — recordings included — are deleted from this device, the server, and (on their next sync) your other devices.`;
+      ? t('journals.delete.empty')
+      : tp('journals.delete.body', journal.count);
 
   return (
     <div
@@ -38,30 +48,30 @@ export function DeleteJournalSheet({ desk, journal, onClose, onDelete }: {
       >
         {!desk && <div style={{ width: 38, height: 4, borderRadius: 9, background: 'var(--line)', margin: '0 auto 16px' }} />}
         <h3 style={{ fontFamily: 'var(--serif)', fontSize: 19, fontWeight: 500, color: 'var(--ink)', margin: '0 0 16px', display: 'flex', alignItems: 'center', gap: 9 }}>
-          <Icon name="trash" size={18} color="var(--accent)" /> Delete journal
+          <Icon name="trash" size={18} color="var(--accent)" /> {t('journals.delete.title')}
         </h3>
         <form onSubmit={(e) => { e.preventDefault(); if (armed) onDelete(); }} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           <p style={{ fontFamily: 'var(--ui)', fontSize: 13.5, lineHeight: 1.55, color: 'var(--ink-2)', margin: 0 }}>
-            This permanently deletes <strong style={{ color: 'var(--ink)' }}>{journal.name}</strong>. {what} There is no undo.
+            {around('journals.delete.lead', 'name', <strong style={{ color: 'var(--ink)' }}>{journal.name}</strong>)} {what} {t('journals.delete.noUndo')}
           </p>
           <label style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
             <span style={{ fontFamily: 'var(--ui)', fontSize: 12, fontWeight: 600, color: 'var(--ink-2)' }}>
-              Type <span style={{ fontFamily: 'var(--mono)', color: 'var(--accent-ink)' }}>delete</span> to confirm
+              {around('journals.delete.confirmLabel', 'word', <span style={{ fontFamily: 'var(--mono)', color: 'var(--accent-ink)' }}>{word}</span>)}
             </span>
             <input
               autoFocus
               value={typed}
               onInput={(e) => setTyped((e.target as HTMLInputElement).value)}
-              placeholder="delete"
+              placeholder={word}
               autocomplete="off"
               spellcheck={false}
               style={{ fontFamily: 'var(--mono)', fontSize: 14, padding: '10px 12px', borderRadius: 10, border: `1.5px solid ${armed ? 'var(--accent)' : 'var(--line)'}`, background: 'var(--paper)', color: 'var(--ink)', outline: 'none', boxSizing: 'border-box', width: '100%' }}
             />
           </label>
           <div style={{ display: 'flex', gap: 10, marginTop: 2 }}>
-            <Btn kind="ghost" size="md" onClick={onClose} style={{ flex: 1 }}>Cancel</Btn>
+            <Btn kind="ghost" size="md" onClick={onClose} style={{ flex: 1 }}>{t('common.cancel')}</Btn>
             <Btn kind={armed ? 'primary' : 'ghost'} size="md" type="submit" style={{ flex: 2, opacity: armed ? 1 : 0.55, pointerEvents: armed ? 'auto' : 'none' }}>
-              {armed ? 'Delete journal forever' : 'Type “delete” first'}
+              {armed ? t('journals.delete.confirm') : t('journals.delete.typeFirst', { word })}
             </Btn>
           </div>
         </form>

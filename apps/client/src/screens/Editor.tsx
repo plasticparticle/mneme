@@ -29,15 +29,15 @@ import { Lightbox } from '../ui/Lightbox';
 import { TemplatesSheet } from '../ui/Templates';
 import { EntryDateTime } from '../ui/EntryDateTime';
 import { JournalPicker, JournalSheet } from '../ui/JournalPicker';
+import { t, tp, fmtDate } from '../i18n';
 import '../editor/editor.css';
 
-const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-const MON_FULL = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 // Compact list date: append the year only when the entry isn't from the current
 // year, so recent entries stay clean while older ones aren't ambiguous.
 function listDate(d: Date): string {
-  const label = `${MON[d.getMonth()]} ${d.getDate()}`;
-  return d.getFullYear() === new Date().getFullYear() ? label : `${label}, ${d.getFullYear()}`;
+  return d.getFullYear() === new Date().getFullYear()
+    ? fmtDate(d, { month: 'short', day: 'numeric' })
+    : fmtDate(d, { month: 'short', day: 'numeric', year: 'numeric' });
 }
 // The month/year a list separator groups by — entries are bucketed by their
 // (displayed) entry date.
@@ -47,8 +47,8 @@ function monthKey(d: Date): string {
 const SAVE_DEBOUNCE_MS = 600;
 
 function countWords(text: string): number {
-  const t = text.trim();
-  return t ? t.split(/\s+/).length : 0;
+  const s = text.trim();
+  return s ? s.split(/\s+/).length : 0;
 }
 
 // Pixel size of an uploaded image, stored in the attachment metadata so layout
@@ -190,7 +190,7 @@ function EntryEditor({
       handlers: {
         resolveTitle: (id: string) => {
           const target = entriesRef.current.find((x) => x.id === id && !x.deleted);
-          return target ? target.title || 'Untitled' : null;
+          return target ? target.title || t('common.untitled') : null;
         },
         onOpen: (id: string) => {
           if (entriesRef.current.some((x) => x.id === id && !x.deleted)) onOpenEntryRef.current(id);
@@ -260,7 +260,7 @@ function EntryEditor({
 
   const { editor, mountRef } = useRichEditor({
     initial,
-    placeholder: 'Begin where you are…',
+    placeholder: t('editor.bodyPlaceholder'),
     slash: { handle: slashHandle, commands: slashCommands },
     media: mediaHandlers,
     location: mediaHandlers,
@@ -300,12 +300,12 @@ function EntryEditor({
 
   // Drop the chosen template's blocks in at the cursor (the "/" Template
   // command already removed the slash range before opening the picker).
-  const insertTemplate = (t: TemplateRecord): void => {
+  const insertTemplate = (tpl: TemplateRecord): void => {
     setPickingTemplate(false);
     const ed = editorRef.current;
     if (!ed) return;
     try {
-      const doc = t.bodyJson ? (JSON.parse(t.bodyJson) as JSONContent) : null;
+      const doc = tpl.bodyJson ? (JSON.parse(tpl.bodyJson) as JSONContent) : null;
       if (doc?.content?.length) ed.chain().focus().insertContent(doc.content).run();
     } catch {
       /* unreadable body — insert nothing rather than garbage */
@@ -383,10 +383,10 @@ function EntryEditor({
     el.style.height = `${el.scrollHeight}px`;
   };
   // Apply an AI-picked title: mirror what typing into the textarea does.
-  const applyTitle = (t: string): void => {
-    title.current = t;
+  const applyTitle = (next: string): void => {
+    title.current = next;
     if (titleEl.current) {
-      titleEl.current.value = t;
+      titleEl.current.value = next;
       fitTitle(titleEl.current);
     }
     scheduleSave();
@@ -424,7 +424,7 @@ function EntryEditor({
         ref={(el) => { titleEl.current = el; if (el) fitTitle(el); }}
         defaultValue={entry.title}
         onInput={onTitleInput}
-        placeholder="Untitled"
+        placeholder={t('common.untitled')}
         rows={1}
         style={{
           width: '100%', border: 'none', outline: 'none', background: 'transparent',
@@ -463,7 +463,7 @@ function EntryEditor({
           spellcheck={false}
           autocapitalize="off"
           autocorrect="off"
-          placeholder="# Markdown source…"
+          placeholder={t('editor.markdownPlaceholder')}
           style={{
             width: '100%', flex: 1, minHeight: 320, boxSizing: 'border-box', resize: 'none',
             border: '1px solid var(--line)', borderRadius: 12, background: 'var(--surface-2)',
@@ -483,7 +483,7 @@ function EntryEditor({
       {backlinks.length > 0 && (
         <div style={{ marginTop: 36, paddingTop: 18, borderTop: '1px solid var(--line)' }}>
           <div style={{ fontFamily: 'var(--ui)', fontSize: 11.5, fontWeight: 700, letterSpacing: 0.6, textTransform: 'uppercase', color: 'var(--ink-3)', marginBottom: 10 }}>
-            Linked from
+            {t('editor.linkedFrom')}
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {backlinks.map((e) => {
@@ -492,16 +492,16 @@ function EntryEditor({
                 <button
                   key={e.id}
                   onClick={() => onOpenEntry(e.id)}
-                  style={{ display: 'flex', alignItems: 'baseline', gap: 10, width: '100%', textAlign: 'left', cursor: 'pointer', padding: '8px 10px', borderRadius: 10, background: 'transparent', border: 'none' }}
+                  style={{ display: 'flex', alignItems: 'baseline', gap: 10, width: '100%', textAlign: 'start', cursor: 'pointer', padding: '8px 10px', borderRadius: 10, background: 'transparent', border: 'none' }}
                   onMouseEnter={(ev) => (ev.currentTarget.style.background = 'var(--surface-2)')}
                   onMouseLeave={(ev) => (ev.currentTarget.style.background = 'transparent')}
                 >
                   <Icon name="link" size={14} color="var(--ink-3)" style={{ alignSelf: 'center' }} />
                   <span style={{ fontFamily: 'var(--serif)', fontSize: 15.5, fontWeight: 500, color: 'var(--ink)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    {e.title || 'Untitled'}
+                    {e.title || t('common.untitled')}
                   </span>
                   <span style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--ink-3)', flexShrink: 0 }}>
-                    {MON[d.getMonth()]} {d.getDate()}, {d.getFullYear()}
+                    {fmtDate(d, { month: 'short', day: 'numeric', year: 'numeric' })}
                   </span>
                 </button>
               );
@@ -539,7 +539,7 @@ function EntryEditor({
       {pickingTemplate && (
         <TemplatesSheet
           desk={desk}
-          useLabel="Insert"
+          useLabel={t('common.insert')}
           onClose={() => setPickingTemplate(false)}
           onUse={insertTemplate}
         />
@@ -617,13 +617,13 @@ function EntryMenu({
 
   return (
     <span style={{ position: 'relative', display: 'inline-flex' }}>
-      <button title="Entry actions" disabled={!entry} onClick={() => setOpen((o) => !o)} style={btnStyle}>
+      <button title={t('editor.entryActions')} disabled={!entry} onClick={() => setOpen((o) => !o)} style={btnStyle}>
         <Icon name="more" size={desk ? 18 : 20} color="var(--ink-2)" />
       </button>
       {open && entry && (
         <>
           <div onClick={() => setOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 65 }} />
-          <div style={{ position: 'absolute', top: 'calc(100% + 6px)', right: 0, zIndex: 66, minWidth: 196, background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 12, boxShadow: '0 10px 30px rgba(30,20,12,.18)', padding: 5 }}>
+          <div style={{ position: 'absolute', top: 'calc(100% + 6px)', insetInlineEnd: 0, zIndex: 66, minWidth: 196, background: 'var(--surface)', border: '1px solid var(--line)', borderRadius: 12, boxShadow: '0 10px 30px rgba(30,20,12,.18)', padding: 5 }}>
             {onToggleMode && (
               <>
                 <button
@@ -631,10 +631,10 @@ function EntryMenu({
                     setOpen(false);
                     onToggleMode();
                   }}
-                  style={{ display: 'flex', alignItems: 'center', gap: 9, width: '100%', textAlign: 'left', padding: '9px 11px', borderRadius: 8, border: 'none', background: 'transparent', cursor: 'pointer', fontFamily: 'var(--ui)', fontSize: 13.5, fontWeight: 600, color: 'var(--ink)' }}
+                  style={{ display: 'flex', alignItems: 'center', gap: 9, width: '100%', textAlign: 'start', padding: '9px 11px', borderRadius: 8, border: 'none', background: 'transparent', cursor: 'pointer', fontFamily: 'var(--ui)', fontSize: 13.5, fontWeight: 600, color: 'var(--ink)' }}
                 >
                   <Icon name={mode === 'markdown' ? 'feather' : 'code'} size={15} color="var(--ink-2)" />
-                  {mode === 'markdown' ? 'Edit as rich text' : 'Edit as Markdown'}
+                  {mode === 'markdown' ? t('editor.editAsRichText') : t('editor.editAsMarkdown')}
                 </button>
                 <div style={{ height: 1, background: 'var(--line)', margin: '5px 6px' }} />
               </>
@@ -644,18 +644,18 @@ function EntryMenu({
                 setOpen(false);
                 setMoving(true);
               }}
-              style={{ display: 'flex', alignItems: 'center', gap: 9, width: '100%', textAlign: 'left', padding: '9px 11px', borderRadius: 8, border: 'none', background: 'transparent', cursor: 'pointer', fontFamily: 'var(--ui)', fontSize: 13.5, fontWeight: 600, color: 'var(--ink)' }}
+              style={{ display: 'flex', alignItems: 'center', gap: 9, width: '100%', textAlign: 'start', padding: '9px 11px', borderRadius: 8, border: 'none', background: 'transparent', cursor: 'pointer', fontFamily: 'var(--ui)', fontSize: 13.5, fontWeight: 600, color: 'var(--ink)' }}
             >
-              <Icon name="books" size={15} color="var(--ink-2)" /> Move to journal…
+              <Icon name="books" size={15} color="var(--ink-2)" /> {t('editor.moveToJournal')}
             </button>
             <button
               onClick={() => {
                 setOpen(false);
                 setConfirming(true);
               }}
-              style={{ display: 'flex', alignItems: 'center', gap: 9, width: '100%', textAlign: 'left', padding: '9px 11px', borderRadius: 8, border: 'none', background: 'transparent', cursor: 'pointer', fontFamily: 'var(--ui)', fontSize: 13.5, fontWeight: 600, color: '#E4573D' }}
+              style={{ display: 'flex', alignItems: 'center', gap: 9, width: '100%', textAlign: 'start', padding: '9px 11px', borderRadius: 8, border: 'none', background: 'transparent', cursor: 'pointer', fontFamily: 'var(--ui)', fontSize: 13.5, fontWeight: 600, color: '#E4573D' }}
             >
-              <Icon name="trash" size={15} color="#E4573D" /> Delete entry…
+              <Icon name="trash" size={15} color="#E4573D" /> {t('editor.deleteEntry')}
             </button>
           </div>
         </>
@@ -674,8 +674,8 @@ function EntryMenu({
       )}
       {confirming && entry && (
         <ConfirmDialog
-          title="Delete this entry?"
-          confirmLabel="Delete entry"
+          title={t('editor.delete.confirmTitle')}
+          confirmLabel={t('editor.delete.confirmLabel')}
           onCancel={() => setConfirming(false)}
           onConfirm={() => {
             setConfirming(false);
@@ -683,12 +683,10 @@ function EntryMenu({
             onDeleted();
           }}
         >
-          <strong style={{ color: 'var(--ink)' }}>“{entry.title || 'Untitled'}”</strong> will be removed from all your
-          devices
           {mediaCount > 0
-            ? `, and its ${mediaCount === 1 ? 'media file' : `${mediaCount} media files`} will be deleted from this device and the sync server`
-            : ''}
-          . <strong style={{ color: 'var(--ink)' }}>This cannot be undone.</strong>
+            ? tp('editor.delete.bodyMedia', mediaCount, { title: entry.title || t('common.untitled') })
+            : t('editor.delete.body', { title: entry.title || t('common.untitled') })}{' '}
+          <strong style={{ color: 'var(--ink)' }}>{t('editor.delete.cannotUndo')}</strong>
         </ConfirmDialog>
       )}
     </span>
@@ -748,9 +746,9 @@ export function EditorScreen({
   const empty = (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 14, color: 'var(--ink-3)' }}>
       <Icon name="feather" size={30} color="var(--ink-3)" />
-      <span style={{ fontFamily: 'var(--ui)', fontSize: 14 }}>Nothing open yet.</span>
+      <span style={{ fontFamily: 'var(--ui)', fontSize: 14 }}>{t('editor.emptyState')}</span>
       <button onClick={() => onNew(journalId ?? undefined)} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '9px 14px', borderRadius: 10, border: '1px solid var(--line)', background: 'var(--surface)', cursor: 'pointer', color: 'var(--accent-ink)', fontFamily: 'var(--ui)', fontSize: 13.5, fontWeight: 600 }}>
-        <Icon name="plus" size={16} color="var(--accent-ink)" /> New entry
+        <Icon name="plus" size={16} color="var(--accent-ink)" /> {t('editor.newEntry')}
       </button>
     </div>
   );
@@ -764,16 +762,16 @@ export function EditorScreen({
     return (
       <div style={{ height: '100%', display: 'flex', background: 'var(--paper)' }}>
         {/* entry list */}
-        <div style={{ width: 312, borderRight: '1px solid var(--line)', display: 'flex', flexDirection: 'column', background: 'var(--surface-2)' }}>
+        <div style={{ width: 312, borderInlineEnd: '1px solid var(--line)', display: 'flex', flexDirection: 'column', background: 'var(--surface-2)' }}>
           <div style={{ padding: '22px 18px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
               {journal && <Cover journal={journal} w={26} h={34} r={6} />}
               <div>
-                <div style={{ fontFamily: 'var(--serif)', fontSize: 17, fontWeight: 500, color: 'var(--ink)' }}>{journal?.name ?? 'Write'}</div>
-                <div style={{ fontFamily: 'var(--ui)', fontSize: 11.5, color: 'var(--ink-3)' }}>{scoped.length} {scoped.length === 1 ? 'entry' : 'entries'}</div>
+                <div style={{ fontFamily: 'var(--serif)', fontSize: 17, fontWeight: 500, color: 'var(--ink)' }}>{journal?.name ?? t('editor.write')}</div>
+                <div style={{ fontFamily: 'var(--ui)', fontSize: 11.5, color: 'var(--ink-3)' }}>{tp('common.entries', scoped.length)}</div>
               </div>
             </div>
-            <button title="New entry" onClick={() => onNew(journalId ?? undefined)} style={{ width: 34, height: 34, borderRadius: 10, border: '1px solid var(--line)', background: 'var(--surface)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}><Icon name="plus" size={18} color="var(--accent-ink)" /></button>
+            <button title={t('editor.newEntry')} onClick={() => onNew(journalId ?? undefined)} style={{ width: 34, height: 34, borderRadius: 10, border: '1px solid var(--line)', background: 'var(--surface)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}><Icon name="plus" size={18} color="var(--accent-ink)" /></button>
           </div>
           <div style={{ flex: 1, overflow: 'auto', padding: '0 12px 14px', display: 'flex', flexDirection: 'column', gap: 4 }}>
             {(() => {
@@ -788,9 +786,9 @@ export function EditorScreen({
                 lastMonth = key;
                 return [
                   sep && (
-                    <div key={`m-${key}`} style={{ padding: '16px 13px 7px 4px' }}>
+                    <div key={`m-${key}`} style={{ padding: '16px 0 7px', paddingInlineStart: 4, paddingInlineEnd: 13 }}>
                       <span style={{ fontFamily: 'var(--mono)', fontSize: 10.5, fontWeight: 700, letterSpacing: 0.8, textTransform: 'uppercase', color: '#786f62', whiteSpace: 'nowrap' }}>
-                        {MON_FULL[d.getMonth()]} {d.getFullYear()}
+                        {fmtDate(d, { month: 'long', year: 'numeric' })}
                       </span>
                     </div>
                   ),
@@ -798,9 +796,9 @@ export function EditorScreen({
                   // heads each new month, so skip it right after one. Tinted from
                   // --ink-3 because --line is invisible on dark skins.
                   !sep && <div key={`d-${x.id}`} style={{ height: 1, background: 'var(--ink-3)', opacity: 0.35, margin: '0 13px' }} />,
-                  <button key={x.id} onClick={() => onSelectEntry(x.id)} style={{ textAlign: 'left', cursor: 'pointer', padding: '12px 13px', borderRadius: 12, border: 'none', background: active ? 'var(--surface)' : 'transparent', borderLeft: `2.5px solid ${active ? j?.color ?? 'transparent' : 'transparent'}` }}>
+                  <button key={x.id} onClick={() => onSelectEntry(x.id)} style={{ textAlign: 'start', cursor: 'pointer', padding: '12px 13px', borderRadius: 12, border: 'none', background: active ? 'var(--surface)' : 'transparent', borderInlineStart: `2.5px solid ${active ? j?.color ?? 'transparent' : 'transparent'}` }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
-                      <span style={{ fontFamily: 'var(--serif)', fontSize: 15.5, fontWeight: 500, color: 'var(--ink)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{x.title || 'Untitled'}</span>
+                      <span style={{ fontFamily: 'var(--serif)', fontSize: 15.5, fontWeight: 500, color: 'var(--ink)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{x.title || t('common.untitled')}</span>
                       <span style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--ink-3)', flexShrink: 0 }}>{listDate(d)}</span>
                     </div>
                     <p style={{ fontFamily: 'var(--ui)', fontSize: 12.5, color: 'var(--ink-2)', margin: '3px 0 0', lineHeight: 1.45, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>{x.bodyText}</p>
@@ -820,7 +818,7 @@ export function EditorScreen({
               {mode === 'rich' && <EditorToolbar editor={editor} />}
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-              <span style={{ fontFamily: 'var(--ui)', fontSize: 12.5, color: 'var(--ink-3)' }}>{words} words</span>
+              <span style={{ fontFamily: 'var(--ui)', fontSize: 12.5, color: 'var(--ink-3)' }}>{tp('common.words', words)}</span>
               <SyncBadge />
               <EntryMenu desk entry={entry} onDeleted={handleDeleted} />
             </div>
@@ -844,17 +842,17 @@ export function EditorScreen({
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: 'var(--paper)', position: 'relative' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: 'calc(env(safe-area-inset-top, 0px) + 16px) 14px 10px', flexShrink: 0 }}>
         <button onClick={onBack} style={{ display: 'flex', alignItems: 'center', gap: 3, background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--accent-ink)', fontFamily: 'var(--ui)', fontSize: 15, fontWeight: 600 }}>
-          <Icon name="left" size={22} color="var(--accent-ink)" />
+          <Icon name="left" size={22} color="var(--accent-ink)" dirFlip />
         </button>
         <div style={{ textAlign: 'center' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'center' }}>
             <span style={{ width: 8, height: 8, borderRadius: 9, background: journal?.color }} />
-            <span style={{ fontFamily: 'var(--ui)', fontSize: 14, fontWeight: 600, color: 'var(--ink)' }}>{journal?.name ?? 'Write'}</span>
+            <span style={{ fontFamily: 'var(--ui)', fontSize: 14, fontWeight: 600, color: 'var(--ink)' }}>{journal?.name ?? t('editor.write')}</span>
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <ConnChip compact />
-          <button title="New entry" onClick={() => onNew(entry?.journalId)} style={{ width: 36, height: 36, borderRadius: 999, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'transparent', border: 'none', cursor: 'pointer' }}><Icon name="plus" size={20} color="var(--accent-ink)" /></button>
+          <button title={t('editor.newEntry')} onClick={() => onNew(entry?.journalId)} style={{ width: 36, height: 36, borderRadius: 999, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'transparent', border: 'none', cursor: 'pointer' }}><Icon name="plus" size={20} color="var(--accent-ink)" /></button>
           <EntryMenu desk={false} entry={entry} onDeleted={handleDeleted} mode={mode} onToggleMode={toggleMode} />
         </div>
       </div>

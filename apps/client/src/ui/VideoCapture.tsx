@@ -3,6 +3,7 @@
 // and upload happen in the data layer (state/data.tsx addMedia).
 import type { VNode } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
+import { t } from '../i18n';
 import { Icon } from './Icon';
 import { Btn } from './primitives';
 
@@ -56,7 +57,7 @@ export function VideoCapture({
       .getUserMedia({ video: { facingMode: 'user' }, audio: true })
       .then((s) => {
         if (cancelled) {
-          s.getTracks().forEach((t) => t.stop());
+          s.getTracks().forEach((track) => track.stop());
           return;
         }
         stream.current = s;
@@ -64,7 +65,7 @@ export function VideoCapture({
       })
       .catch(() => {
         if (!cancelled) {
-          setError('Camera unavailable — check browser permissions.');
+          setError(t('media.record.cameraUnavailable'));
           setStage('error');
         }
       });
@@ -72,7 +73,7 @@ export function VideoCapture({
       cancelled = true;
       if (tick.current) clearInterval(tick.current);
       if (recorder.current && recorder.current.state !== 'inactive') recorder.current.stop();
-      stream.current?.getTracks().forEach((t) => t.stop());
+      stream.current?.getTracks().forEach((track) => track.stop());
     };
   }, []);
 
@@ -87,7 +88,7 @@ export function VideoCapture({
     try {
       rec = new MediaRecorder(s, mimeType ? { mimeType } : undefined);
     } catch {
-      setError('Recording is not supported in this browser.');
+      setError(t('media.record.unsupported'));
       setStage('error');
       return;
     }
@@ -146,9 +147,9 @@ export function VideoCapture({
         {!desk && <div style={{ width: 38, height: 4, borderRadius: 9, background: 'var(--line)', margin: '0 auto 14px' }} />}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
           <h3 style={{ fontFamily: 'var(--serif)', fontSize: 19, fontWeight: 500, color: 'var(--ink)', margin: 0 }}>
-            {stage === 'review' ? 'Review recording' : 'Record video'}
+            {stage === 'review' ? t('media.record.reviewTitle') : t('media.record.videoTitle')}
           </h3>
-          <button onClick={onClose} title="Close" style={{ width: 32, height: 32, borderRadius: 10, border: '1px solid var(--line)', background: 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+          <button onClick={onClose} title={t('common.close')} style={{ width: 32, height: 32, borderRadius: 10, border: '1px solid var(--line)', background: 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
             <Icon name="x" size={16} color="var(--ink-2)" />
           </button>
         </div>
@@ -172,15 +173,15 @@ export function VideoCapture({
         )}
 
         <div style={{ display: 'flex', justifyContent: 'center', gap: 10, marginTop: 16 }}>
-          {stage === 'idle' && <Btn onClick={startRecording} icon="video">Start recording</Btn>}
-          {stage === 'recording' && <Btn kind="danger" onClick={stopRecording}>Stop</Btn>}
+          {stage === 'idle' && <Btn onClick={startRecording} icon="video">{t('media.record.start')}</Btn>}
+          {stage === 'recording' && <Btn kind="danger" onClick={stopRecording}>{t('media.record.stop')}</Btn>}
           {stage === 'review' && (
             <>
-              <Btn kind="ghost" onClick={retake}>Retake</Btn>
-              <Btn onClick={use} icon="check">Use video</Btn>
+              <Btn kind="ghost" onClick={retake}>{t('media.record.retake')}</Btn>
+              <Btn onClick={use} icon="check">{t('media.record.useVideo')}</Btn>
             </>
           )}
-          {stage === 'error' && <Btn kind="ghost" onClick={onClose}>Close</Btn>}
+          {stage === 'error' && <Btn kind="ghost" onClick={onClose}>{t('common.close')}</Btn>}
         </div>
       </div>
     </div>

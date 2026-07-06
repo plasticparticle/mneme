@@ -25,6 +25,7 @@ import { AiSettingsSheet } from './ui/AiSettings';
 import { AskJournalSheet } from './ui/AskJournal';
 import { GuidedInterviewSheet } from './ui/GuidedInterview';
 import { InterviewTypesSheet } from './ui/InterviewTypes';
+import { t } from './i18n';
 
 // 'journal' is the mobile-only drill-in: the entry list of one notebook.
 type Flow = 'journals' | 'journal' | 'calendar' | 'editor';
@@ -58,7 +59,7 @@ function Sidebar({ flow, setFlow, journals, activeJournalId, onNew, onOpenJourna
     return (
       <button
         onClick={() => setFlow(key)}
-        style={{ display: 'flex', alignItems: 'center', gap: 11, width: '100%', textAlign: 'left', cursor: 'pointer', padding: '9px 11px', borderRadius: 10, border: 'none', background: active ? 'var(--accent-soft)' : 'transparent', color: active ? 'var(--accent-ink)' : 'var(--ink-2)', fontFamily: 'var(--ui)', fontSize: 14, fontWeight: active ? 600 : 500 }}
+        style={{ display: 'flex', alignItems: 'center', gap: 11, width: '100%', textAlign: 'start', cursor: 'pointer', padding: '9px 11px', borderRadius: 10, border: 'none', background: active ? 'var(--accent-soft)' : 'transparent', color: active ? 'var(--accent-ink)' : 'var(--ink-2)', fontFamily: 'var(--ui)', fontSize: 14, fontWeight: active ? 600 : 500 }}
         onMouseEnter={(e) => { if (!active) e.currentTarget.style.background = 'var(--surface)'; }}
         onMouseLeave={(e) => { if (!active) e.currentTarget.style.background = 'transparent'; }}
       >
@@ -67,7 +68,7 @@ function Sidebar({ flow, setFlow, journals, activeJournalId, onNew, onOpenJourna
     );
   };
   return (
-    <div style={{ width: 238, flexShrink: 0, borderRight: '1px solid var(--line)', background: 'var(--surface-2)', display: 'flex', flexDirection: 'column', padding: '18px 14px' }}>
+    <div style={{ width: 238, flexShrink: 0, borderInlineEnd: '1px solid var(--line)', background: 'var(--surface-2)', display: 'flex', flexDirection: 'column', padding: '18px 14px' }}>
       <div style={{ padding: '4px 8px 18px' }}><Wordmark size={22} /></div>
 
       {/* Primary CTA — the clear, present way to begin a journal entry. Accent
@@ -78,7 +79,7 @@ function Sidebar({ flow, setFlow, journals, activeJournalId, onNew, onOpenJourna
         onMouseEnter={(e) => { e.currentTarget.style.filter = 'brightness(1.05)'; }}
         onMouseLeave={(e) => { e.currentTarget.style.filter = 'none'; }}
       >
-        <Icon name="plus" size={18} color="#fff" /> New entry
+        <Icon name="plus" size={18} color="#fff" /> {t('shell.newEntry')}
       </button>
 
       {/* Search field — opens the vault-wide search palette (also ⌘/Ctrl+K). */}
@@ -89,46 +90,46 @@ function Sidebar({ flow, setFlow, journals, activeJournalId, onNew, onOpenJourna
         onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--line)'; }}
       >
         <Icon name="search" size={16} />
-        <span style={{ flex: 1 }}>Search</span>
+        <span style={{ flex: 1 }}>{t('common.search')}</span>
         <span style={{ fontFamily: 'var(--mono)', fontSize: 10.5, border: '1px solid var(--line)', borderRadius: 6, padding: '1px 5px' }}>⌘K</span>
       </button>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-        {nav('journals', 'books', 'Journals')}
-        {nav('calendar', 'cal', 'Calendar')}
+        {nav('journals', 'books', t('shell.nav.journals'))}
+        {nav('calendar', 'cal', t('shell.nav.calendar'))}
         {/* Templates open as a sheet, not a flow — styled to match the nav rows. */}
         <button
           onClick={onTemplates}
-          style={{ display: 'flex', alignItems: 'center', gap: 11, width: '100%', textAlign: 'left', cursor: 'pointer', padding: '9px 11px', borderRadius: 10, border: 'none', background: 'transparent', color: 'var(--ink-2)', fontFamily: 'var(--ui)', fontSize: 14, fontWeight: 500 }}
+          style={{ display: 'flex', alignItems: 'center', gap: 11, width: '100%', textAlign: 'start', cursor: 'pointer', padding: '9px 11px', borderRadius: 10, border: 'none', background: 'transparent', color: 'var(--ink-2)', fontFamily: 'var(--ui)', fontSize: 14, fontWeight: 500 }}
           onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface)')}
           onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
         >
-          <Icon name="copy" size={19} /> Templates
+          <Icon name="copy" size={19} /> {t('shell.nav.templates')}
         </button>
         {/* Only when the AI assistant is enabled (ui/AiSettings.tsx) — a sheet, like Templates. */}
         {onAsk && (
           <button
             onClick={onAsk}
-            style={{ display: 'flex', alignItems: 'center', gap: 11, width: '100%', textAlign: 'left', cursor: 'pointer', padding: '9px 11px', borderRadius: 10, border: 'none', background: 'transparent', color: 'var(--ink-2)', fontFamily: 'var(--ui)', fontSize: 14, fontWeight: 500 }}
+            style={{ display: 'flex', alignItems: 'center', gap: 11, width: '100%', textAlign: 'start', cursor: 'pointer', padding: '9px 11px', borderRadius: 10, border: 'none', background: 'transparent', color: 'var(--ink-2)', fontFamily: 'var(--ui)', fontSize: 14, fontWeight: 500 }}
             onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface)')}
             onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
           >
-            <Icon name="feather" size={19} /> Ask my journal
+            <Icon name="feather" size={19} /> {t('shell.nav.ask')}
           </button>
         )}
         {onInterview && (
           <button
             onClick={onInterview}
-            style={{ display: 'flex', alignItems: 'center', gap: 11, width: '100%', textAlign: 'left', cursor: 'pointer', padding: '9px 11px', borderRadius: 10, border: 'none', background: 'transparent', color: 'var(--ink-2)', fontFamily: 'var(--ui)', fontSize: 14, fontWeight: 500 }}
+            style={{ display: 'flex', alignItems: 'center', gap: 11, width: '100%', textAlign: 'start', cursor: 'pointer', padding: '9px 11px', borderRadius: 10, border: 'none', background: 'transparent', color: 'var(--ink-2)', fontFamily: 'var(--ui)', fontSize: 14, fontWeight: 500 }}
             onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface)')}
             onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
           >
-            <Icon name="mic" size={19} /> Daily interview
+            <Icon name="mic" size={19} /> {t('shell.nav.interview')}
           </button>
         )}
       </div>
 
-      <div style={{ fontFamily: 'var(--ui)', fontSize: 11, fontWeight: 700, letterSpacing: 0.7, textTransform: 'uppercase', color: 'var(--ink-3)', padding: '20px 10px 8px' }}>Notebooks</div>
+      <div style={{ fontFamily: 'var(--ui)', fontSize: 11, fontWeight: 700, letterSpacing: 0.7, textTransform: 'uppercase', color: 'var(--ink-3)', padding: '20px 10px 8px' }}>{t('shell.notebooks')}</div>
       <div style={{ flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column', gap: 1 }}>
         {journals.map((j) => {
           const active = activeJournalId === j.id;
@@ -136,7 +137,7 @@ function Sidebar({ flow, setFlow, journals, activeJournalId, onNew, onOpenJourna
             <button
               key={j.id}
               onClick={() => onOpenJournal(j)}
-              style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left', cursor: 'pointer', padding: '8px 10px', borderRadius: 9, border: 'none', background: active ? 'var(--accent-soft)' : 'transparent', color: active ? 'var(--accent-ink)' : 'var(--ink)', fontFamily: 'var(--ui)', fontSize: 13.5, fontWeight: active ? 600 : 500 }}
+              style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'start', cursor: 'pointer', padding: '8px 10px', borderRadius: 9, border: 'none', background: active ? 'var(--accent-soft)' : 'transparent', color: active ? 'var(--accent-ink)' : 'var(--ink)', fontFamily: 'var(--ui)', fontSize: 13.5, fontWeight: active ? 600 : 500 }}
               onMouseEnter={(e) => { if (!active) e.currentTarget.style.background = 'var(--surface)'; }}
               onMouseLeave={(e) => { if (!active) e.currentTarget.style.background = 'transparent'; }}
             >
@@ -153,9 +154,9 @@ function Sidebar({ flow, setFlow, journals, activeJournalId, onNew, onOpenJourna
       <div style={{ borderTop: '1px solid var(--line)', paddingTop: 10, marginTop: 8 }}>
         {syncing && <div style={{ marginBottom: 10 }}><SyncProgressBar /></div>}
         <button
-          title="Preferences"
+          title={t('shell.preferences')}
           onClick={onPreferences}
-          style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left', cursor: 'pointer', padding: '7px 8px', borderRadius: 12, border: 'none', background: 'transparent' }}
+          style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'start', cursor: 'pointer', padding: '7px 8px', borderRadius: 12, border: 'none', background: 'transparent' }}
           onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface)')}
           onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
         >
@@ -164,7 +165,7 @@ function Sidebar({ flow, setFlow, journals, activeJournalId, onNew, onOpenJourna
             {/* Truncated like the admin dashboard's vault label (full id +
                 actions live in the preferences dialog). */}
             <div style={{ fontFamily: 'var(--mono)', fontSize: 12.5, fontWeight: 600, color: 'var(--ink)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              {ownerId ? `${ownerId.slice(0, 8)}…` : 'Your vault'}
+              {ownerId ? `${ownerId.slice(0, 8)}…` : t('shell.yourVault')}
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
               {syncing ? (
@@ -172,7 +173,7 @@ function Sidebar({ flow, setFlow, journals, activeJournalId, onNew, onOpenJourna
               ) : (
                 <ConnectionDot status={status} size={7} />
               )}
-              <span style={{ fontFamily: 'var(--mono)', fontSize: 10.5, color: 'var(--ink-3)' }}>{syncing ? `syncing${pendingCount > 0 ? ` ${pendingCount}` : ''}…` : connLabel(status).toLowerCase()}</span>
+              <span style={{ fontFamily: 'var(--mono)', fontSize: 10.5, color: 'var(--ink-3)' }}>{syncing ? (pendingCount > 0 ? t('shell.footer.syncingCount', { count: pendingCount }) : t('shell.footer.syncing')) : connLabel(status).toLowerCase()}</span>
             </div>
           </div>
           <Icon name="settings" size={17} color="var(--ink-3)" />
@@ -203,15 +204,15 @@ function MobileNav({ flow, setFlow, onCompose, onSettings, onSearch }: {
     <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: 40, paddingBottom: 22, paddingTop: 8, display: 'flex', alignItems: 'center', background: 'var(--surface-glass)', backdropFilter: 'blur(14px)', WebkitBackdropFilter: 'blur(14px)', borderTop: '1px solid var(--line)' }}>
       {/* Sync progress rides the top edge of the bar — self-hides when fully synced. */}
       <div style={{ position: 'absolute', left: 0, right: 0, top: 0 }}><SyncProgressBar flush /></div>
-      {item(flow === 'journals', 'books', 'Journals', () => setFlow('journals'))}
-      {item(flow === 'calendar', 'cal', 'Calendar', () => setFlow('calendar'))}
+      {item(flow === 'journals', 'books', t('shell.nav.journals'), () => setFlow('journals'))}
+      {item(flow === 'calendar', 'cal', t('shell.nav.calendar'), () => setFlow('calendar'))}
       <div style={{ flex: 1, display: 'flex', justifyContent: 'center' }}>
         <button onClick={onCompose} style={{ width: 54, height: 54, borderRadius: 999, background: 'var(--accent)', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', marginTop: -22, boxShadow: '0 6px 18px rgba(120,60,30,.35), 0 0 0 5px var(--paper)' }}>
           <Icon name="feather" size={24} color="#fff" />
         </button>
       </div>
-      {item(false, 'search', 'Search', onSearch)}
-      {item(false, 'settings', 'Settings', onSettings)}
+      {item(false, 'search', t('common.search'), onSearch)}
+      {item(false, 'settings', t('common.settings'), onSettings)}
     </div>
   );
 }

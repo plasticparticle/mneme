@@ -2,6 +2,12 @@
 // excerpts (selected in context.ts); the editor prompts embed only the open
 // entry. Both run client-side — what's assembled here goes browser → provider,
 // never near the relay.
+//
+// Prompt text stays English; the one locale-aware bit is the reply-language
+// directive, which tells the model to answer (and write synthesized entries)
+// in the app's UI language. currentLocale() is import-safe outside Vite (the
+// tsx repro scripts) — it just returns the default English locale there.
+import { currentLocale } from '../i18n';
 
 export type AiEditorAction = 'continue' | 'summarize' | 'title';
 
@@ -17,6 +23,7 @@ export function chatSystemPrompt(contextText: string): string {
     'Below are excerpts from the user\'s journal, most relevant first. Answer questions using only these excerpts.',
     'When the excerpts don\'t contain the answer, say so plainly — never invent journal content.',
     'Quote or reference entries by their title and date when it helps. Be warm but concise.',
+    `Respond in ${currentLocale().english}.`,
     '',
     '## Journal excerpts',
     '',
@@ -81,7 +88,7 @@ export function interviewSystemPrompt(type: { name: string; prompt: string }, hi
     '- Keep each question short, warm, and specific, and build on what the user just said.',
     '- Aim for roughly 4–6 questions in total, then stop asking.',
     "- Don't lecture, summarize, or give advice while interviewing — just ask and briefly acknowledge.",
-    '- Write in the same language the user writes in.',
+    `- Ask your questions in ${currentLocale().english}.`,
     "- Once you have enough for a good entry, don't ask another question: say you're ready to write it up and invite the user to finish.",
     '',
     '## What this interview is about',
@@ -101,7 +108,7 @@ export function interviewSynthesisPrompt(type: { name: string }): string {
   return [
     `You just conducted a "${type.name}" interview inside a private journal. Today's date is ${today()}.`,
     'Turn the conversation into a single journal entry written as if the user wrote it themselves.',
-    '- Write in the first person ("I…"), in the same language the user used.',
+    `- Write in the first person ("I…"), in ${currentLocale().english}.`,
     '- Use only what the user actually said — never invent events, feelings, or facts.',
     '- Organise it naturally with a few short "## " headings and short paragraphs; use "- " bullets where the user listed things.',
     '- Keep it warm and genuine, not clinical. Do not address the user as "you" and do not mention the interview or yourself.',
@@ -119,7 +126,7 @@ export function freeformDraftPrompt(): string {
   return [
     `You are a writing companion drafting a journal entry inside a private, end-to-end-encrypted journal. Today's date is ${today()}.`,
     'The user will describe what they want the entry to be about. Write one first-person journal entry in their voice.',
-    "- First person, in the user's language; draw only on what they tell you — don't invent specifics they didn't give.",
+    `- First person, in ${currentLocale().english}; draw only on what they tell you — don't invent specifics they didn't give.`,
     '- Organise it naturally with a few short "## " headings and short paragraphs; use "- " bullets for lists.',
     '- Output only the entry as simple Markdown. No title line, no preamble, no commentary.',
   ].join('\n');

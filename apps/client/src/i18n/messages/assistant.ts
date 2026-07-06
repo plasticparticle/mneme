@@ -1,0 +1,109 @@
+// AI assistant surfaces: settings sheet (ui/AiSettings.tsx), Ask-my-journal
+// (ui/AskJournal.tsx), the editor action dialog (ui/AiActionDialog.tsx), the
+// guided interview (ui/GuidedInterview.tsx) and the interview-types manager
+// (ui/InterviewTypes.tsx). Prompt text sent to the model stays English in
+// ai/prompts.ts — only UI chrome lives here.
+export const assistant = {
+  // ── shared chrome ──
+  'assistant.badge.local': 'stays on this device',
+  'assistant.badge.cloud': 'cloud',
+  'assistant.badge.onDevice': 'on this device',
+  'assistant.badge.sentToAnthropic': 'sent to Anthropic',
+  'assistant.stop': 'Stop',
+  'assistant.discard': 'Discard',
+  'assistant.saving': 'Saving…',
+
+  // ── shared error states ──
+  'assistant.error.keyRejected': 'The API key was rejected — check it in AI settings.',
+  'assistant.error.keyRejectedShort': 'The API key was rejected.',
+  'assistant.error.ollamaUnreachable': 'Could not reach Ollama — is it running? (ollama serve)',
+  'assistant.error.apiUnreachable': 'Could not reach the API: {message}',
+  'assistant.error.requestFailed': 'Request failed: {message}',
+  'assistant.error.refused': 'The model declined.',
+  'assistant.error.refusedAnswer': 'The model declined to answer.',
+  'assistant.error.refusedRespond': 'The model declined to respond.',
+
+  // ── settings sheet ──
+  'assistant.settings.title': 'AI assistant',
+  'assistant.settings.enable': 'Enable AI features',
+  'assistant.settings.enableHint': 'Ask questions about your journal, get writing help.',
+  'assistant.settings.serverUrl': 'Server URL',
+  'assistant.settings.model': 'Model',
+  'assistant.settings.apiKey': 'API key',
+  'assistant.settings.ollamaHint':
+    'Your entries are processed by a model running on your own machine. Nothing leaves this device.',
+  'assistant.settings.ollamaModelPlaceholder': 'llama3.2 — or Test connection to list',
+  'assistant.settings.ollamaOriginsNote':
+    'Accessing Ollama from a non-localhost origin needs OLLAMA_ORIGINS set on the Ollama side; Safari may block localhost from an https page.',
+  // {decrypted} is replaced by the bold 'assistant.settings.cloudPrivacyDecrypted'.
+  'assistant.settings.cloudPrivacy':
+    "When you use AI features, the entries used as context are sent, {decrypted}, to Anthropic over HTTPS — leaving Mneme's end-to-end encryption for that request. Your relay never sees them. Anthropic's API terms apply.",
+  'assistant.settings.cloudPrivacyDecrypted': 'decrypted',
+  'assistant.settings.test': 'Test connection',
+  'assistant.settings.testing': 'Testing…',
+  'assistant.settings.connected': 'Connected',
+  'assistant.settings.saveFailed': 'Could not save: {message}',
+  'assistant.settings.keyNote':
+    'The API key is encrypted with a key derived from your recovery phrase and is only readable while your journal is unlocked.',
+
+  // ── Ask my journal ──
+  'assistant.ask.title': 'Ask my journal',
+  'assistant.ask.emptyHint':
+    'Ask anything about what you\'ve written — "what did I do last weekend?", "when did I first mention the garden?", "summarize my June".',
+  'assistant.ask.notSaved': 'Each question searches your journal afresh; the conversation is not saved.',
+  'assistant.ask.context#one': 'Using {count} entry as context',
+  'assistant.ask.context#other': 'Using {count} entries as context',
+  'assistant.ask.contextTruncated#one': 'Using {count} entry as context (truncated to fit)',
+  'assistant.ask.contextTruncated#other': 'Using {count} entries as context (truncated to fit)',
+  'assistant.ask.placeholder': 'Ask your journal…',
+  'assistant.ask.send': 'Ask',
+
+  // ── editor action dialog ──
+  'assistant.action.continue': 'Continue writing',
+  'assistant.action.summarize': 'Summarize entry',
+  'assistant.action.title': 'Suggest a title',
+  'assistant.action.pickTitle': 'Pick a title:',
+  'assistant.action.thinking': 'Thinking…',
+  'assistant.action.nothing': '(nothing generated)',
+  'assistant.action.insert': 'Insert at cursor',
+
+  // ── guided interview ──
+  'assistant.interview.title': 'Guided interview',
+  'assistant.interview.fallbackTitle': 'Interview',
+  'assistant.interview.yourDraft': 'Your draft',
+  'assistant.interview.pickIntro':
+    "Pick an interview. I'll ask a few questions, then write your answers up as a journal entry you can review before saving.",
+  'assistant.interview.freeform': 'Freeform draft',
+  'assistant.interview.freeformHint': "Describe an entry in a sentence and I'll draft it — no questions.",
+  'assistant.interview.manageTypes': 'Manage interview types',
+  'assistant.interview.answerPlaceholder': 'Your answer…',
+  'assistant.interview.send': 'Send',
+  'assistant.interview.finish': 'Finish & write entry',
+  'assistant.interview.briefHint':
+    "What should this entry be about? One or two sentences is plenty — I'll draft the rest in your voice.",
+  'assistant.interview.briefPlaceholder': 'e.g. My hike up the coast trail this morning…',
+  'assistant.interview.draft': 'Draft',
+  'assistant.interview.writing': 'Writing your entry…',
+  'assistant.interview.nothingWritten': '(nothing written)',
+  'assistant.interview.save': 'Save entry',
+
+  // ── interview-types manager ──
+  'assistant.types.title': 'Interview types',
+  'assistant.types.builtin': 'built-in',
+  'assistant.types.new': 'New interview',
+  'assistant.types.edit': 'Edit interview',
+  'assistant.types.name': 'Name',
+  'assistant.types.namePlaceholder': 'e.g. Evening reflection',
+  'assistant.types.intro': 'Intro',
+  'assistant.types.introPlaceholder': 'One line shown in the picker',
+  'assistant.types.prompt': 'Prompt — what the interview covers',
+  'assistant.types.promptPlaceholder':
+    'Describe the themes to cover and the tone. The AI already asks one question at a time and writes the entry up afterward — this just steers what it asks about.',
+  'assistant.types.untitled': 'Untitled interview',
+  'assistant.types.save': 'Save interview',
+  'assistant.types.create': 'Create interview',
+  'assistant.types.deleteConfirm': 'Delete?',
+  'assistant.types.empty': 'No interview types yet — create one below.',
+  'assistant.types.backToList': 'Back to list',
+  'assistant.types.allTypes': 'All types',
+} as const;

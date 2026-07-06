@@ -18,9 +18,12 @@ interface IconProps {
   stroke?: number;
   style?: JSX.CSSProperties;
   color?: string;
+  /** Mirror in RTL locales — for glyphs whose direction means forward/back
+      (chevrons, arrows), not for inherently symmetric or physical shapes. */
+  dirFlip?: boolean;
 }
 
-export function Icon({ name, size = 20, stroke = 1.7, style = {}, color = 'currentColor' }: IconProps): VNode {
+export function Icon({ name, size = 20, stroke = 1.7, style = {}, color = 'currentColor', dirFlip }: IconProps): VNode {
   const P = {
     fill: 'none' as const,
     stroke: color,
@@ -83,7 +86,13 @@ export function Icon({ name, size = 20, stroke = 1.7, style = {}, color = 'curre
     info: <><circle cx="12" cy="12" r="8.5" {...P} /><path d="M12 11v5.2" {...P} /><circle cx="12" cy="7.8" r="1.1" fill={color} stroke="none" /></>,
   };
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" style={{ display: 'block', flexShrink: 0, ...style }}>
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      class={dirFlip ? 'dir-flip' : undefined}
+      style={{ display: 'block', flexShrink: 0, ...style }}
+    >
       {paths[name]}
     </svg>
   );

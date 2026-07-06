@@ -1,10 +1,11 @@
 // Preferences overlay — the one settings surface, organized into four tabs:
-// Appearance (light/dark/system mode + theme skin + accent), Writing (local
-// stats), Assistant (templates / ask / AI settings), and Vault (identity,
-// lock, phrase rotation, deletion). Desktop shows a left nav rail beside a
-// scrolling content pane; mobile shows a segmented tab bar atop the sheet.
-// Appearance state is device-local localStorage and never syncs; the vault
-// rows just hand off to their existing sheets (RotatePhrase, DeleteVault…).
+// Appearance (language + light/dark/system mode + theme skin + accent),
+// Writing (local stats), Assistant (templates / ask / AI settings), and Vault
+// (identity, lock, phrase rotation, deletion). Desktop shows a left nav rail
+// beside a scrolling content pane; mobile shows a segmented tab bar atop the
+// sheet. Appearance state (language included) is device-local localStorage
+// and never syncs; the vault rows just hand off to their existing sheets
+// (RotatePhrase, DeleteVault…).
 import type { VNode } from 'preact';
 import { useMemo, useState } from 'preact/hooks';
 import { Icon, type IconName } from './Icon';
@@ -14,22 +15,24 @@ import { PALETTES, SKINS, type ThemeControls, type ThemeMode } from '../hooks/us
 import { compactCount, dayStreak, journaledDays, longestStreak, monthWords, totalWords } from '../state/stats';
 import { APP_VERSION, buildTimeLabel } from '../buildinfo';
 import { hexA } from './color';
+import { t, useI18n, type MessageKey } from '../i18n';
 
-const MODES: { id: ThemeMode; label: string; icon: IconName }[] = [
-  { id: 'light', label: 'Light', icon: 'sun' },
-  { id: 'dark', label: 'Dark', icon: 'moon' },
-  { id: 'system', label: 'System', icon: 'monitor' },
+const MODES: { id: ThemeMode; icon: IconName }[] = [
+  { id: 'light', icon: 'sun' },
+  { id: 'dark', icon: 'moon' },
+  { id: 'system', icon: 'monitor' },
 ];
 
 type TabId = 'appearance' | 'writing' | 'assistant' | 'vault' | 'info';
-// `short` is the mobile segmented label — full words don't fit four-across on a
-// phone, so the desktop rail uses `label` and the bottom sheet uses `short`.
-const TABS: { id: TabId; label: string; short: string; icon: IconName }[] = [
-  { id: 'appearance', label: 'Appearance', short: 'Look', icon: 'eye' },
-  { id: 'writing', label: 'Writing', short: 'Writing', icon: 'book' },
-  { id: 'assistant', label: 'Assistant', short: 'Assist', icon: 'feather' },
-  { id: 'vault', label: 'Vault', short: 'Vault', icon: 'shield' },
-  { id: 'info', label: 'Info', short: 'Info', icon: 'info' },
+// The `.short` catalog variant is the mobile segmented label — full words
+// don't fit four-across on a phone, so the desktop rail uses the full label
+// and the bottom sheet uses the short one.
+const TABS: { id: TabId; icon: IconName }[] = [
+  { id: 'appearance', icon: 'eye' },
+  { id: 'writing', icon: 'book' },
+  { id: 'assistant', icon: 'feather' },
+  { id: 'vault', icon: 'shield' },
+  { id: 'info', icon: 'info' },
 ];
 
 /** Group heading inside a tab pane; `first` drops the top margin so a pane
@@ -56,7 +59,7 @@ function InfoRow({ label, value, last }: { label: string; value: string; last?: 
   return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '11px 13px', borderBottom: last ? 'none' : '1px solid var(--line)' }}>
       <span style={{ fontFamily: 'var(--ui)', fontSize: 13, fontWeight: 600, color: 'var(--ink)' }}>{label}</span>
-      <span style={{ fontFamily: 'var(--mono)', fontSize: 12, color: 'var(--ink-2)', textAlign: 'right' }}>{value}</span>
+      <span style={{ fontFamily: 'var(--mono)', fontSize: 12, color: 'var(--ink-2)', textAlign: 'end' }}>{value}</span>
     </div>
   );
 }
@@ -72,14 +75,14 @@ function Row({ icon, label, value, danger, onClick }: {
   return (
     <button
       onClick={onClick}
-      style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', textAlign: 'left', cursor: 'pointer', padding: '12px 14px', borderRadius: 12, border: '1px solid var(--line)', background: 'var(--paper)', fontFamily: 'var(--ui)', fontSize: 13.5, fontWeight: 600, color: danger ? 'var(--accent-ink)' : 'var(--ink)' }}
+      style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', textAlign: 'start', cursor: 'pointer', padding: '12px 14px', borderRadius: 12, border: '1px solid var(--line)', background: 'var(--paper)', fontFamily: 'var(--ui)', fontSize: 13.5, fontWeight: 600, color: danger ? 'var(--accent-ink)' : 'var(--ink)' }}
       onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--accent-line)'; }}
       onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--line)'; }}
     >
       <Icon name={icon} size={17} color={danger ? 'var(--accent)' : 'var(--ink-2)'} />
       <span style={{ flex: 1 }}>{label}</span>
       {value && <span style={{ fontFamily: 'var(--mono)', fontSize: 11.5, color: 'var(--ink-3)' }}>{value}</span>}
-      <Icon name="right" size={15} color="var(--ink-3)" />
+      <Icon name="right" size={15} color="var(--ink-3)" dirFlip />
     </button>
   );
 }
@@ -106,6 +109,7 @@ export function PreferencesSheet({ desk, theme, onClose, ownerId, status, onLock
   onInterviewTypes?: (() => void) | null;
 }): VNode {
   const { entries, vaultMethod } = useAppData();
+  const i18n = useI18n();
   const [tab, setTab] = useState<TabId>('appearance');
   // Vault rows hand off to full-screen sheets — close this overlay first.
   const handOff = (fn: () => void) => () => {
@@ -131,7 +135,29 @@ export function PreferencesSheet({ desk, theme, onClose, ownerId, status, onLock
 
   const appearance = (
     <div>
-      <SectionLabel first>Mode</SectionLabel>
+      <SectionLabel first>{t('prefs.language')}</SectionLabel>
+      <div style={{ display: 'grid', gridTemplateColumns: desk ? 'repeat(3, 1fr)' : 'repeat(2, 1fr)', gap: 8 }}>
+        {i18n.locales.map((l) => {
+          const active = i18n.locale === l.id;
+          return (
+            <button
+              key={l.id}
+              lang={l.id}
+              onClick={() => void i18n.setLocale(l.id)}
+              title={l.english}
+              style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 12px', borderRadius: 12, cursor: 'pointer', border: `1px solid ${active ? 'var(--accent-line)' : 'var(--line)'}`, background: active ? 'var(--accent-soft)' : 'var(--paper)', color: active ? 'var(--accent-ink)' : 'var(--ink-2)', fontFamily: 'var(--ui)', fontSize: 13, fontWeight: active ? 700 : 500 }}
+            >
+              <span style={{ flex: 1, textAlign: 'start' }}>{l.name}</span>
+              {active && <Icon name="check" size={13} stroke={2.4} />}
+            </button>
+          );
+        })}
+      </div>
+      <p style={{ fontFamily: 'var(--ui)', fontSize: 12, color: 'var(--ink-3)', margin: '8px 2px 0', lineHeight: 1.5 }}>
+        {t('prefs.language.hint')}
+      </p>
+
+      <SectionLabel>{t('prefs.mode')}</SectionLabel>
       <div style={{ display: 'flex', gap: 8 }}>
         {MODES.map((m) => {
           const active = theme.mode === m.id;
@@ -142,18 +168,19 @@ export function PreferencesSheet({ desk, theme, onClose, ownerId, status, onLock
               style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, padding: '12px 0 10px', borderRadius: 12, cursor: 'pointer', border: `1px solid ${active ? 'var(--accent-line)' : 'var(--line)'}`, background: active ? 'var(--accent-soft)' : 'var(--paper)', color: active ? 'var(--accent-ink)' : 'var(--ink-2)', fontFamily: 'var(--ui)', fontSize: 12.5, fontWeight: active ? 700 : 500 }}
             >
               <Icon name={m.icon} size={18} />
-              {m.label}
+              {/* Ids mirror the 'prefs.mode.*' catalog entries. */}
+              {t(`prefs.mode.${m.id}` as MessageKey)}
             </button>
           );
         })}
       </div>
       {theme.mode === 'system' && (
         <p style={{ fontFamily: 'var(--ui)', fontSize: 12, color: 'var(--ink-3)', margin: '8px 2px 0' }}>
-          Follows this device — currently {theme.dark ? 'dark' : 'light'}.
+          {t(theme.dark ? 'prefs.mode.followsDark' : 'prefs.mode.followsLight')}
         </p>
       )}
 
-      <SectionLabel>Theme</SectionLabel>
+      <SectionLabel>{t('prefs.theme')}</SectionLabel>
       <div style={{ display: 'grid', gridTemplateColumns: desk ? 'repeat(3, 1fr)' : 'repeat(2, 1fr)', gap: 8 }}>
         {SKINS.map((s) => {
           const active = theme.skin === s.id;
@@ -161,8 +188,8 @@ export function PreferencesSheet({ desk, theme, onClose, ownerId, status, onLock
             <button
               key={s.id}
               onClick={() => theme.setSkin(s.id)}
-              title={s.hint}
-              style={{ display: 'flex', flexDirection: 'column', gap: 0, padding: 0, overflow: 'hidden', borderRadius: 12, cursor: 'pointer', textAlign: 'left', border: `1.5px solid ${active ? 'var(--accent)' : 'var(--line)'}`, background: active ? 'var(--accent-soft)' : 'var(--paper)' }}
+              title={t(`prefs.skin.${s.id}.hint` as MessageKey)}
+              style={{ display: 'flex', flexDirection: 'column', gap: 0, padding: 0, overflow: 'hidden', borderRadius: 12, cursor: 'pointer', textAlign: 'start', border: `1.5px solid ${active ? 'var(--accent)' : 'var(--line)'}`, background: active ? 'var(--accent-soft)' : 'var(--paper)' }}
             >
               {/* Mini preview in the skin's signature colors, mode-independent. */}
               <span style={{ display: 'block', width: '100%', height: 44, boxSizing: 'border-box', background: s.preview.bg, padding: '9px 10px', borderBottom: `1px solid ${active ? 'var(--accent-line)' : 'var(--line)'}` }}>
@@ -173,7 +200,7 @@ export function PreferencesSheet({ desk, theme, onClose, ownerId, status, onLock
                 </span>
               </span>
               <span style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '7px 10px', fontFamily: 'var(--ui)', fontSize: 12, fontWeight: active ? 700 : 600, color: active ? 'var(--accent-ink)' : 'var(--ink-2)' }}>
-                {s.name}
+                {t(`prefs.skin.${s.id}` as MessageKey)}
                 {active && <Icon name="check" size={12} stroke={2.4} />}
               </span>
             </button>
@@ -181,7 +208,7 @@ export function PreferencesSheet({ desk, theme, onClose, ownerId, status, onLock
         })}
       </div>
 
-      <SectionLabel>Accent</SectionLabel>
+      <SectionLabel>{t('prefs.accent')}</SectionLabel>
       <div style={{ display: 'flex', gap: desk ? 10 : 6, justifyContent: 'space-between' }}>
         {PALETTES.map((p) => {
           const active = theme.palette === p.id;
@@ -189,13 +216,13 @@ export function PreferencesSheet({ desk, theme, onClose, ownerId, status, onLock
             <button
               key={p.id}
               onClick={() => theme.setPalette(p.id)}
-              title={p.name}
+              title={t(`prefs.palette.${p.id}` as MessageKey)}
               style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 7, padding: '10px 0 8px', borderRadius: 12, cursor: 'pointer', border: `1px solid ${active ? 'var(--accent-line)' : 'var(--line)'}`, background: active ? 'var(--accent-soft)' : 'var(--paper)' }}
             >
               <span style={{ width: 26, height: 26, borderRadius: 999, background: p.accent, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: active ? `0 0 0 2px var(--surface), 0 0 0 4px ${hexA(p.accent, 0.55)}` : 'none' }}>
                 {active && <Icon name="check" size={13} color="#fff" stroke={2.4} />}
               </span>
-              <span style={{ fontFamily: 'var(--ui)', fontSize: 10.5, fontWeight: active ? 700 : 500, color: active ? 'var(--accent-ink)' : 'var(--ink-3)' }}>{p.name}</span>
+              <span style={{ fontFamily: 'var(--ui)', fontSize: 10.5, fontWeight: active ? 700 : 500, color: active ? 'var(--accent-ink)' : 'var(--ink-3)' }}>{t(`prefs.palette.${p.id}` as MessageKey)}</span>
             </button>
           );
         })}
@@ -205,46 +232,46 @@ export function PreferencesSheet({ desk, theme, onClose, ownerId, status, onLock
 
   const writing = (
     <div>
-      <SectionLabel first>Your writing</SectionLabel>
+      <SectionLabel first>{t('prefs.writing.section')}</SectionLabel>
       <div style={{ display: 'grid', gridTemplateColumns: desk ? 'repeat(3, 1fr)' : 'repeat(2, 1fr)', gap: 8 }}>
-        <StatTile value={compactCount(stats.entries)} label="Entries" />
-        <StatTile value={compactCount(stats.words)} label="Words" />
-        <StatTile value={compactCount(stats.month)} label="This month" />
-        <StatTile value={String(stats.streak)} label="Day streak" />
-        <StatTile value={String(stats.longest)} label="Longest streak" />
-        <StatTile value={compactCount(stats.days)} label="Days journaled" />
+        <StatTile value={compactCount(stats.entries)} label={t('prefs.stat.entries')} />
+        <StatTile value={compactCount(stats.words)} label={t('prefs.stat.words')} />
+        <StatTile value={compactCount(stats.month)} label={t('prefs.stat.month')} />
+        <StatTile value={String(stats.streak)} label={t('prefs.stat.streak')} />
+        <StatTile value={String(stats.longest)} label={t('prefs.stat.longest')} />
+        <StatTile value={compactCount(stats.days)} label={t('prefs.stat.days')} />
       </div>
       <p style={{ fontFamily: 'var(--ui)', fontSize: 11.5, color: 'var(--ink-3)', margin: '12px 2px 0', lineHeight: 1.5 }}>
-        Counted locally from your decrypted entries — the server never sees any of this.
+        {t('prefs.writing.note')}
       </p>
     </div>
   );
 
   const assistant = (
     <div>
-      <SectionLabel first>Assistant &amp; journal</SectionLabel>
+      <SectionLabel first>{t('prefs.assistant.section')}</SectionLabel>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        {onTemplates && <Row icon="copy" label="Templates" onClick={handOff(onTemplates)} />}
-        {onAsk && <Row icon="feather" label="Ask my journal" onClick={handOff(onAsk)} />}
-        {onInterview && <Row icon="mic" label="Daily interview" onClick={handOff(onInterview)} />}
-        {onInterviewTypes && <Row icon="list" label="Interview types" onClick={handOff(onInterviewTypes)} />}
-        <Row icon="feather" label="AI assistant" onClick={handOff(onAiSettings)} />
+        {onTemplates && <Row icon="copy" label={t('prefs.assistant.templates')} onClick={handOff(onTemplates)} />}
+        {onAsk && <Row icon="feather" label={t('prefs.assistant.ask')} onClick={handOff(onAsk)} />}
+        {onInterview && <Row icon="mic" label={t('prefs.assistant.interview')} onClick={handOff(onInterview)} />}
+        {onInterviewTypes && <Row icon="list" label={t('prefs.assistant.interviewTypes')} onClick={handOff(onInterviewTypes)} />}
+        <Row icon="feather" label={t('prefs.assistant.ai')} onClick={handOff(onAiSettings)} />
       </div>
     </div>
   );
 
   const vault = (
     <div>
-      <SectionLabel first>Vault</SectionLabel>
-      <div title={ownerId ? `Vault ID: ${ownerId}` : undefined} style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '11px 13px', borderRadius: 12, border: '1px solid var(--line)', background: 'var(--paper)', marginBottom: 8 }}>
+      <SectionLabel first>{t('prefs.vault.section')}</SectionLabel>
+      <div title={ownerId ? t('prefs.vault.idTitle', { id: ownerId }) : undefined} style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '11px 13px', borderRadius: 12, border: '1px solid var(--line)', background: 'var(--paper)', marginBottom: 8 }}>
         <div style={{ width: 34, height: 34, borderRadius: 999, flexShrink: 0, background: 'linear-gradient(145deg, var(--accent), var(--accent-ink))', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontFamily: 'var(--serif)', fontSize: 16, fontWeight: 600 }}>V</div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, minWidth: 0 }}>
             <span style={{ fontFamily: 'var(--mono)', fontSize: 12.5, fontWeight: 600, color: 'var(--ink)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              {ownerId ? `${ownerId.slice(0, 12)}…` : 'Your vault'}
+              {ownerId ? `${ownerId.slice(0, 12)}…` : t('prefs.vault.yourVault')}
             </span>
             {ownerId && (
-              <span style={{ fontFamily: 'var(--ui)', fontSize: 9.5, fontWeight: 700, letterSpacing: 0.6, textTransform: 'uppercase', color: 'var(--ink-3)', flexShrink: 0 }}>vault id</span>
+              <span style={{ fontFamily: 'var(--ui)', fontSize: 9.5, fontWeight: 700, letterSpacing: 0.6, textTransform: 'uppercase', color: 'var(--ink-3)', flexShrink: 0 }}>{t('prefs.vault.idLabel')}</span>
             )}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 2 }}>
@@ -254,25 +281,25 @@ export function PreferencesSheet({ desk, theme, onClose, ownerId, status, onLock
         </div>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        <Row icon="lock" label="Lock journal" onClick={handOff(onLock)} />
-        <Row icon="key" label="Device unlock" value={vaultMethod === 'securityKey' ? 'Security key' : vaultMethod === 'passphrase' ? 'Passphrase' : 'Off'} onClick={handOff(onDeviceUnlock)} />
-        <Row icon="shield" label="Replace recovery phrase" onClick={handOff(onRotate)} />
+        <Row icon="lock" label={t('prefs.vault.lock')} onClick={handOff(onLock)} />
+        <Row icon="key" label={t('prefs.vault.deviceUnlock')} value={vaultMethod === 'securityKey' ? t('prefs.vault.method.securityKey') : vaultMethod === 'passphrase' ? t('prefs.vault.method.passphrase') : t('common.off')} onClick={handOff(onDeviceUnlock)} />
+        <Row icon="shield" label={t('prefs.vault.rotate')} onClick={handOff(onRotate)} />
       </div>
       {/* Data in/out — its own section (export will join import here). */}
-      <SectionLabel>Data</SectionLabel>
+      <SectionLabel>{t('prefs.vault.data')}</SectionLabel>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        <Row icon="download" label="Import from Day One" onClick={handOff(onImport)} />
+        <Row icon="download" label={t('prefs.vault.import')} onClick={handOff(onImport)} />
       </div>
       {/* Destructive action set apart from the routine vault rows. */}
       <div style={{ marginTop: 16, paddingTop: 16, borderTop: '1px solid var(--line)' }}>
-        <Row icon="trash" label="Delete vault" danger onClick={handOff(onDeleteVault)} />
+        <Row icon="trash" label={t('prefs.vault.delete')} danger onClick={handOff(onDeleteVault)} />
       </div>
     </div>
   );
 
   const info = (
     <div>
-      <SectionLabel first>About</SectionLabel>
+      <SectionLabel first>{t('prefs.info.section')}</SectionLabel>
       <div style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '11px 13px', borderRadius: 12, border: '1px solid var(--line)', background: 'var(--paper)', marginBottom: 8 }}>
         <svg width="30" height="30" viewBox="0 0 24 24" style={{ flexShrink: 0 }}>
           <circle cx="12" cy="12" r="9.5" fill="none" stroke="var(--accent)" strokeWidth="1.5" />
@@ -281,15 +308,15 @@ export function PreferencesSheet({ desk, theme, onClose, ownerId, status, onLock
         </svg>
         <div style={{ minWidth: 0 }}>
           <div style={{ fontFamily: 'var(--serif)', fontSize: 16, fontWeight: 500, color: 'var(--ink)' }}>Mneme</div>
-          <div style={{ fontFamily: 'var(--ui)', fontSize: 11.5, color: 'var(--ink-3)', marginTop: 1 }}>A private place to remember.</div>
+          <div style={{ fontFamily: 'var(--ui)', fontSize: 11.5, color: 'var(--ink-3)', marginTop: 1 }}>{t('prefs.info.tagline')}</div>
         </div>
       </div>
       <div style={{ border: '1px solid var(--line)', borderRadius: 12, background: 'var(--paper)', overflow: 'hidden' }}>
-        <InfoRow label="Version" value={`v${APP_VERSION}`} />
-        <InfoRow label="Built" value={buildTimeLabel()} last />
+        <InfoRow label={t('prefs.info.version')} value={`v${APP_VERSION}`} />
+        <InfoRow label={t('prefs.info.built')} value={buildTimeLabel()} last />
       </div>
       <p style={{ fontFamily: 'var(--ui)', fontSize: 11.5, color: 'var(--ink-3)', margin: '12px 2px 0', lineHeight: 1.5 }}>
-        End-to-end encrypted · local-first · open source.
+        {t('prefs.info.footer')}
       </p>
     </div>
   );
@@ -299,17 +326,18 @@ export function PreferencesSheet({ desk, theme, onClose, ownerId, status, onLock
   // Desktop: a left nav rail beside the content pane. Mobile: a segmented tab
   // bar above it. The header + tabs stay fixed; only the pane scrolls.
   const rail = (
-    <nav style={{ display: 'flex', flexDirection: 'column', gap: 2, width: 158, flexShrink: 0, paddingRight: 14, borderRight: '1px solid var(--line)' }}>
-      {TABS.map((t) => {
-        const active = tab === t.id;
+    <nav style={{ display: 'flex', flexDirection: 'column', gap: 2, width: 158, flexShrink: 0, paddingInlineEnd: 14, borderInlineEnd: '1px solid var(--line)' }}>
+      {TABS.map((tb) => {
+        const active = tab === tb.id;
         return (
           <button
-            key={t.id}
-            onClick={() => setTab(t.id)}
-            style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left', cursor: 'pointer', padding: '10px 12px', borderRadius: 10, border: 'none', background: active ? 'var(--accent-soft)' : 'transparent', color: active ? 'var(--accent-ink)' : 'var(--ink-2)', fontFamily: 'var(--ui)', fontSize: 13, fontWeight: active ? 700 : 600 }}
+            key={tb.id}
+            onClick={() => setTab(tb.id)}
+            style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'start', cursor: 'pointer', padding: '10px 12px', borderRadius: 10, border: 'none', background: active ? 'var(--accent-soft)' : 'transparent', color: active ? 'var(--accent-ink)' : 'var(--ink-2)', fontFamily: 'var(--ui)', fontSize: 13, fontWeight: active ? 700 : 600 }}
           >
-            <Icon name={t.icon} size={16} color={active ? 'var(--accent)' : 'var(--ink-3)'} />
-            {t.label}
+            <Icon name={tb.icon} size={16} color={active ? 'var(--accent)' : 'var(--ink-3)'} />
+            {/* Ids mirror the 'prefs.tab.*' catalog entries. */}
+            {t(`prefs.tab.${tb.id}` as MessageKey)}
           </button>
         );
       })}
@@ -318,16 +346,16 @@ export function PreferencesSheet({ desk, theme, onClose, ownerId, status, onLock
 
   const segmented = (
     <div style={{ display: 'flex', gap: 4, background: 'var(--paper)', border: '1px solid var(--line)', borderRadius: 13, padding: 4, marginBottom: 14 }}>
-      {TABS.map((t) => {
-        const active = tab === t.id;
+      {TABS.map((tb) => {
+        const active = tab === tb.id;
         return (
           <button
-            key={t.id}
-            onClick={() => setTab(t.id)}
+            key={tb.id}
+            onClick={() => setTab(tb.id)}
             style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, padding: '8px 0 6px', borderRadius: 9, cursor: 'pointer', border: 'none', background: active ? 'var(--surface)' : 'transparent', boxShadow: active ? '0 1px 3px rgba(30,20,12,.12)' : 'none', color: active ? 'var(--accent-ink)' : 'var(--ink-3)', fontFamily: 'var(--ui)', fontSize: 10.5, fontWeight: active ? 700 : 600 }}
           >
-            <Icon name={t.icon} size={16} color={active ? 'var(--accent)' : 'var(--ink-3)'} />
-            {t.short}
+            <Icon name={tb.icon} size={16} color={active ? 'var(--accent)' : 'var(--ink-3)'} />
+            {t(`prefs.tab.${tb.id}.short` as MessageKey)}
           </button>
         );
       })}
@@ -336,9 +364,9 @@ export function PreferencesSheet({ desk, theme, onClose, ownerId, status, onLock
 
   const header = (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16, flexShrink: 0 }}>
-      <h3 style={{ fontFamily: 'var(--serif)', fontSize: 20, fontWeight: 500, color: 'var(--ink)', margin: 0 }}>Preferences</h3>
+      <h3 style={{ fontFamily: 'var(--serif)', fontSize: 20, fontWeight: 500, color: 'var(--ink)', margin: 0 }}>{t('prefs.title')}</h3>
       {desk && (
-        <button onClick={onClose} title="Close" style={{ width: 30, height: 30, borderRadius: 8, border: 'none', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <button onClick={onClose} title={t('common.close')} style={{ width: 30, height: 30, borderRadius: 8, border: 'none', background: 'transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <Icon name="x" size={17} color="var(--ink-3)" />
         </button>
       )}
@@ -353,7 +381,7 @@ export function PreferencesSheet({ desk, theme, onClose, ownerId, status, onLock
       {header}
       <div style={{ display: 'flex', gap: 20, flex: 1, minHeight: 0 }}>
         {rail}
-        <div style={{ flex: 1, minWidth: 0, overflowY: 'auto', paddingRight: 4 }}>{panes[tab]}</div>
+        <div style={{ flex: 1, minWidth: 0, overflowY: 'auto', paddingInlineEnd: 4 }}>{panes[tab]}</div>
       </div>
     </div>
   ) : (

@@ -10,15 +10,16 @@ import { Btn } from './primitives';
 import { PassField } from '../screens/Onboarding';
 import { webauthnAvailable, PrfUnsupportedError } from '../platform/webauthn';
 import type { DeviceUnlockChoice } from '../state/data';
+import { t, type MessageKey } from '../i18n';
 
 const pStyle: JSX.CSSProperties = { fontFamily: 'var(--ui)', fontSize: 13.5, lineHeight: 1.55, color: 'var(--ink-2)', margin: 0 };
 
 const noManager = { autocomplete: 'off', 'data-1p-ignore': true, 'data-lpignore': 'true' } as const;
 
-const LABEL: Record<'passphrase' | 'securityKey' | 'off', string> = {
-  passphrase: 'Passphrase',
-  securityKey: 'Security key',
-  off: 'Off — ask for my phrase each time',
+const LABEL_KEY: Record<'passphrase' | 'securityKey' | 'off', MessageKey> = {
+  passphrase: 'vault.unlock.method.passphrase',
+  securityKey: 'vault.unlock.method.securityKey',
+  off: 'vault.unlock.method.off',
 };
 
 export function DeviceUnlockSheet({ desk, onClose, method, apply }: {
@@ -54,21 +55,25 @@ export function DeviceUnlockSheet({ desk, onClose, method, apply }: {
         setPass1('');
         setPass2('');
         setDone(
-          choice.method === 'off'
-            ? 'Nothing stays on this device now — cold starts ask for your twelve words.'
-            : choice.method === 'securityKey'
-              ? 'Done — this device now unlocks with your security key.'
-              : 'Done — this device now unlocks with your passphrase.',
+          t(
+            choice.method === 'off'
+              ? 'vault.unlock.done.off'
+              : choice.method === 'securityKey'
+                ? 'vault.unlock.done.securityKey'
+                : 'vault.unlock.done.passphrase',
+          ),
         );
       })
       .catch((err: unknown) => {
         setBusy(false);
         setError(
-          err instanceof PrfUnsupportedError
-            ? 'This key doesn’t support the required PRF extension — use a passphrase instead.'
-            : choice.method === 'securityKey'
-              ? 'Security key setup didn’t complete — nothing was changed.'
-              : 'That didn’t work — nothing was changed.',
+          t(
+            err instanceof PrfUnsupportedError
+              ? 'vault.unlock.err.prf'
+              : choice.method === 'securityKey'
+                ? 'vault.unlock.err.keySetup'
+                : 'vault.unlock.err.generic',
+          ),
         );
       });
   };
@@ -84,7 +89,7 @@ export function DeviceUnlockSheet({ desk, onClose, method, apply }: {
       onClick={onClick}
       disabled={busy}
       style={{
-        display: 'flex', alignItems: 'flex-start', gap: 12, width: '100%', textAlign: 'left',
+        display: 'flex', alignItems: 'flex-start', gap: 12, width: '100%', textAlign: 'start',
         cursor: busy ? 'default' : 'pointer', padding: '12px 14px', borderRadius: 12,
         border: `1.5px solid ${active ? 'var(--accent)' : 'var(--line)'}`,
         background: active ? 'var(--accent-soft)' : 'var(--paper)',
@@ -94,8 +99,8 @@ export function DeviceUnlockSheet({ desk, onClose, method, apply }: {
       <Icon name={icon} size={17} color={active ? 'var(--accent)' : 'var(--ink-2)'} style={{ marginTop: 1 }} />
       <span style={{ flex: 1, minWidth: 0 }}>
         <span style={{ display: 'block', fontFamily: 'var(--ui)', fontSize: 13.5, fontWeight: 600, color: active ? 'var(--accent-ink)' : 'var(--ink)' }}>
-          {LABEL[kind]}
-          {current === kind && <span style={{ fontFamily: 'var(--mono)', fontSize: 10.5, fontWeight: 500, color: 'var(--ink-3)', marginLeft: 8 }}>current</span>}
+          {t(LABEL_KEY[kind])}
+          {current === kind && <span style={{ fontFamily: 'var(--mono)', fontSize: 10.5, fontWeight: 500, color: 'var(--ink-3)', marginInlineStart: 8 }}>{t('vault.unlock.current')}</span>}
         </span>
         <span style={{ display: 'block', fontFamily: 'var(--ui)', fontSize: 12, lineHeight: 1.5, color: 'var(--ink-3)', marginTop: 2 }}>{note}</span>
       </span>
@@ -113,19 +118,16 @@ export function DeviceUnlockSheet({ desk, onClose, method, apply }: {
       >
         {!desk && <div style={{ width: 38, height: 4, borderRadius: 9, background: 'var(--line)', margin: '0 auto 16px' }} />}
         <h3 style={{ fontFamily: 'var(--serif)', fontSize: 19, fontWeight: 500, color: 'var(--ink)', margin: '0 0 12px', display: 'flex', alignItems: 'center', gap: 9 }}>
-          <Icon name="key" size={18} color="var(--accent)" /> Device unlock
+          <Icon name="key" size={18} color="var(--accent)" /> {t('vault.unlock.title')}
         </h3>
-        <p style={pStyle}>
-          How this device stores your key at rest. Whatever you pick only guards the copy here — the
-          twelve-word recovery phrase always signs you in and is the only way to recover the journal.
-        </p>
+        <p style={pStyle}>{t('vault.unlock.body')}</p>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 16 }}>
           {webauthnAvailable() && (
             <Option
               icon="key"
               kind="securityKey"
-              note="Unlock with a FIDO2 security key or platform passkey (touch/biometric prompt). Enrolls the key now."
+              note={t('vault.unlock.note.securityKey')}
               active={picked === null && current === 'securityKey'}
               onClick={() => run({ method: 'securityKey' })}
             />
@@ -133,7 +135,7 @@ export function DeviceUnlockSheet({ desk, onClose, method, apply }: {
           <Option
             icon="lock"
             kind="passphrase"
-            note="Unlock by typing a device passphrase. Guessable offline by anyone holding the device — pick something long."
+            note={t('vault.unlock.note.passphrase')}
             active={picked === 'passphrase' || (picked === null && current === 'passphrase')}
             onClick={() => setPicked('passphrase')}
           />
@@ -142,18 +144,18 @@ export function DeviceUnlockSheet({ desk, onClose, method, apply }: {
               onSubmit={(e) => { e.preventDefault(); if (passValid) run({ method: 'passphrase', passphrase: pass1 }); }}
               style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: '2px 2px 0' }}
             >
-              <PassField value={pass1} placeholder={`Passphrase (at least ${minLen} characters)`} onInput={setPass1} disabled={busy} noManager={noManager} autoFocus />
-              <PassField value={pass2} placeholder="Repeat the passphrase" onInput={setPass2} disabled={busy} noManager={noManager} />
-              {mismatch && <p style={{ fontFamily: 'var(--ui)', fontSize: 12.5, color: 'var(--accent-ink)', margin: '0 2px' }}>The two passphrases don’t match yet.</p>}
+              <PassField value={pass1} placeholder={t('vault.unlock.passPlaceholder', { min: minLen })} onInput={setPass1} disabled={busy} noManager={noManager} autoFocus />
+              <PassField value={pass2} placeholder={t('vault.unlock.repeatPlaceholder')} onInput={setPass2} disabled={busy} noManager={noManager} />
+              {mismatch && <p style={{ fontFamily: 'var(--ui)', fontSize: 12.5, color: 'var(--accent-ink)', margin: '0 2px' }}>{t('vault.unlock.mismatch')}</p>}
               <Btn kind={passValid ? 'primary' : 'ghost'} size="md" full type="submit" style={{ opacity: passValid && !busy ? 1 : 0.55, pointerEvents: passValid && !busy ? 'auto' : 'none' }}>
-                {busy ? 'Encrypting…' : 'Set passphrase'}
+                {busy ? t('vault.unlock.encrypting') : t('vault.unlock.setPass')}
               </Btn>
             </form>
           )}
           <Option
             icon="shield"
             kind="off"
-            note="Store nothing. Every cold start asks for the full recovery phrase — the strictest setting."
+            note={t('vault.unlock.note.off')}
             active={picked === null && current === 'off'}
             onClick={() => run({ method: 'off' })}
           />
@@ -166,7 +168,7 @@ export function DeviceUnlockSheet({ desk, onClose, method, apply }: {
           </p>
         )}
 
-        <Btn kind="ghost" size="md" full onClick={onClose} style={{ marginTop: 16 }}>Close</Btn>
+        <Btn kind="ghost" size="md" full onClick={onClose} style={{ marginTop: 16 }}>{t('common.close')}</Btn>
       </div>
     </div>
   );

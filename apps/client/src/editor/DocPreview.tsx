@@ -4,6 +4,7 @@
 // keyboard side effects) of mounting a real editor instance per template.
 import type { ComponentChildren, VNode } from 'preact';
 import type { JSONContent } from '@tiptap/core';
+import { t } from '../i18n';
 import { parseBody } from './doc';
 import { renderLatex } from './math';
 import './editor.css';
@@ -91,7 +92,7 @@ function renderNode(n: JSONContent, i: number): ComponentChildren {
       return <br key={i} />;
     case 'mediaAttachment': {
       // Display-only marker; previews never resolve media bytes.
-      const kind = n.attrs?.kind === 'audio' ? '🎙 audio' : '🎬 video';
+      const kind = n.attrs?.kind === 'audio' ? t('editorx.preview.audio') : t('editorx.preview.video');
       return (
         <div key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: 'var(--ui)', fontSize: '0.82em', color: 'var(--ink-3)', border: '1px dashed var(--line)', borderRadius: 9, padding: '4px 10px' }}>
           {kind}
@@ -102,7 +103,7 @@ function renderNode(n: JSONContent, i: number): ComponentChildren {
       // Display-only marker; previews never resolve the snapshot bytes.
       const from = (n.attrs?.from as { label?: unknown } | undefined)?.label;
       const to = (n.attrs?.to as { label?: unknown } | undefined)?.label;
-      const label = `📍 ${typeof from === 'string' && from ? from : 'Location'}${typeof to === 'string' && to ? ` → ${to}` : ''}`;
+      const label = `📍 ${typeof from === 'string' && from ? from : t('editorx.preview.location')}${typeof to === 'string' && to ? ` → ${to}` : ''}`;
       return (
         <div key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontFamily: 'var(--ui)', fontSize: '0.82em', color: 'var(--ink-3)', border: '1px dashed var(--line)', borderRadius: 9, padding: '4px 10px' }}>
           {label}

@@ -221,8 +221,45 @@ the repo root brings up Postgres, MinIO, and the relay together. It's I/O-bound 
 your homelab will not notice it (several hundred users of an E2EE journal is, server-side, basically
 free — there's nothing to index or render).
 
-For deployment, the API surface, and the relay's own test suite, see
+For the API surface and the relay's own test suite, see
 [`server/README.md`](./server/README.md) and [`docs/API.md`](./docs/API.md).
+
+### Production deployment (self-hosted, LAN)
+
+The root `docker-compose.yml` is the **dev** stack (published ports, `_dev` default
+secrets, HTTP). For a real self-hosted deployment there's a separate production stack —
+`docker-compose.prod.yml` plus the `./deploy/prod.sh` wrapper — that adds Caddy in front
+to serve the built client and the relay on **one HTTPS origin**, `restart: unless-stopped`
+on every service, and rolling encrypted backups. The full runbook (HTTPS on a LAN, backups,
+restore, staying up) lives in **[`deploy/README.md`](./deploy/README.md)**.
+
+**Prerequisites on the host:** Docker Engine + the Compose plugin, enabled at boot, and a
+clone of this repo.
+
+```bash
+# one-time: Docker (Debian/Ubuntu; see docs.docker.com for other distros)
+curl -fsSL https://get.docker.com | sh
+sudo systemctl enable --now docker
+sudo usermod -aG docker "$USER"   # then log out/in so `docker` works without sudo
+
+git clone <this-repo> mneme && cd mneme
+```
+
+Then configure secrets and bring the stack up:
+
+```bash
+cp .env.prod.example .env.prod    # fill in POSTGRES_PASSWORD, MINIO_ROOT_PASSWORD,
+                                  # ADMIN_TOKEN, SITE_ADDRESS, DEFAULT_SNI, BACKUP_HOST_DIR
+./deploy/prod.sh up -d --build    # build images + start Postgres, MinIO, relay, Caddy
+./deploy/prod.sh ps               # everything Up / healthy?
+```
+
+Open `https://<host>/mneme/`. Because the client needs a secure context (OPFS + media
+capture), Caddy issues certificates from its own internal CA — accept the browser warning
+once per device, or install its root cert (details in the runbook). Deploying a new version
+is the same `./deploy/prod.sh up -d --build`; `./deploy/prod.sh down` stops the stack while
+keeping all data. **See [`deploy/README.md`](./deploy/README.md) for backups, disaster
+recovery, and the full operations crib sheet.**
 
 ### The admin dashboard
 
@@ -268,6 +305,7 @@ with [`docs/README.md`](./docs/README.md):
 | [`docs/API.md`](./docs/API.md) | The relay's HTTP API reference, including the admin surface. |
 | [`docs/CONTRIBUTING.md`](./docs/CONTRIBUTING.md) | Setup, the quality gates, conventions, and where things live. |
 | [`server/README.md`](./server/README.md) | Running, configuring, and testing the Go relay specifically. |
+| [`deploy/README.md`](./deploy/README.md) | Self-hosted production deployment: the Docker+Caddy prod stack, HTTPS on a LAN, backups, and disaster recovery. |
 | [`CLAUDE.md`](./CLAUDE.md) | The decision document and source of truth (German; §0 is an English operating guide). |
 
 ---

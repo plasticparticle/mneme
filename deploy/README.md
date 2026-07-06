@@ -82,6 +82,31 @@ lives in named volumes (`pgdata`, `miniodata`, `caddy_data`) plus the backup
 bind mount; `./deploy/prod.sh down` keeps all of it (only `down -v` destroys
 volumes — don't).
 
+## Updating
+
+Releases are cut as `vMAJOR.MINOR.PATCH` git tags. Pushing a tag runs
+`.github/workflows/release.yml`, which builds the relay image
+(`ghcr.io/plasticparticle/mneme-server:<tag>` + `:latest`) and publishes a
+GitHub Release. The admin dashboard checks that release feed hourly and shows a
+**"newer version available"** banner when this host is behind — it only tells
+you; it never updates anything itself (a container updating its own image would
+mean handing the relay the Docker socket, which this deployment deliberately
+does not do).
+
+To actually upgrade, on the host:
+
+```bash
+cd /path/to/mneme
+git fetch --tags && git checkout <tag>   # e.g. v0.3.0
+./deploy/prod.sh up -d --build server     # rebuild + restart just the relay
+```
+
+`deploy/prod.sh` stamps the checked-out version into the image, so after the
+restart the dashboard reports the new version and the banner clears. (The banner
+is device-local to the browser and informational only.) For air-gapped hosts
+that shouldn't reach `api.github.com`, set `UPDATE_CHECK=off` in `.env.prod` —
+the check then makes no outbound call and the banner never appears.
+
 ## Operations crib sheet
 
 ```bash
@@ -93,5 +118,5 @@ docker system prune                       # occasionally, to drop old image laye
 ```
 
 Admin dashboard: `https://<host>/mneme/admin` with the `ADMIN_TOKEN` from
-`.env.prod` (storage footprints, backup controls). Leave `ADMIN_TOKEN` empty
-to disable the surface entirely.
+`.env.prod` (storage footprints, backup controls, version/update banner). Leave
+`ADMIN_TOKEN` empty to disable the surface entirely.

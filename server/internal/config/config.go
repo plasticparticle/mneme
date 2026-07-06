@@ -4,6 +4,7 @@ package config
 import (
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -13,6 +14,8 @@ type Config struct {
 	SessionTTL  time.Duration
 	CORSOrigins string // comma-separated allowed origins, or "*" to reflect any
 	AdminToken  string // bearer token for /admin; empty disables the admin surface entirely
+	Version     string // build identifier, set by main (not from the environment)
+	UpdateCheck bool   // whether the admin surface may query GitHub for a newer release
 	S3          S3Config
 	Backup      BackupConfig
 }
@@ -44,6 +47,8 @@ func Load() Config {
 		SessionTTL:  envDuration("SESSION_TTL", 24*time.Hour),
 		CORSOrigins: env("CORS_ORIGINS", "*"),
 		AdminToken:  env("ADMIN_TOKEN", ""),
+		// Version is stamped in by main via -ldflags; not an env value.
+		UpdateCheck: envBool("UPDATE_CHECK", true),
 		S3: S3Config{
 			Endpoint:  env("S3_ENDPOINT", ""),
 			AccessKey: env("S3_ACCESS_KEY", ""),
@@ -81,4 +86,15 @@ func envInt(key string, def int) int {
 		}
 	}
 	return def
+}
+
+func envBool(key string, def bool) bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv(key))) {
+	case "":
+		return def
+	case "0", "false", "off", "no":
+		return false
+	default:
+		return true
+	}
 }

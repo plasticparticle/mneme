@@ -42,6 +42,10 @@ services:
     build:
       context: .
       dockerfile: server/Dockerfile
+      args:
+        # Stamped into the binary as the build version. deploy/prod.sh exports
+        # MNEME_VERSION=$(git describe --tags --always); falls back to "dev".
+        VERSION: "${MNEME_VERSION:-dev}"
     restart: unless-stopped
     environment:
       DATABASE_URL: postgres://journal:${POSTGRES_PASSWORD}@postgres:5432/journal?sslmode=disable
@@ -54,6 +58,8 @@ services:
       CORS_ORIGINS: ""
       # Operator dashboard at /admin; unset to disable it entirely.
       ADMIN_TOKEN: ${ADMIN_TOKEN:-}
+      # Dashboard update check (GitHub releases); set off for air-gapped hosts.
+      UPDATE_CHECK: ${UPDATE_CHECK:-on}
       # Rolling encrypted-blob archives of every vault (see deploy/README.md).
       BACKUP_DIR: /backups
       BACKUP_INTERVAL: ${BACKUP_INTERVAL:-24h}

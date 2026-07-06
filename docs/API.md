@@ -32,6 +32,7 @@ the auth model.
 | DELETE | `/v1/account` | ✅ | wipe the owner entirely (phrase rotation) |
 | GET | `/admin` | – | admin dashboard page (404 unless `ADMIN_TOKEN` is set) |
 | GET | `/admin/stats` | 🔑 | aggregate stats JSON (`Bearer <ADMIN_TOKEN>`) |
+| GET | `/admin/version` | 🔑 | running build vs. latest GitHub release |
 | DELETE | `/admin/vaults/{id}` | 🔑 | operator vault wipe (requires `{"confirm":"delete"}` body) |
 | GET | `/admin/backups` | 🔑 | backup service status + stored archive listing |
 | POST | `/admin/backups` | 🔑 | trigger a backup now (202, runs detached) |
@@ -216,6 +217,33 @@ metadata and AI-settings records are **indistinguishable** on purpose (the recor
 the ciphertext). "Journals created" is not measurable at all — journal metadata syncs under a random
 wire id with the journal's identity inside the ciphertext — and media kinds (video/audio/image/file)
 are unknowable — the mime type never reaches the relay.
+
+### `GET /admin/version` → `200`
+
+Requires `Authorization: Bearer <ADMIN_TOKEN>`. Reports the running build and — unless disabled —
+the newest published GitHub release, so the dashboard can show a "newer version available" banner.
+It is **informational only**: the relay never downloads or applies anything; upgrading is a host-side
+operation the operator runs (see deploy/README.md).
+
+```json
+{
+  "current": "v0.2.1",
+  "latest": "v0.3.0",
+  "update_available": true,
+  "html_url": "https://github.com/plasticparticle/mneme/releases/tag/v0.3.0",
+  "name": "v0.3.0",
+  "published_at": "2026-07-01T12:00:00Z",
+  "notes": "…release body (truncated)…",
+  "checked_at": "2026-07-06T09:00:00Z"
+}
+```
+
+- `current` is stamped into the binary at build time (`-ldflags -X main.version`); source builds
+  report `dev`, and a non-semver `current` is never flagged as out-of-date (`update_available:false`).
+- The relay queries `api.github.com` at most once per hour (cached; a failed check falls back to the
+  last good result with an `error` field). This is the relay's **only** outbound call.
+- Set `UPDATE_CHECK=off` (or `false`/`0`) to disable it entirely for air-gapped deployments — the
+  endpoint then returns `{"current": "…", "disabled": true}` and makes no outbound request.
 
 ### `DELETE /admin/vaults/{id}` → `204 No Content`
 

@@ -74,6 +74,17 @@
   footer { margin-top: 40px; color: var(--ink-soft); font-size: 12.5px; border-top: 1px solid var(--line); padding-top: 14px; }
   .hidden { display: none; }
 
+  /* update-available banner — informational only; the operator upgrades on the host */
+  #update {
+    margin-top: 18px; padding: 12px 16px; border-radius: 10px;
+    background: var(--accent-soft); border: 1px solid var(--accent);
+    display: flex; align-items: baseline; gap: 6px 14px; flex-wrap: wrap; font-size: 14px;
+  }
+  #update .u-tag { font-family: "Spline Sans Mono", ui-monospace, monospace; font-weight: 600; }
+  #update .u-from { color: var(--ink-soft); font-size: 13px; }
+  #update a { color: var(--accent); font-weight: 600; text-decoration: none; margin-inline-start: auto; white-space: nowrap; }
+  #update a:hover { text-decoration: underline; }
+
   .rowdel {
     font: inherit; font-size: 12px; padding: 3px 9px; border-radius: 6px; cursor: pointer;
     border: 1px solid var(--line); background: transparent; color: var(--ink-soft);
@@ -138,9 +149,15 @@
 
   <div id="dash" class="hidden">
     <header>
-      <h1>Mneme relay <small>· admin</small></h1>
+      <h1>Mneme relay <small>· admin <span id="ver" class="mono"></span></small></h1>
       <span id="status"></span>
     </header>
+
+    <div id="update" class="hidden">
+      <span>A newer version is available: <span id="upLatest" class="u-tag"></span>
+        <span id="upFrom" class="u-from"></span></span>
+      <a id="upLink" href="#" target="_blank" rel="noopener noreferrer">View release →</a>
+    </div>
 
     <div class="cards" id="cards"></div>
 
@@ -491,6 +508,28 @@
     $('chartPeak').textContent = 'peak ' + (isBytes ? fmtBytes(peak) : fmtNum(peak));
   }
 
+  // Running build vs. the latest GitHub release. Purely informational — reveals
+  // a banner when a newer release exists; never blocks or alters the dashboard.
+  function renderVersion(v) {
+    $('ver').textContent = v.current ? '· ' + v.current : '';
+    const show = v && v.update_available && v.latest;
+    $('update').classList.toggle('hidden', !show);
+    if (!show) return;
+    $('upLatest').textContent = v.latest;
+    $('upFrom').textContent = v.current ? '(running ' + v.current + ')' : '';
+    $('upLink').href = v.html_url || '#';
+  }
+
+  async function loadVersion() {
+    const token = sessionStorage.getItem(KEY);
+    if (!token) return;
+    try {
+      const res = await fetch(API + '/version', { headers: { Authorization: 'Bearer ' + token } });
+      if (!res.ok) return; // non-fatal: leave the banner hidden
+      renderVersion(await res.json());
+    } catch { /* offline / air-gapped — no banner */ }
+  }
+
   async function load() {
     const token = sessionStorage.getItem(KEY);
     if (!token) return gate();
@@ -504,6 +543,7 @@
       $('status').className = '';
       $('status').textContent = 'updated ' + new Date().toLocaleTimeString();
       loadBackups();
+      loadVersion();
     } catch (e) {
       $('status').className = 'err';
       $('status').textContent = 'fetch failed: ' + e.message;

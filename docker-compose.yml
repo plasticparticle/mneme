@@ -41,6 +41,8 @@ services:
     build:
       context: .
       dockerfile: server/Dockerfile
+      args:
+        VERSION: "${MNEME_VERSION:-dev}"
     environment:
       DATABASE_URL: postgres://journal:journal_dev@postgres:5432/journal?sslmode=disable
       S3_ENDPOINT: http://minio:9000

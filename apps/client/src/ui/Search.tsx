@@ -11,11 +11,12 @@ import { Icon } from './Icon';
 import { LabelChip } from './primitives';
 import { useAppData } from '../state/data';
 import { search, normalize, type Hit } from '../search/core';
+import { t, monthName, fmtDate, type MessageKey } from '../i18n';
 
 /** Render text with the query tokens emphasized. */
 function Highlight({ text, tokens }: { text: string; tokens: string[] }): VNode {
   if (tokens.length === 0) return <>{text}</>;
-  const pattern = tokens.map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
+  const pattern = tokens.map((tok) => tok.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
   const parts = text.split(new RegExp(`(${pattern})`, 'gi'));
   return (
     <>
@@ -28,10 +29,32 @@ function Highlight({ text, tokens }: { text: string; tokens: string[] }): VNode 
   );
 }
 
-const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 function shortDate(ts: number): string {
-  const d = new Date(ts);
-  return `${MON[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;
+  return fmtDate(ts, { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+// Explicit English fallback so date search keeps working regardless of the UI
+// language (search/core spells its date haystack in English).
+const EN_MONTHS = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
+
+// Rewrite month words in the query — written in the active locale's spelling
+// (long or short) or in English — to their English long name, so the English
+// date haystack search/core builds still matches. Returns null when the query
+// carries no month word, so "märz 9" or "9 giu" reach the same entries as "jun 9".
+function toEnglishMonths(q: string): string | null {
+  const out = q.split(' ').map((tok) => {
+    const c = tok.replace(/\.$/, '');
+    if (c.length < 3) return tok;
+    for (let i = 0; i < 12; i++) {
+      const forms = [monthName(i, 'long'), monthName(i, 'short'), EN_MONTHS[i]].map((f) =>
+        f.toLowerCase().replace(/\.$/, ''),
+      );
+      if (forms.some((f) => f === c || f.startsWith(c))) return EN_MONTHS[i];
+    }
+    return tok;
+  });
+  const joined = out.join(' ');
+  return joined === q ? null : joined;
 }
 
 export function SearchSheet({ desk, onClose, onOpen }: {
@@ -46,7 +69,15 @@ export function SearchSheet({ desk, onClose, onOpen }: {
 
   const tokens = normalize(query).split(' ').filter(Boolean);
   const hits = useMemo(() => {
-    if (tokens.length > 0) return search(entries, query);
+    if (tokens.length > 0) {
+      // Match on the query as typed (title/content/labels + English dates), then
+      // union in a month-translated pass so locale month spellings hit dates too.
+      const base = search(entries, query);
+      const alt = toEnglishMonths(normalize(query));
+      if (!alt) return base;
+      const seen = new Set(base.map((h) => h.entry.id));
+      return [...base, ...search(entries, alt).filter((h) => !seen.has(h.entry.id))];
+    }
     // Empty query: offer the most recently touched entries as a starting point.
     return [...entries]
       .filter((e) => !e.deleted)
@@ -79,7 +110,7 @@ export function SearchSheet({ desk, onClose, onOpen }: {
     <div ref={listRef} style={{ flex: 1, overflowY: 'auto', padding: 6, display: 'flex', flexDirection: 'column', gap: 1 }}>
       {hits.length === 0 && (
         <div style={{ padding: '28px 16px', textAlign: 'center', fontFamily: 'var(--ui)', fontSize: 13, color: 'var(--ink-3)' }}>
-          Nothing matches “{query}” — try a word from an entry, a label, or a date like “jun 9”.
+          {t('shell.search.empty', { query })}
         </div>
       )}
       {hits.map((h, i) => {
@@ -93,7 +124,7 @@ export function SearchSheet({ desk, onClose, onOpen }: {
             onMouseEnter={() => setIndex(i)}
             ref={(el) => { if (hot) el?.scrollIntoView({ block: 'nearest' }); }}
             style={{
-              display: 'block', width: '100%', textAlign: 'left', cursor: 'pointer',
+              display: 'block', width: '100%', textAlign: 'start', cursor: 'pointer',
               padding: '10px 12px', borderRadius: 12, border: 'none',
               background: hot ? 'var(--accent-soft)' : 'transparent',
             }}
@@ -101,11 +132,11 @@ export function SearchSheet({ desk, onClose, onOpen }: {
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
               <span style={{ width: 8, height: 8, borderRadius: 9, background: j?.color ?? 'var(--ink-3)', flexShrink: 0, alignSelf: 'center' }} />
               <span style={{ flex: 1, fontFamily: 'var(--serif)', fontSize: 15.5, fontWeight: 500, color: 'var(--ink)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                <Highlight text={h.entry.title || 'Untitled'} tokens={tokens} />
+                <Highlight text={h.entry.title || t('common.untitled')} tokens={tokens} />
               </span>
               {h.field !== 'content' && tokens.length > 0 && (
                 <span style={{ fontFamily: 'var(--mono)', fontSize: 10, letterSpacing: 0.5, textTransform: 'uppercase', color: 'var(--ink-3)', border: '1px solid var(--line)', borderRadius: 6, padding: '1px 6px', flexShrink: 0 }}>
-                  {h.field}
+                  {t(`shell.search.field.${h.field}` as MessageKey)}
                 </span>
               )}
               <span style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--ink-3)', flexShrink: 0 }}>
@@ -142,7 +173,7 @@ export function SearchSheet({ desk, onClose, onOpen }: {
         value={query}
         onInput={(ev) => { setQuery((ev.target as HTMLInputElement).value); setIndex(0); }}
         onKeyDown={onKeyDown}
-        placeholder="Search titles, content, labels, dates…"
+        placeholder={t('shell.search.placeholder')}
         style={{
           flex: 1, border: 'none', outline: 'none', background: 'transparent',
           fontFamily: 'var(--ui)', fontSize: 15, color: 'var(--ink)', padding: 0,

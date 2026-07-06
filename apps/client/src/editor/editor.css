@@ -54,8 +54,9 @@
      frames it evenly, and a touch more separation from the surrounding text
      than a plain paragraph gets. */
   margin: 0;
-  padding: calc(var(--editor-gap) * 0.5) 0 calc(var(--editor-gap) * 0.5) 22px;
-  border-left: 3px solid var(--accent);
+  padding-block: calc(var(--editor-gap) * 0.5);
+  padding-inline: 22px 0;
+  border-inline-start: 3px solid var(--accent);
   font-style: italic;
   color: var(--ink-2);
 }
@@ -66,7 +67,7 @@
 .mneme-prose ul,
 .mneme-prose ol {
   margin: 0;
-  padding-left: 1.4em;
+  padding-inline-start: 1.4em;
 }
 .mneme-prose li { margin: 4px 0; }
 .mneme-prose li > p { margin: 0; }
@@ -103,7 +104,7 @@
 /* Task lists (checklists) */
 .mneme-prose ul[data-type='taskList'] {
   list-style: none;
-  padding-left: 0;
+  padding-inline-start: 0;
 }
 .mneme-prose ul[data-type='taskList'] li {
   display: flex;
@@ -232,7 +233,7 @@
 .mneme-prose th {
   background: var(--surface-2);
   font-weight: 600;
-  text-align: left;
+  text-align: start;
 }
 .mneme-prose td > p,
 .mneme-prose th > p {
@@ -337,6 +338,10 @@
   content: '↳ ';
   opacity: 0.6;
 }
+/* RTL: mirror the direction-bearing link arrow. */
+[dir='rtl'] .mneme-prose .mneme-wikilink::before {
+  content: '↲ ';
+}
 .mneme-prose .mneme-wikilink:hover {
   background: var(--accent-line);
 }
@@ -356,7 +361,7 @@
 .mneme-prose p.is-editor-empty:first-child::before,
 .mneme-prose .is-empty::before {
   content: attr(data-placeholder);
-  float: left;
+  float: inline-start;
   height: 0;
   pointer-events: none;
   color: var(--ink-3);

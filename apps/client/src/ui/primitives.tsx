@@ -3,6 +3,7 @@ import { Icon, type IconName } from './Icon';
 import { hexA } from './color';
 import { labelInfo, type CoverPattern } from '../data/sample';
 import { useAppData, type SyncStatus } from '../state/data';
+import { t } from '../i18n';
 
 // ── Striped placeholder (for photos) ────────────────────────
 interface PlaceholderProps {
@@ -11,7 +12,7 @@ interface PlaceholderProps {
   r?: number;
   style?: JSX.CSSProperties;
 }
-export function Placeholder({ label = 'photo', h = 160, r = 14, style = {} }: PlaceholderProps): VNode {
+export function Placeholder({ label, h = 160, r = 14, style = {} }: PlaceholderProps): VNode {
   return (
     <div
       style={{
@@ -28,7 +29,7 @@ export function Placeholder({ label = 'photo', h = 160, r = 14, style = {} }: Pl
           border: '1px solid var(--line)',
         }}
       >
-        {label}
+        {label ?? t('shell.photo')}
       </span>
     </div>
   );
@@ -98,11 +99,11 @@ export function LabelChip({ id, size = 'md', onRemove }: { id: string; size?: 's
       {L.name}
       {onRemove && (
         <button
-          title={`Remove "${L.name}"`}
+          title={t('shell.removeLabel', { name: L.name })}
           onClick={onRemove}
           style={{
             display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-            width: 14, height: 14, margin: '0 -3px 0 -1px', padding: 0,
+            width: 14, height: 14, margin: 0, marginInlineStart: -1, marginInlineEnd: -3, padding: 0,
             background: 'transparent', border: 'none', borderRadius: 999,
             color: L.color, cursor: 'pointer', opacity: 0.65,
           }}
@@ -128,22 +129,22 @@ interface SyncView {
   title: string;
 }
 function deriveSync(status: SyncStatus, pendingCount: number, saving: boolean, dirty: boolean): SyncView {
-  if (status === 'connecting') return { label: 'Connecting…', dot: 'var(--ink-3)', busy: true, locked: false, title: 'Connecting to the relay' };
+  if (status === 'connecting') return { label: t('shell.conn.connecting'), dot: 'var(--ink-3)', busy: true, locked: false, title: t('shell.sync.connectingTitle') };
   const unsynced = dirty || saving || pendingCount > 0;
   if (status === 'offline') {
     return unsynced
-      ? { label: 'Offline · saved here', dot: '#c98a3c', busy: false, locked: false, title: 'Saved on this device — will sync when you reconnect' }
-      : { label: 'Offline', dot: 'var(--ink-3)', busy: false, locked: false, title: 'No connection to the relay' };
+      ? { label: t('shell.sync.offlineSaved'), dot: '#c98a3c', busy: false, locked: false, title: t('shell.sync.offlineSavedTitle') }
+      : { label: t('shell.conn.offline'), dot: 'var(--ink-3)', busy: false, locked: false, title: t('shell.sync.offlineTitle') };
   }
-  if (status === 'locked') return { label: 'Locked', dot: 'var(--ink-3)', busy: false, locked: false, title: 'Not signed in' };
+  if (status === 'locked') return { label: t('shell.conn.locked'), dot: 'var(--ink-3)', busy: false, locked: false, title: t('shell.sync.lockedTitle') };
   // online
   if (unsynced) {
     // Surface the outbox depth so a long sync (e.g. just after a bulk import)
     // reads as visible, finite progress rather than an indefinite "Saving…".
-    const label = pendingCount > 0 ? `Syncing ${pendingCount}…` : 'Saving…';
-    return { label, dot: 'var(--accent)', busy: true, locked: false, title: 'Encrypting and syncing your changes' };
+    const label = pendingCount > 0 ? t('shell.sync.syncingCount', { count: pendingCount }) : t('shell.sync.saving');
+    return { label, dot: 'var(--accent)', busy: true, locked: false, title: t('shell.sync.busyTitle') };
   }
-  return { label: 'Synced', dot: 'var(--accent)', busy: false, locked: true, title: 'End-to-end encrypted · all changes synced' };
+  return { label: t('shell.sync.synced'), dot: 'var(--accent)', busy: false, locked: true, title: t('shell.sync.syncedTitle') };
 }
 
 export function SyncBadge({ compact, dirty = false }: { compact?: boolean; dirty?: boolean }): VNode {
@@ -185,13 +186,13 @@ export function connColor(s: SyncStatus): string {
 export function connLabel(s: SyncStatus): string {
   switch (s) {
     case 'online':
-      return 'Connected';
+      return t('shell.conn.online');
     case 'offline':
-      return 'Offline';
+      return t('shell.conn.offline');
     case 'connecting':
-      return 'Connecting…';
+      return t('shell.conn.connecting');
     default:
-      return 'Locked';
+      return t('shell.conn.locked');
   }
 }
 
@@ -256,8 +257,8 @@ export function SyncNotice({ title, body }: { title?: string; body?: string } = 
     >
       <Spinner size={16} />
       <span style={{ fontFamily: 'var(--ui)', fontSize: 12.5, lineHeight: 1.5, color: 'var(--accent-ink)' }}>
-        <strong>{title ?? 'Syncing your journal…'}</strong>{' '}
-        {body ?? 'Entries are downloaded from the relay and decrypted on this device. They appear as they arrive.'}
+        <strong>{title ?? t('shell.sync.noticeTitle')}</strong>{' '}
+        {body ?? t('shell.sync.noticeBody')}
       </span>
     </div>
   );
@@ -276,7 +277,7 @@ export function SyncProgressBar({ flush = false }: { flush?: boolean } = {}): VN
   const pct = Math.max(3, Math.min(100, (done / syncTotal) * 100));
   return (
     <div
-      title={`Syncing — ${done} of ${syncTotal} done`}
+      title={t('shell.sync.progress', { done, total: syncTotal })}
       style={{ height: flush ? 3 : 4, background: 'var(--line)', borderRadius: flush ? 0 : 999, overflow: 'hidden' }}
     >
       <div class="mneme-pulse" style={{ height: '100%', width: `${pct}%`, background: 'var(--accent)', borderRadius: 'inherit', transition: 'width .3s ease' }} />
@@ -307,7 +308,7 @@ export function Cover({ journal, w = 44, h = 56, r = 8 }: { journal: CoverSpec; 
         border: `1px solid ${hexA(c, 0.3)}`, boxShadow: 'inset 0 0 0 100px transparent',
       }}
     >
-      <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 4, background: c, opacity: 0.85 }} />
+      <div style={{ position: 'absolute', insetInlineStart: 0, top: 0, bottom: 0, width: 4, background: c, opacity: 0.85 }} />
     </div>
   );
 }

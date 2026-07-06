@@ -4,9 +4,12 @@
 import type { VNode } from 'preact';
 import { useEffect, useState } from 'preact/hooks';
 import type { MediaAttachment } from '../sync/engine';
+import { t } from '../i18n';
 import { useMediaUrl, fmtBytes, type MediaResolver } from './Attachments';
 import { Icon } from './Icon';
 
+// Prev/next keep their physical left/right positions and glyphs even in RTL —
+// stepping through an image strip is spatial navigation, not reading order.
 function NavButton({ dir, onClick }: { dir: 'left' | 'right'; onClick: () => void }): VNode {
   return (
     <button
@@ -14,7 +17,7 @@ function NavButton({ dir, onClick }: { dir: 'left' | 'right'; onClick: () => voi
         e.stopPropagation();
         onClick();
       }}
-      title={dir === 'left' ? 'Previous image' : 'Next image'}
+      title={dir === 'left' ? t('media.lightbox.prev') : t('media.lightbox.next')}
       style={{
         position: 'absolute', top: '50%', transform: 'translateY(-50%)',
         [dir]: 14, width: 44, height: 44, borderRadius: 999, border: 'none',
@@ -63,14 +66,14 @@ export function Lightbox({
   return (
     <div
       role="dialog"
-      aria-label="Image viewer"
+      aria-label={t('media.lightbox.viewer')}
       onClick={onClose}
       style={{ position: 'fixed', inset: 0, zIndex: 90, background: 'rgba(16,11,7,.92)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
     >
       <button
         onClick={onClose}
-        title="Close"
-        style={{ position: 'absolute', top: 'calc(env(safe-area-inset-top, 0px) + 14px)', right: 14, width: 40, height: 40, borderRadius: 999, border: 'none', background: 'rgba(255,255,255,.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#fff', zIndex: 2 }}
+        title={t('common.close')}
+        style={{ position: 'absolute', top: 'calc(env(safe-area-inset-top, 0px) + 14px)', insetInlineEnd: 14, width: 40, height: 40, borderRadius: 999, border: 'none', background: 'rgba(255,255,255,.12)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#fff', zIndex: 2 }}
       >
         <Icon name="x" size={18} />
       </button>
@@ -85,7 +88,7 @@ export function Lightbox({
         style={{ position: 'absolute', left: 0, right: 0, bottom: 'calc(env(safe-area-inset-bottom, 0px) + 14px)', display: 'flex', justifyContent: 'center', pointerEvents: 'none' }}
       >
         <span style={{ fontFamily: 'var(--mono)', fontSize: 12, color: 'rgba(255,255,255,.75)', background: 'rgba(0,0,0,.35)', borderRadius: 999, padding: '5px 13px', maxWidth: '82%', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-          {many ? `${index + 1} / ${items.length}` : fmtBytes(att.bytes)}
+          {many ? t('media.lightbox.counter', { n: index + 1, total: items.length }) : fmtBytes(att.bytes)}
           {att.name ? ` · ${att.name}` : ''}
         </span>
       </div>
@@ -103,7 +106,7 @@ function LightboxImage({ att, resolve }: { att: MediaAttachment; resolve: MediaR
     return (
       <img
         src={url}
-        alt={att.name || 'photo'}
+        alt={att.name || t('media.noun.image')}
         onClick={stop}
         onLoad={() => setHidden(false)}
         style={{ maxWidth: '94vw', maxHeight: '92vh', objectFit: 'contain', borderRadius: 6, opacity: hidden ? 0 : 1, transition: 'opacity .14s' }}
@@ -118,10 +121,10 @@ function LightboxImage({ att, resolve }: { att: MediaAttachment; resolve: MediaR
           onClick={retry}
           style={{ fontFamily: 'var(--ui)', fontSize: 13, fontWeight: 600, color: '#fff', background: 'rgba(255,255,255,.14)', border: 'none', borderRadius: 999, padding: '7px 16px', cursor: 'pointer' }}
         >
-          Not available yet — retry
+          {t('media.retryUnavailable')}
         </button>
       ) : (
-        <span style={{ fontFamily: 'var(--ui)', fontSize: 13 }}>Loading…</span>
+        <span style={{ fontFamily: 'var(--ui)', fontSize: 13 }}>{t('common.loading')}</span>
       )}
     </div>
   );

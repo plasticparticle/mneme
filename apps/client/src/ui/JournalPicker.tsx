@@ -1,5 +1,6 @@
 import type { VNode } from 'preact';
 import { useEffect, useState } from 'preact/hooks';
+import { t, tp } from '../i18n';
 import { Icon } from './Icon';
 import type { Journal } from '../data/sample';
 
@@ -27,14 +28,14 @@ export function JournalPicker({
   return (
     <>
       <button
-        title="Move to another notebook"
+        title={t('journals.picker.move')}
         onClick={() => setOpen(true)}
         style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'transparent', border: 'none', borderRadius: 8, padding: '3px 7px', margin: '-3px -7px', cursor: 'pointer', color: 'var(--ink-3)', transition: 'all .14s' }}
         onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-2)'; e.currentTarget.style.color = 'var(--ink-2)'; }}
         onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'var(--ink-3)'; }}
       >
         <span style={{ width: 8, height: 8, borderRadius: 9, background: current?.color ?? 'var(--ink-3)' }} />
-        <span style={{ fontFamily: 'var(--ui)', fontSize: 13 }}>{current?.name ?? 'No notebook'}</span>
+        <span style={{ fontFamily: 'var(--ui)', fontSize: 13 }}>{current?.name ?? t('journals.picker.none')}</span>
         <Icon name="down" size={12} />
       </button>
       {open && (
@@ -85,7 +86,7 @@ export function JournalSheet({
       >
         {!desk && <div style={{ width: 38, height: 4, borderRadius: 9, background: 'var(--line)', margin: '0 auto 14px' }} />}
 
-        <div style={{ fontFamily: 'var(--ui)', fontSize: 11.5, fontWeight: 700, letterSpacing: 0.8, textTransform: 'uppercase', color: 'var(--ink-3)', marginBottom: 12 }}>Move to notebook</div>
+        <div style={{ fontFamily: 'var(--ui)', fontSize: 11.5, fontWeight: 700, letterSpacing: 0.8, textTransform: 'uppercase', color: 'var(--ink-3)', marginBottom: 12 }}>{t('journals.picker.heading')}</div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
           {journals.map((j) => {
@@ -94,14 +95,14 @@ export function JournalSheet({
               <button
                 key={j.id}
                 onClick={() => onPick(j.id)}
-                style={{ display: 'flex', alignItems: 'center', gap: 11, width: '100%', textAlign: 'left', cursor: 'pointer', padding: '10px 11px', borderRadius: 12, border: '1px solid transparent', background: active ? 'var(--accent-soft)' : 'transparent', transition: 'background .12s' }}
+                style={{ display: 'flex', alignItems: 'center', gap: 11, width: '100%', textAlign: 'start', cursor: 'pointer', padding: '10px 11px', borderRadius: 12, border: '1px solid transparent', background: active ? 'var(--accent-soft)' : 'transparent', transition: 'background .12s' }}
                 onMouseEnter={(e) => { if (!active) e.currentTarget.style.background = 'var(--surface-2)'; }}
                 onMouseLeave={(e) => { if (!active) e.currentTarget.style.background = 'transparent'; }}
               >
                 <span style={{ width: 12, height: 12, borderRadius: 4, flexShrink: 0, background: j.color }} />
                 <span style={{ flex: 1, minWidth: 0 }}>
                   <span style={{ display: 'block', fontFamily: 'var(--ui)', fontSize: 14, fontWeight: 600, color: active ? 'var(--accent-ink)' : 'var(--ink)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{j.name}</span>
-                  <span style={{ display: 'block', fontFamily: 'var(--ui)', fontSize: 12, color: 'var(--ink-3)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{j.count} {j.count === 1 ? 'entry' : 'entries'}</span>
+                  <span style={{ display: 'block', fontFamily: 'var(--ui)', fontSize: 12, color: 'var(--ink-3)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{tp('common.entries', j.count)}</span>
                 </span>
                 {active && <Icon name="check" size={17} color="var(--accent)" />}
               </button>

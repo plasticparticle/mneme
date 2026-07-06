@@ -12,6 +12,7 @@ import { Btn } from './primitives';
 import { useAppData } from '../state/data';
 import { parseDayOneArchive, type DayOneArchive } from '../import/dayone';
 import { importDayOne, type ImportProgress, type ImportSummary } from '../import/run';
+import { t, tp } from '../i18n';
 
 type Step = 'pick' | 'ready' | 'working' | 'done' | 'error';
 
@@ -62,16 +63,16 @@ export function ImportDayOneSheet({ desk, onClose }: { desk: boolean; onClose: (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16, padding: '6px 0' }}>
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
             <Icon name="download" size={26} color="var(--accent)" />
-            <div style={{ fontFamily: 'var(--ui)', fontSize: 14, fontWeight: 600, color: 'var(--ink)' }}>Importing your journal…</div>
+            <div style={{ fontFamily: 'var(--ui)', fontSize: 14, fontWeight: 600, color: 'var(--ink)' }}>{t('vault.import.working')}</div>
             <p style={{ ...pStyle, fontSize: 12.5, textAlign: 'center' }}>
-              {progress?.current ? `Writing “${progress.current}”` : 'Encrypting entries and media on this device.'}
+              {progress?.current ? t('vault.import.writing', { title: progress.current }) : t('vault.import.encrypting')}
             </p>
           </div>
           <div style={{ height: 8, borderRadius: 999, background: 'var(--paper)', border: '1px solid var(--line)', overflow: 'hidden' }}>
             <div style={{ width: `${pct}%`, height: '100%', background: 'var(--accent)', transition: 'width .2s' }} />
           </div>
           <div style={{ fontFamily: 'var(--mono)', fontSize: 11.5, color: 'var(--ink-3)', textAlign: 'center' }}>
-            {progress?.done ?? 0} / {progress?.total ?? 0} entries
+            {tp('vault.import.progress', progress?.total ?? 0, { n: progress?.done ?? 0 })}
           </div>
         </div>
       );
@@ -82,18 +83,16 @@ export function ImportDayOneSheet({ desk, onClose }: { desk: boolean; onClose: (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
             <Icon name="check" size={26} color="var(--accent)" />
-            <div style={{ fontFamily: 'var(--ui)', fontSize: 14, fontWeight: 600, color: 'var(--ink)' }}>Import complete</div>
+            <div style={{ fontFamily: 'var(--ui)', fontSize: 14, fontWeight: 600, color: 'var(--ink)' }}>{t('vault.import.done')}</div>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6, fontFamily: 'var(--ui)', fontSize: 13, color: 'var(--ink-2)' }}>
-            <SummaryRow label="Entries imported" value={summary.entries} />
-            <SummaryRow label="Notebooks created" value={summary.journals} />
-            <SummaryRow label="Media files attached" value={summary.media} />
-            {summary.skippedMedia > 0 && <SummaryRow label="Media missing from export" value={summary.skippedMedia} muted />}
+            <SummaryRow label={t('vault.import.sum.entries')} value={summary.entries} />
+            <SummaryRow label={t('vault.import.sum.journals')} value={summary.journals} />
+            <SummaryRow label={t('vault.import.sum.media')} value={summary.media} />
+            {summary.skippedMedia > 0 && <SummaryRow label={t('vault.import.sum.skipped')} value={summary.skippedMedia} muted />}
           </div>
-          <p style={{ ...pStyle, fontSize: 12.5 }}>
-            Everything is encrypted and syncing now. New notebooks appear on the Journals screen.
-          </p>
-          <Btn kind="primary" size="md" onClick={onClose}>Done</Btn>
+          <p style={{ ...pStyle, fontSize: 12.5 }}>{t('vault.import.doneBody')}</p>
+          <Btn kind="primary" size="md" onClick={onClose}>{t('common.done')}</Btn>
         </div>
       );
     }
@@ -101,11 +100,11 @@ export function ImportDayOneSheet({ desk, onClose }: { desk: boolean; onClose: (
     if (step === 'error') {
       return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <p style={pStyle}>The import couldn’t finish — <strong style={{ color: 'var(--ink)' }}>nothing was changed by the failed step</strong>.</p>
+          <p style={pStyle}>{t('vault.import.error')}</p>
           <div style={{ fontFamily: 'var(--mono)', fontSize: 12, color: 'var(--ink-2)', padding: '10px 12px', borderRadius: 10, background: 'var(--paper)', border: '1px solid var(--line)', overflowWrap: 'anywhere' }}>{error}</div>
           <div style={{ display: 'flex', gap: 10 }}>
-            <Btn kind="ghost" size="md" onClick={onClose} style={{ flex: 1 }}>Close</Btn>
-            <Btn kind="primary" size="md" onClick={() => { setStep('pick'); setArchive(null); setError(''); }} style={{ flex: 2 }}>Pick another file</Btn>
+            <Btn kind="ghost" size="md" onClick={onClose} style={{ flex: 1 }}>{t('common.close')}</Btn>
+            <Btn kind="primary" size="md" onClick={() => { setStep('pick'); setArchive(null); setError(''); }} style={{ flex: 2 }}>{t('vault.import.pickAnother')}</Btn>
           </div>
         </div>
       );
@@ -114,19 +113,16 @@ export function ImportDayOneSheet({ desk, onClose }: { desk: boolean; onClose: (
     if (step === 'ready' && archive) {
       return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <p style={pStyle}>Ready to import from your Day One export:</p>
+          <p style={pStyle}>{t('vault.import.readyLead')}</p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6, fontFamily: 'var(--ui)', fontSize: 13, color: 'var(--ink-2)' }}>
-            <SummaryRow label="Notebooks" value={archive.journals.length} />
-            <SummaryRow label="Entries" value={archive.entryCount} />
-            <SummaryRow label="Media files" value={archive.mediaCount} />
+            <SummaryRow label={t('vault.import.row.notebooks')} value={archive.journals.length} />
+            <SummaryRow label={t('vault.import.row.entries')} value={archive.entryCount} />
+            <SummaryRow label={t('vault.import.row.media')} value={archive.mediaCount} />
           </div>
-          <p style={{ ...pStyle, fontSize: 12.5 }}>
-            Existing notebooks with a matching name are reused; the rest are created. This can take a moment for large
-            journals — everything is encrypted on this device.
-          </p>
+          <p style={{ ...pStyle, fontSize: 12.5 }}>{t('vault.import.readyBody')}</p>
           <div style={{ display: 'flex', gap: 10 }}>
-            <Btn kind="ghost" size="md" onClick={() => { setStep('pick'); setArchive(null); }} style={{ flex: 1 }}>Back</Btn>
-            <Btn kind="primary" size="md" onClick={() => void run()} style={{ flex: 2 }}>Import {archive.entryCount} entries</Btn>
+            <Btn kind="ghost" size="md" onClick={() => { setStep('pick'); setArchive(null); }} style={{ flex: 1 }}>{t('common.back')}</Btn>
+            <Btn kind="primary" size="md" onClick={() => void run()} style={{ flex: 2 }}>{tp('vault.import.cta', archive.entryCount)}</Btn>
           </div>
         </div>
       );
@@ -135,11 +131,7 @@ export function ImportDayOneSheet({ desk, onClose }: { desk: boolean; onClose: (
     // pick
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-        <p style={pStyle}>
-          In Day One, choose <strong style={{ color: 'var(--ink)' }}>Settings → Import/Export → Export → JSON</strong>,
-          then pick the <strong style={{ color: 'var(--ink)' }}>.zip</strong> it produces. It’s read entirely on this
-          device — nothing is uploaded.
-        </p>
+        <p style={pStyle}>{t('vault.import.pickBody')}</p>
         <label
           onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
           onDragLeave={() => setDragOver(false)}
@@ -156,8 +148,8 @@ export function ImportDayOneSheet({ desk, onClose }: { desk: boolean; onClose: (
           }}
         >
           <Icon name="download" size={24} color="var(--accent)" />
-          <span style={{ fontFamily: 'var(--ui)', fontSize: 13.5, fontWeight: 600, color: 'var(--ink)' }}>Choose or drop your Day One .zip</span>
-          <span style={{ fontFamily: 'var(--ui)', fontSize: 12, color: 'var(--ink-3)' }}>JSON export only</span>
+          <span style={{ fontFamily: 'var(--ui)', fontSize: 13.5, fontWeight: 600, color: 'var(--ink)' }}>{t('vault.import.dropTitle')}</span>
+          <span style={{ fontFamily: 'var(--ui)', fontSize: 12, color: 'var(--ink-3)' }}>{t('vault.import.dropHint')}</span>
           <input
             type="file"
             accept=".zip,application/zip"
@@ -180,7 +172,7 @@ export function ImportDayOneSheet({ desk, onClose }: { desk: boolean; onClose: (
       >
         {!desk && <div style={{ width: 38, height: 4, borderRadius: 9, background: 'var(--line)', margin: '0 auto 16px' }} />}
         <h3 style={{ fontFamily: 'var(--serif)', fontSize: 19, fontWeight: 500, color: 'var(--ink)', margin: '0 0 16px', display: 'flex', alignItems: 'center', gap: 9 }}>
-          <Icon name="download" size={18} color="var(--accent)" /> Import from Day One
+          <Icon name="download" size={18} color="var(--accent)" /> {t('vault.import.title')}
         </h3>
         {body}
       </div>

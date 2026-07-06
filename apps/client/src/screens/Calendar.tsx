@@ -8,10 +8,7 @@ import { useAppData } from '../state/data';
 import { compactCount, dailyCounts, dayStreak, monthWords, onThisDay } from '../state/stats';
 import { EntryThumbs, entryImages } from '../ui/EntryThumbs';
 import type { JournalEntry, MediaAttachment } from '../sync/engine';
-
-const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-const WD = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+import { t, tp, fmtDate, fmtNumber, monthName, weekdayName } from '../i18n';
 
 type CalView = 'month' | 'year' | 'timeline';
 
@@ -30,7 +27,7 @@ function toCalEntry(e: JournalEntry): CalEntry {
   return {
     id: e.id,
     journal: e.journalId,
-    time: `${d.getUTCHours()}:${String(d.getUTCMinutes()).padStart(2, '0')}`,
+    time: fmtDate(d, { hour: 'numeric', minute: '2-digit', timeZone: 'UTC' }),
     title: e.title,
     preview: e.bodyText,
     labels: e.labels,
@@ -46,7 +43,7 @@ function monthMeta(year: number, month: number): { offset: number; days: number 
 
 // Timeline list date: always carries the year so cross-year scrolling stays clear.
 function timelineDate(d: Date): string {
-  return `${MON[d.getUTCMonth()]} ${d.getUTCDate()}, ${d.getUTCFullYear()}`;
+  return fmtDate(d, { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
 }
 
 function EntryRow({ e, onOpen, compact, resolve }: { e: CalEntry; onOpen: (id: string) => void; compact?: boolean; resolve: (id: string) => Journal | undefined }): VNode {
@@ -55,7 +52,7 @@ function EntryRow({ e, onOpen, compact, resolve }: { e: CalEntry; onOpen: (id: s
   return (
     <button
       onClick={() => onOpen(e.id)}
-      style={{ display: 'flex', gap: 12, width: '100%', textAlign: 'left', cursor: 'pointer', padding: compact ? '10px 12px' : '13px 14px', borderRadius: 14, background: 'var(--surface)', border: '1px solid var(--line)', transition: 'all .14s', alignItems: 'flex-start' }}
+      style={{ display: 'flex', gap: 12, width: '100%', textAlign: 'start', cursor: 'pointer', padding: compact ? '10px 12px' : '13px 14px', borderRadius: 14, background: 'var(--surface)', border: '1px solid var(--line)', transition: 'all .14s', alignItems: 'flex-start' }}
       onMouseEnter={(ev) => (ev.currentTarget.style.borderColor = hexA(j?.color ?? '#999999', 0.5))}
       onMouseLeave={(ev) => (ev.currentTarget.style.borderColor = 'var(--line)')}
     >
@@ -84,11 +81,11 @@ function Heatmap({ counts }: { counts: number[] }): VNode {
         {cells.map((l, i) => <div key={i} style={{ aspectRatio: '1', borderRadius: 3, background: l === 0 ? col[0] : col[l] }} />)}
       </div>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 8 }}>
-        <span style={{ fontFamily: 'var(--ui)', fontSize: 11, color: 'var(--ink-3)' }}>{counts.length / 7} weeks</span>
+        <span style={{ fontFamily: 'var(--ui)', fontSize: 11, color: 'var(--ink-3)' }}>{tp('calendar.weeks', counts.length / 7)}</span>
         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-          <span style={{ fontFamily: 'var(--ui)', fontSize: 11, color: 'var(--ink-3)' }}>less</span>
+          <span style={{ fontFamily: 'var(--ui)', fontSize: 11, color: 'var(--ink-3)' }}>{t('calendar.heatLess')}</span>
           {col.map((c, i) => <span key={i} style={{ width: 9, height: 9, borderRadius: 2.5, background: c }} />)}
-          <span style={{ fontFamily: 'var(--ui)', fontSize: 11, color: 'var(--ink-3)' }}>more</span>
+          <span style={{ fontFamily: 'var(--ui)', fontSize: 11, color: 'var(--ink-3)' }}>{t('calendar.heatMore')}</span>
         </div>
       </div>
     </div>
@@ -125,7 +122,7 @@ function Cell({ d, today, selected, onSelect, big, dayEntries, resolve }: { d: n
               </div>
             );
           })}
-          {entries.length > 3 && <span style={{ fontFamily: 'var(--ui)', fontSize: 10.5, color: isSel ? 'rgba(255,255,255,.85)' : 'var(--ink-3)' }}>+{entries.length - 3} more</span>}
+          {entries.length > 3 && <span style={{ fontFamily: 'var(--ui)', fontSize: 10.5, color: isSel ? 'rgba(255,255,255,.85)' : 'var(--ink-3)' }}>{tp('calendar.more', entries.length - 3)}</span>}
         </div>
       ) : (
         entries.length > 0 && (
@@ -221,7 +218,10 @@ export function CalendarScreen({ desk, onOpenEntry }: { desk: boolean; onOpenEnt
   const Grid = ({ big }: { big?: boolean }): VNode => (
     <div style={big ? { display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 } : undefined}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', gap: big ? 6 : 2, marginBottom: 6 }}>
-        {WD.map((w) => <div key={w} style={{ textAlign: 'center', fontFamily: 'var(--ui)', fontSize: 11, fontWeight: 700, letterSpacing: 0.5, color: 'var(--ink-3)', textTransform: 'uppercase', padding: '2px 0' }}>{big ? w : w[0]}</div>)}
+        {Array.from({ length: 7 }).map((_, i) => (
+          // Mon-first column order; weekdayName() takes 0=Sunday.
+          <div key={i} style={{ textAlign: 'center', fontFamily: 'var(--ui)', fontSize: 11, fontWeight: 700, letterSpacing: 0.5, color: 'var(--ink-3)', textTransform: 'uppercase', padding: '2px 0' }}>{weekdayName((i + 1) % 7, big ? 'short' : 'narrow')}</div>
+        ))}
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(0, 1fr))', gap: big ? 6 : 2, ...(big ? { flex: 1, minHeight: 0, gridAutoRows: 'minmax(0, 1fr)' } : {}) }}>
         {Array.from({ length: meta.offset }).map((_, i) => <div key={'b' + i} />)}
@@ -242,22 +242,22 @@ export function CalendarScreen({ desk, onOpenEntry }: { desk: boolean; onOpenEnt
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, minWidth: 0 }}>
           {view === 'timeline' ? (
-            <h2 style={{ fontFamily: 'var(--serif)', fontSize: big ? 26 : 24, fontWeight: 500, color: 'var(--ink)', margin: 0 }}>Timeline</h2>
+            <h2 style={{ fontFamily: 'var(--serif)', fontSize: big ? 26 : 24, fontWeight: 500, color: 'var(--ink)', margin: 0 }}>{t('calendar.view.timeline')}</h2>
           ) : (
             <>
-              {view === 'month' && <h2 style={{ fontFamily: 'var(--serif)', fontSize: big ? 26 : 24, fontWeight: 500, color: 'var(--ink)', margin: 0 }}>{MONTHS[month]}</h2>}
+              {view === 'month' && <h2 style={{ fontFamily: 'var(--serif)', fontSize: big ? 26 : 24, fontWeight: 500, color: 'var(--ink)', margin: 0 }}>{monthName(month)}</h2>}
               <YearJump year={year} big={view === 'year'} onPick={(y) => setYear(y)} />
             </>
           )}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           {view === 'timeline' ? (
-            <span style={{ fontFamily: 'var(--ui)', fontSize: 13, color: 'var(--ink-3)' }}>{timeline.length} {timeline.length === 1 ? 'entry' : 'entries'}</span>
+            <span style={{ fontFamily: 'var(--ui)', fontSize: 13, color: 'var(--ink-3)' }}>{tp('common.entries', timeline.length)}</span>
           ) : (
             <>
-              {!atToday && <Btn kind="quiet" size="sm" onClick={goToday}>{view === 'year' ? 'This year' : 'Today'}</Btn>}
-              <button onClick={() => step(-1)} style={navBtn}><Icon name="left" size={18} color="var(--ink-2)" /></button>
-              <button onClick={() => step(1)} style={navBtn}><Icon name="right" size={18} color="var(--ink-2)" /></button>
+              {!atToday && <Btn kind="quiet" size="sm" onClick={goToday}>{view === 'year' ? t('calendar.thisYear') : t('common.today')}</Btn>}
+              <button onClick={() => step(-1)} aria-label={t('calendar.previous')} style={navBtn}><Icon name="left" size={18} color="var(--ink-2)" dirFlip /></button>
+              <button onClick={() => step(1)} aria-label={t('common.next')} style={navBtn}><Icon name="right" size={18} color="var(--ink-2)" dirFlip /></button>
             </>
           )}
         </div>
@@ -267,15 +267,15 @@ export function CalendarScreen({ desk, onOpenEntry }: { desk: boolean; onOpenEnt
 
   const Tabs = ({ full }: { full?: boolean }): VNode => (
     <div style={{ display: 'flex', gap: 2, padding: 3, borderRadius: 10, background: 'var(--surface)', border: '1px solid var(--line)', ...(full ? { width: '100%' } : {}) }}>
-      <ViewTab active={view === 'month'} icon="cal" full={full} onClick={() => setView('month')}>Month</ViewTab>
-      <ViewTab active={view === 'year'} icon="grid" full={full} onClick={() => setView('year')}>Year</ViewTab>
-      <ViewTab active={view === 'timeline'} icon="timeline" full={full} onClick={() => setView('timeline')}>Timeline</ViewTab>
+      <ViewTab active={view === 'month'} icon="cal" full={full} onClick={() => setView('month')}>{t('calendar.view.month')}</ViewTab>
+      <ViewTab active={view === 'year'} icon="grid" full={full} onClick={() => setView('year')}>{t('calendar.view.year')}</ViewTab>
+      <ViewTab active={view === 'timeline'} icon="timeline" full={full} onClick={() => setView('timeline')}>{t('calendar.view.timeline')}</ViewTab>
     </div>
   );
 
   const YearOverview = ({ big }: { big?: boolean }): VNode => (
     <div style={{ display: 'grid', gridTemplateColumns: big ? 'repeat(4, 1fr)' : 'repeat(2, 1fr)', gridTemplateRows: big ? 'repeat(3, 1fr)' : undefined, gap: big ? 12 : 10, ...(big ? { height: '100%' } : {}) }}>
-      {MONTHS.map((_, m) => (
+      {Array.from({ length: 12 }).map((_, m) => (
         <MiniMonth
           key={m}
           year={year}
@@ -297,21 +297,21 @@ export function CalendarScreen({ desk, onOpenEntry }: { desk: boolean; onOpenEnt
           <div style={{ display: 'flex', alignItems: 'center', gap: 18 }}>
             {view === 'year' ? (
               <>
-                <Stat n={String(streak)} label="day streak" />
-                <Stat n={String(yearTotal)} label="entries" />
-                <Stat n={String(yearDays)} label="days" />
-                {busiestMonth >= 0 && <Stat n={MON[busiestMonth]} label="most active" />}
+                <Stat n={fmtNumber(streak)} label={t('calendar.stat.dayStreak')} />
+                <Stat n={fmtNumber(yearTotal)} label={t('calendar.stat.entries')} />
+                <Stat n={fmtNumber(yearDays)} label={t('calendar.stat.days')} />
+                {busiestMonth >= 0 && <Stat n={monthName(busiestMonth, 'short')} label={t('calendar.stat.mostActive')} />}
               </>
             ) : view === 'timeline' ? (
               <>
-                <Stat n={String(streak)} label="day streak" />
-                <Stat n={String(timeline.length)} label="entries" />
+                <Stat n={fmtNumber(streak)} label={t('calendar.stat.dayStreak')} />
+                <Stat n={fmtNumber(timeline.length)} label={t('calendar.stat.entries')} />
               </>
             ) : (
               <>
-                <Stat n={String(streak)} label="day streak" />
-                <Stat n={String(monthCount)} label="entries" />
-                <Stat n={compactCount(words)} label="words" />
+                <Stat n={fmtNumber(streak)} label={t('calendar.stat.dayStreak')} />
+                <Stat n={fmtNumber(monthCount)} label={t('calendar.stat.entries')} />
+                <Stat n={compactCount(words)} label={t('calendar.stat.words')} />
               </>
             )}
             <div style={{ flex: 1 }} />
@@ -324,19 +324,19 @@ export function CalendarScreen({ desk, onOpenEntry }: { desk: boolean; onOpenEnt
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: '20px 28px', minWidth: 0 }}>
               <div style={{ flex: 1, minHeight: 0 }}><Grid big /></div>
             </div>
-            <div style={{ width: 340, borderLeft: '1px solid var(--line)', display: 'flex', flexDirection: 'column', background: 'var(--surface-2)' }}>
+            <div style={{ width: 340, borderInlineStart: '1px solid var(--line)', display: 'flex', flexDirection: 'column', background: 'var(--surface-2)' }}>
               <div style={{ padding: '20px 22px 14px' }}>
                 <div style={{ fontFamily: 'var(--ui)', fontSize: 12, fontWeight: 700, letterSpacing: 0.6, textTransform: 'uppercase', color: 'var(--ink-3)' }}>
-                  {`${WD[(new Date(Date.UTC(year, month, selected)).getUTCDay() + 6) % 7]} · ${MONTHS[month]} ${selected}`}
+                  {fmtDate(Date.UTC(year, month, selected), { weekday: 'short', month: 'long', day: 'numeric', timeZone: 'UTC' })}
                 </div>
-                <div style={{ fontFamily: 'var(--serif)', fontSize: 22, fontWeight: 500, color: 'var(--ink)', marginTop: 2 }}>{dayEntries.length ? `${dayEntries.length} ${dayEntries.length === 1 ? 'entry' : 'entries'}` : 'Nothing yet'}</div>
+                <div style={{ fontFamily: 'var(--serif)', fontSize: 22, fontWeight: 500, color: 'var(--ink)', marginTop: 2 }}>{dayEntries.length ? tp('common.entries', dayEntries.length) : t('calendar.nothingYet')}</div>
               </div>
               <div style={{ flex: 1, overflow: 'auto', padding: '0 18px 18px', display: 'flex', flexDirection: 'column', gap: 10 }}>
                 {dayEntries.length ? dayEntries.map((e) => <EntryRow key={e.id} e={e} onOpen={onOpenEntry} compact resolve={resolveJournal} />) : <EmptyDay onNew={() => onOpenEntry('')} />}
                 <OnThisDay matches={memories} onOpen={onOpenEntry} />
               </div>
               <div style={{ padding: '16px 20px', borderTop: '1px solid var(--line)' }}>
-                <div style={{ fontFamily: 'var(--ui)', fontSize: 11.5, fontWeight: 700, letterSpacing: 0.6, textTransform: 'uppercase', color: 'var(--ink-3)', marginBottom: 10 }}>This season</div>
+                <div style={{ fontFamily: 'var(--ui)', fontSize: 11.5, fontWeight: 700, letterSpacing: 0.6, textTransform: 'uppercase', color: 'var(--ink-3)', marginBottom: 10 }}>{t('calendar.thisSeason')}</div>
                 <Heatmap counts={heat} />
               </div>
             </div>
@@ -373,16 +373,16 @@ export function CalendarScreen({ desk, onOpenEntry }: { desk: boolean; onOpenEnt
         {view === 'month' && (
           <>
             <div style={{ display: 'flex', gap: 10, margin: '0 0 14px' }}>
-              <Stat n={String(streak)} label="day streak" boxed />
-              <Stat n={String(monthCount)} label="entries" boxed />
-              <Stat n={compactCount(words)} label="words" boxed />
+              <Stat n={fmtNumber(streak)} label={t('calendar.stat.dayStreak')} boxed />
+              <Stat n={fmtNumber(monthCount)} label={t('calendar.stat.entries')} boxed />
+              <Stat n={compactCount(words)} label={t('calendar.stat.words')} boxed />
             </div>
             <div style={{ padding: 14, borderRadius: 18, background: 'var(--surface)', border: '1px solid var(--line)' }}>
               <Grid />
             </div>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', margin: '22px 2px 12px' }}>
-              <h3 style={{ fontFamily: 'var(--serif)', fontSize: 19, fontWeight: 500, color: 'var(--ink)', margin: 0 }}>{`${MONTHS[month]} ${selected}`}</h3>
-              <span style={{ fontFamily: 'var(--ui)', fontSize: 12.5, color: 'var(--ink-3)' }}>{dayEntries.length} {dayEntries.length === 1 ? 'entry' : 'entries'}</span>
+              <h3 style={{ fontFamily: 'var(--serif)', fontSize: 19, fontWeight: 500, color: 'var(--ink)', margin: 0 }}>{fmtDate(Date.UTC(year, month, selected), { month: 'long', day: 'numeric', timeZone: 'UTC' })}</h3>
+              <span style={{ fontFamily: 'var(--ui)', fontSize: 12.5, color: 'var(--ink-3)' }}>{tp('common.entries', dayEntries.length)}</span>
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               {dayEntries.length ? dayEntries.map((e) => <EntryRow key={e.id} e={e} onOpen={onOpenEntry} resolve={resolveJournal} />) : <EmptyDay onNew={() => onOpenEntry('')} />}
@@ -394,9 +394,9 @@ export function CalendarScreen({ desk, onOpenEntry }: { desk: boolean; onOpenEnt
         {view === 'year' && (
           <>
             <div style={{ display: 'flex', gap: 10, margin: '0 0 16px' }}>
-              <Stat n={String(yearTotal)} label="entries" boxed />
-              <Stat n={String(yearDays)} label="days" boxed />
-              <Stat n={busiestMonth >= 0 ? MON[busiestMonth] : '—'} label="most active" boxed />
+              <Stat n={fmtNumber(yearTotal)} label={t('calendar.stat.entries')} boxed />
+              <Stat n={fmtNumber(yearDays)} label={t('calendar.stat.days')} boxed />
+              <Stat n={busiestMonth >= 0 ? monthName(busiestMonth, 'short') : '—'} label={t('calendar.stat.mostActive')} boxed />
             </div>
             <YearOverview />
           </>
@@ -433,9 +433,9 @@ function MiniMonth({ year, month, data, big, isCurrent, onOpenMonth }: {
     <div style={{ padding: big ? 12 : 11, borderRadius: 16, background: 'var(--surface)', border: `1px solid ${isCurrent ? 'var(--accent-line)' : 'var(--line)'}`, display: 'flex', flexDirection: 'column', gap: 9, minHeight: 0, ...(big ? { height: '100%' } : {}) }}>
       <button
         onClick={() => onOpenMonth(month, 1)}
-        style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'transparent', border: 'none', cursor: 'pointer', padding: 0, textAlign: 'left' }}
+        style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'transparent', border: 'none', cursor: 'pointer', padding: 0, textAlign: 'start' }}
       >
-        <span style={{ fontFamily: 'var(--serif)', fontSize: 15, fontWeight: 600, color: isCurrent ? 'var(--accent-ink)' : 'var(--ink)' }}>{MONTHS[month]}</span>
+        <span style={{ fontFamily: 'var(--serif)', fontSize: 15, fontWeight: 600, color: isCurrent ? 'var(--accent-ink)' : 'var(--ink)' }}>{monthName(month)}</span>
       </button>
       <div style={grid}>
         {Array.from({ length: meta.offset }).map((_, i) => <div key={'b' + i} />)}
@@ -443,11 +443,12 @@ function MiniMonth({ year, month, data, big, isCurrent, onOpenMonth }: {
           const day = i + 1;
           const c = data.days.get(day) ?? 0;
           const intensity = c === 0 ? 0 : 0.28 + 0.72 * (c / dayMax);
+          const dateLabel = fmtDate(Date.UTC(year, month, day), { month: 'short', day: 'numeric', timeZone: 'UTC' });
           return (
             <button
               key={day}
               onClick={() => onOpenMonth(month, day)}
-              title={c ? `${MON[month]} ${day}: ${c} ${c === 1 ? 'entry' : 'entries'}` : `${MON[month]} ${day}`}
+              title={c ? tp('calendar.dayCount', c, { date: dateLabel }) : dateLabel}
               style={{
                 ...(big ? {} : { aspectRatio: '1' }), borderRadius: 3, cursor: 'pointer', border: 'none', padding: 0, minHeight: big ? 6 : undefined,
                 background: c ? hexA('#B0563A', intensity) : 'var(--surface-2)',
@@ -472,8 +473,8 @@ function Timeline({ list, onOpen, resolve, mediaThumb, onNew }: {
     return (
       <div style={{ padding: '40px 20px', borderRadius: 16, border: '1.5px dashed var(--line)', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
         <Icon name="timeline" size={26} color="var(--ink-3)" />
-        <div style={{ fontFamily: 'var(--ui)', fontSize: 13.5, color: 'var(--ink-2)' }}>No entries yet.</div>
-        <Btn kind="soft" size="sm" icon="plus" onClick={onNew}>Write your first entry</Btn>
+        <div style={{ fontFamily: 'var(--ui)', fontSize: 13.5, color: 'var(--ink-2)' }}>{t('calendar.empty.timeline')}</div>
+        <Btn kind="soft" size="sm" icon="plus" onClick={onNew}>{t('calendar.empty.writeFirst')}</Btn>
       </div>
     );
   }
@@ -491,7 +492,7 @@ function Timeline({ list, onOpen, resolve, mediaThumb, onNew }: {
           sep && (
             <div key={`m-${key}`} style={{ padding: '14px 2px 4px', display: 'flex', alignItems: 'center', gap: 10 }}>
               <span style={{ fontFamily: 'var(--mono)', fontSize: 11, fontWeight: 700, letterSpacing: 0.8, textTransform: 'uppercase', color: 'var(--ink-3)', whiteSpace: 'nowrap' }}>
-                {MONTHS[d.getUTCMonth()]} {d.getUTCFullYear()}
+                {fmtDate(d, { month: 'long', year: 'numeric', timeZone: 'UTC' })}
               </span>
               <span style={{ flex: 1, height: 1, background: 'var(--line)' }} />
             </div>
@@ -499,12 +500,12 @@ function Timeline({ list, onOpen, resolve, mediaThumb, onNew }: {
           <button
             key={e.id}
             onClick={() => onOpen(e.id)}
-            style={{ textAlign: 'left', cursor: 'pointer', padding: '13px 15px', borderRadius: 14, background: 'var(--surface)', border: '1px solid var(--line)', borderLeft: `3px solid ${j?.color ?? 'var(--ink-3)'}`, transition: 'border-color .14s' }}
-            onMouseEnter={(ev) => (ev.currentTarget.style.borderColor = hexA(j?.color ?? '#999999', 0.5), ev.currentTarget.style.borderLeftColor = j?.color ?? 'var(--ink-3)')}
-            onMouseLeave={(ev) => (ev.currentTarget.style.borderColor = 'var(--line)', ev.currentTarget.style.borderLeftColor = j?.color ?? 'var(--ink-3)')}
+            style={{ textAlign: 'start', cursor: 'pointer', padding: '13px 15px', borderRadius: 14, background: 'var(--surface)', border: '1px solid var(--line)', borderInlineStart: `3px solid ${j?.color ?? 'var(--ink-3)'}`, transition: 'border-color .14s' }}
+            onMouseEnter={(ev) => (ev.currentTarget.style.borderColor = hexA(j?.color ?? '#999999', 0.5), ev.currentTarget.style.borderInlineStartColor = j?.color ?? 'var(--ink-3)')}
+            onMouseLeave={(ev) => (ev.currentTarget.style.borderColor = 'var(--line)', ev.currentTarget.style.borderInlineStartColor = j?.color ?? 'var(--ink-3)')}
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 10 }}>
-              <span style={{ fontFamily: 'var(--serif)', fontSize: 16.5, fontWeight: 500, color: 'var(--ink)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{e.title || 'Untitled'}</span>
+              <span style={{ fontFamily: 'var(--serif)', fontSize: 16.5, fontWeight: 500, color: 'var(--ink)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{e.title || t('common.untitled')}</span>
               <span style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--ink-3)', flexShrink: 0 }}>{timelineDate(d)}</span>
             </div>
             {e.bodyText && (
@@ -564,11 +565,11 @@ function YearJump({ year, big, onPick }: { year: number; big?: boolean; onPick: 
       {open && (
         <>
           <div onClick={() => setOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
-          <div style={{ position: 'absolute', top: '100%', left: 0, marginTop: 6, zIndex: 41, width: 260, padding: 12, borderRadius: 14, background: 'var(--surface)', border: '1px solid var(--line)', boxShadow: '0 10px 30px rgba(0,0,0,.14)' }}>
+          <div style={{ position: 'absolute', top: '100%', insetInlineStart: 0, marginTop: 6, zIndex: 41, width: 260, padding: 12, borderRadius: 14, background: 'var(--surface)', border: '1px solid var(--line)', boxShadow: '0 10px 30px rgba(0,0,0,.14)' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-              <button onClick={() => setPage((p) => p - 12)} style={navBtnSm}><Icon name="left" size={15} color="var(--ink-2)" /></button>
+              <button onClick={() => setPage((p) => p - 12)} aria-label={t('calendar.previous')} style={navBtnSm}><Icon name="left" size={15} color="var(--ink-2)" dirFlip /></button>
               <span style={{ fontFamily: 'var(--ui)', fontSize: 12.5, fontWeight: 600, color: 'var(--ink-2)' }}>{page}–{page + 11}</span>
-              <button onClick={() => setPage((p) => p + 12)} style={navBtnSm}><Icon name="right" size={15} color="var(--ink-2)" /></button>
+              <button onClick={() => setPage((p) => p + 12)} aria-label={t('common.next')} style={navBtnSm}><Icon name="right" size={15} color="var(--ink-2)" dirFlip /></button>
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6 }}>
               {Array.from({ length: 12 }).map((_, i) => {
@@ -596,13 +597,13 @@ function OnThisDay({ matches, onOpen }: { matches: JournalEntry[]; onOpen: (id: 
   if (!matches.length) return null;
   return (
     <div style={{ padding: '13px 14px', borderRadius: 14, background: 'var(--surface)', border: '1px solid var(--line)' }}>
-      <div style={{ fontFamily: 'var(--ui)', fontSize: 11.5, fontWeight: 700, letterSpacing: 0.6, textTransform: 'uppercase', color: 'var(--ink-3)', marginBottom: 8 }}>On this day</div>
+      <div style={{ fontFamily: 'var(--ui)', fontSize: 11.5, fontWeight: 700, letterSpacing: 0.6, textTransform: 'uppercase', color: 'var(--ink-3)', marginBottom: 8 }}>{t('calendar.onThisDay')}</div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {matches.slice(0, 3).map((e) => (
           <button
             key={e.id}
             onClick={() => onOpen(e.id)}
-            style={{ display: 'flex', gap: 12, width: '100%', textAlign: 'left', cursor: 'pointer', alignItems: 'baseline', background: 'transparent', border: 'none', padding: 0 }}
+            style={{ display: 'flex', gap: 12, width: '100%', textAlign: 'start', cursor: 'pointer', alignItems: 'baseline', background: 'transparent', border: 'none', padding: 0 }}
           >
             <span style={{ fontFamily: 'var(--mono)', fontSize: 12, color: 'var(--ink-2)', fontWeight: 500, minWidth: 42 }}>{new Date(e.createdAt).getUTCFullYear()}</span>
             <span style={{ flex: 1, minWidth: 0 }}>
@@ -620,8 +621,8 @@ function EmptyDay({ onNew }: { onNew: () => void }): VNode {
   return (
     <div style={{ padding: '30px 20px', borderRadius: 16, border: '1.5px dashed var(--line)', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
       <Icon name="feather" size={26} color="var(--ink-3)" />
-      <div style={{ fontFamily: 'var(--ui)', fontSize: 13.5, color: 'var(--ink-2)' }}>No entries on this day.</div>
-      <Btn kind="soft" size="sm" icon="plus" onClick={onNew}>Write something</Btn>
+      <div style={{ fontFamily: 'var(--ui)', fontSize: 13.5, color: 'var(--ink-2)' }}>{t('calendar.empty.day')}</div>
+      <Btn kind="soft" size="sm" icon="plus" onClick={onNew}>{t('calendar.empty.write')}</Btn>
     </div>
   );
 }

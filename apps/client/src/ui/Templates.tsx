@@ -11,6 +11,7 @@ import type { VNode } from 'preact';
 import { useMemo, useRef, useState } from 'preact/hooks';
 import { Icon } from './Icon';
 import { Btn } from './primitives';
+import { t } from '../i18n';
 import { useAppData } from '../state/data';
 import type { TemplateRecord } from '../sync/engine';
 import { useRichEditor } from '../editor/useRichEditor';
@@ -33,7 +34,7 @@ const handle = (fn: () => void) => (e: Event) => {
 
 function BuiltinChip(): VNode {
   return (
-    <span style={{ fontFamily: 'var(--mono)', fontSize: 10, color: 'var(--ink-3)', border: '1px solid var(--line)', borderRadius: 6, padding: '1px 6px', flexShrink: 0 }}>built-in</span>
+    <span style={{ fontFamily: 'var(--mono)', fontSize: 10, color: 'var(--ink-3)', border: '1px solid var(--line)', borderRadius: 6, padding: '1px 6px', flexShrink: 0 }}>{t('templates.builtin')}</span>
   );
 }
 
@@ -61,7 +62,7 @@ function TemplateEditorView({
   );
   const { editor, mountRef } = useRichEditor({
     initial,
-    placeholder: 'Headings, prompts, checklists — the shape an entry starts from…',
+    placeholder: t('templates.body.placeholder'),
     math: mathHandle,
     slash: { handle: slashHandle, commands: slashCommands },
     onChange: (c) => {
@@ -70,7 +71,7 @@ function TemplateEditorView({
   });
 
   const save = (): void => {
-    const input = { name: name.trim() || 'Untitled template', bodyJson: body.current.json || undefined, bodyText: body.current.text };
+    const input = { name: name.trim() || t('templates.untitled'), bodyJson: body.current.json || undefined, bodyText: body.current.text };
     if (template) updateTemplate(template.id, input);
     else createTemplate(input);
     onDone();
@@ -83,7 +84,7 @@ function TemplateEditorView({
           autoFocus={!template}
           value={name}
           onInput={(e) => setName((e.target as HTMLInputElement).value)}
-          placeholder="Template name"
+          placeholder={t('templates.name.placeholder')}
           style={{ width: '100%', boxSizing: 'border-box', border: 'none', outline: 'none', background: 'transparent', fontFamily: 'var(--serif)', fontSize: 20, color: 'var(--ink)', fontWeight: 500 }}
         />
         <div style={{ height: 1, background: 'var(--line)', marginTop: 4 }} />
@@ -96,9 +97,9 @@ function TemplateEditorView({
       <SlashMenu handle={slashHandle} />
       <MathDialog handle={mathHandle} editor={editor} />
       <div style={{ display: 'flex', gap: 10 }}>
-        <Btn kind="ghost" size="md" onClick={onDone} style={{ flex: 1 }}>Cancel</Btn>
+        <Btn kind="ghost" size="md" onClick={onDone} style={{ flex: 1 }}>{t('common.cancel')}</Btn>
         <Btn kind="primary" size="md" onClick={save} style={{ flex: 2 }}>
-          {template ? 'Save template' : 'Create template'}
+          {template ? t('templates.save') : t('templates.create')}
         </Btn>
       </div>
     </div>
@@ -139,7 +140,7 @@ function TemplateActions({
         onClick={handle(onDelete)}
         style={{ ...UI_13, fontWeight: 600, color: '#fff', background: 'var(--accent)', border: 'none', borderRadius: compact ? 8 : 10, padding: compact ? '6px 11px' : '11px 0', cursor: 'pointer', flexShrink: 0, flex: compact ? undefined : 1 }}
       >
-        Delete permanently?
+        {t('templates.deletePermanently')}
       </button>
     );
   }
@@ -151,25 +152,25 @@ function TemplateActions({
       >
         <Icon name="feather" size={compact ? 13 : 15} color="var(--accent-ink)" /> {useLabel}
       </button>
-      {iconBtn('Edit template', 'feather', onEdit)}
-      {iconBtn('Delete template', 'x', onDelete)}
+      {iconBtn(t('templates.action.edit'), 'feather', onEdit)}
+      {iconBtn(t('templates.action.delete'), 'x', onDelete)}
     </>
   );
 }
 
 // Scrollable rendered preview, shared by the desktop pane and mobile accordion.
 // flex/minHeight let it fill the desktop pane; `maxHeight` caps the accordion.
-function PreviewBody({ t, maxHeight }: { t: TemplateRecord; maxHeight?: string }): VNode {
+function PreviewBody({ tpl, maxHeight }: { tpl: TemplateRecord; maxHeight?: string }): VNode {
   return (
     <div style={{ overflowY: 'auto', flex: 1, minHeight: 0, maxHeight, padding: '14px 18px 18px', overscrollBehavior: 'contain' }}>
-      <DocPreview json={t.bodyJson} text={t.bodyText} />
+      <DocPreview json={tpl.bodyJson} text={tpl.bodyText} />
     </div>
   );
 }
 
 export function TemplatesSheet({
   desk,
-  useLabel = 'Use',
+  useLabel,
   onClose,
   onUse,
 }: {
@@ -177,7 +178,7 @@ export function TemplatesSheet({
   /** Label of the primary action — "Use" in the manager, "Insert" as the editor's picker. */
   useLabel?: string;
   onClose: () => void;
-  onUse: (t: TemplateRecord) => void;
+  onUse: (tpl: TemplateRecord) => void;
 }): VNode {
   const { templates, deleteTemplate } = useAppData();
   // 'list' | the template being edited | 'new'
@@ -186,21 +187,21 @@ export function TemplatesSheet({
   // Desktop: which template the preview pane shows (falls back to the first).
   // Mobile: which row is expanded (null → all collapsed).
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const alive = templates.filter((t) => !t.deleted);
+  const alive = templates.filter((tpl) => !tpl.deleted);
 
-  const actionsFor = (t: TemplateRecord, compact: boolean): VNode => (
+  const actionsFor = (tpl: TemplateRecord, compact: boolean): VNode => (
     <TemplateActions
       compact={compact}
-      useLabel={useLabel}
-      armed={armedDelete === t.id}
-      onUse={() => onUse(t)}
-      onEdit={() => { setArmedDelete(null); setView(t); }}
+      useLabel={useLabel ?? t('templates.use')}
+      armed={armedDelete === tpl.id}
+      onUse={() => onUse(tpl)}
+      onEdit={() => { setArmedDelete(null); setView(tpl); }}
       onDelete={() => {
-        if (armedDelete === t.id) {
-          deleteTemplate(t.id);
+        if (armedDelete === tpl.id) {
+          deleteTemplate(tpl.id);
           setArmedDelete(null);
         } else {
-          setArmedDelete(t.id);
+          setArmedDelete(tpl.id);
         }
       }}
     />
@@ -211,39 +212,39 @@ export function TemplatesSheet({
       onClick={() => { setArmedDelete(null); setView('new'); }}
       style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '11px 0', borderRadius: 12, border: '1.5px dashed var(--line)', background: 'transparent', cursor: 'pointer', color: 'var(--ink-3)', fontFamily: 'var(--ui)', fontSize: 13.5, fontWeight: 600 }}
     >
-      <Icon name="plus" size={16} /> New template
+      <Icon name="plus" size={16} /> {t('templates.new')}
     </button>
   );
 
   const empty = (
     <div style={{ ...UI_13, color: 'var(--ink-3)', textAlign: 'center', padding: '22px 0' }}>
-      No templates yet — create one below.
+      {t('templates.empty')}
     </div>
   );
 
   // ── desktop list view: selectable rows + preview pane ──
   const deskList = (): VNode => {
-    const sel = alive.find((t) => t.id === selectedId) ?? alive[0];
+    const sel = alive.find((tpl) => tpl.id === selectedId) ?? alive[0];
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         {alive.length === 0 ? (
           empty
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: '218px minmax(0, 1fr)', gap: 12, height: '54vh', minHeight: 320 }}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, overflowY: 'auto', paddingRight: 2 }}>
-              {alive.map((t) => {
-                const active = t.id === sel?.id;
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, overflowY: 'auto', paddingInlineEnd: 2 }}>
+              {alive.map((tpl) => {
+                const active = tpl.id === sel?.id;
                 return (
                   <button
-                    key={t.id}
-                    onClick={handle(() => { setArmedDelete(null); setSelectedId(t.id); })}
-                    style={{ textAlign: 'left', cursor: 'pointer', padding: '11px 12px', borderRadius: 10, background: active ? 'var(--accent-soft)' : 'var(--paper)', border: `1px solid ${active ? 'var(--accent)' : 'var(--line)'}`, display: 'flex', flexDirection: 'column', gap: 3 }}
+                    key={tpl.id}
+                    onClick={handle(() => { setArmedDelete(null); setSelectedId(tpl.id); })}
+                    style={{ textAlign: 'start', cursor: 'pointer', padding: '11px 12px', borderRadius: 10, background: active ? 'var(--accent-soft)' : 'var(--paper)', border: `1px solid ${active ? 'var(--accent)' : 'var(--line)'}`, display: 'flex', flexDirection: 'column', gap: 3 }}
                   >
                     <span style={{ display: 'flex', alignItems: 'center', gap: 7, minWidth: 0 }}>
                       <span style={{ fontFamily: 'var(--serif)', fontSize: 14.5, fontWeight: 500, color: active ? 'var(--accent-ink)' : 'var(--ink)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        {t.name || 'Untitled template'}
+                        {tpl.name || t('templates.untitled')}
                       </span>
-                      {t.builtin && <BuiltinChip />}
+                      {tpl.builtin && <BuiltinChip />}
                     </span>
                   </button>
                 );
@@ -251,14 +252,14 @@ export function TemplatesSheet({
             </div>
             {sel && (
               <div style={{ border: '1px solid var(--line)', borderRadius: 14, background: 'var(--paper)', display: 'flex', flexDirection: 'column', minWidth: 0, overflow: 'hidden' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px 10px 16px', borderBottom: '1px solid var(--line)', background: 'var(--surface-2)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingBlock: 10, paddingInlineStart: 16, paddingInlineEnd: 12, borderBottom: '1px solid var(--line)', background: 'var(--surface-2)' }}>
                   <span style={{ fontFamily: 'var(--serif)', fontSize: 15.5, fontWeight: 500, color: 'var(--ink)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', flex: 1, display: 'flex', alignItems: 'center', gap: 8 }}>
-                    {sel.name || 'Untitled template'}
+                    {sel.name || t('templates.untitled')}
                     {sel.builtin && <BuiltinChip />}
                   </span>
                   {actionsFor(sel, true)}
                 </div>
-                <PreviewBody t={sel} />
+                <PreviewBody tpl={sel} />
               </div>
             )}
           </div>
@@ -273,37 +274,37 @@ export function TemplatesSheet({
     <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
       <div style={{ maxHeight: '62vh', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 9, overscrollBehavior: 'contain' }}>
         {alive.length === 0 && empty}
-        {alive.map((t) => {
-          const open = t.id === selectedId;
+        {alive.map((tpl) => {
+          const open = tpl.id === selectedId;
           return (
-            <div key={t.id} style={{ border: `1px solid ${open ? 'var(--accent)' : 'var(--line)'}`, borderRadius: 14, background: 'var(--paper)', overflow: 'hidden' }}>
+            <div key={tpl.id} style={{ border: `1px solid ${open ? 'var(--accent)' : 'var(--line)'}`, borderRadius: 14, background: 'var(--paper)', overflow: 'hidden' }}>
               <button
-                onClick={handle(() => { setArmedDelete(null); setSelectedId(open ? null : t.id); })}
+                onClick={handle(() => { setArmedDelete(null); setSelectedId(open ? null : tpl.id); })}
                 aria-expanded={open}
-                style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'left', cursor: 'pointer', padding: '13px 14px', background: 'transparent', border: 'none' }}
+                style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', textAlign: 'start', cursor: 'pointer', padding: '13px 14px', background: 'transparent', border: 'none' }}
               >
                 <span style={{ flex: 1, minWidth: 0 }}>
                   <span style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
                     <span style={{ fontFamily: 'var(--serif)', fontSize: 15.5, fontWeight: 500, color: 'var(--ink)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                      {t.name || 'Untitled template'}
+                      {tpl.name || t('templates.untitled')}
                     </span>
-                    {t.builtin && <BuiltinChip />}
+                    {tpl.builtin && <BuiltinChip />}
                   </span>
                   {!open && (
                     <span style={{ ...UI_13, fontSize: 12, color: 'var(--ink-3)', marginTop: 2, display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                      {t.bodyText.replace(/\n+/g, ' · ') || 'Empty template'}
+                      {tpl.bodyText.replace(/\n+/g, ' · ') || t('templates.emptyBody')}
                     </span>
                   )}
                 </span>
-                <Icon name={open ? 'down' : 'right'} size={17} color="var(--ink-3)" />
+                <Icon name={open ? 'down' : 'right'} size={17} color="var(--ink-3)" dirFlip={!open} />
               </button>
               {open && (
                 <>
                   <div style={{ borderTop: '1px solid var(--line)' }}>
-                    <PreviewBody t={t} maxHeight="34vh" />
+                    <PreviewBody tpl={tpl} maxHeight="34vh" />
                   </div>
                   <div style={{ display: 'flex', gap: 8, padding: '10px 12px', borderTop: '1px solid var(--line)', background: 'var(--surface-2)' }}>
-                    {actionsFor(t, false)}
+                    {actionsFor(tpl, false)}
                   </div>
                 </>
               )}
@@ -340,11 +341,11 @@ export function TemplatesSheet({
         {!desk && <div style={{ width: 38, height: 4, borderRadius: 9, background: 'var(--line)', margin: '0 auto 16px' }} />}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', margin: '0 0 16px' }}>
           <h3 style={{ fontFamily: 'var(--serif)', fontSize: 19, fontWeight: 500, color: 'var(--ink)', margin: 0 }}>
-            {view === 'list' ? 'Templates' : view === 'new' ? 'New template' : 'Edit template'}
+            {view === 'list' ? t('templates.title') : view === 'new' ? t('templates.new') : t('templates.editTitle')}
           </h3>
           {view !== 'list' && (
-            <button onClick={() => setView('list')} title="Back to list" style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--ink-3)', display: 'flex', alignItems: 'center', gap: 4, fontFamily: 'var(--ui)', fontSize: 12.5 }}>
-              <Icon name="left" size={15} /> All templates
+            <button onClick={() => setView('list')} title={t('templates.backToList')} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--ink-3)', display: 'flex', alignItems: 'center', gap: 4, fontFamily: 'var(--ui)', fontSize: 12.5 }}>
+              <Icon name="left" size={15} dirFlip /> {t('templates.all')}
             </button>
           )}
         </div>

@@ -3,6 +3,7 @@
 import type { ComponentChildren, VNode } from 'preact';
 import { Icon, type IconName } from './Icon';
 import { Btn } from './primitives';
+import { t } from '../i18n';
 
 export function ConfirmDialog({
   icon = 'trash',
@@ -37,7 +38,7 @@ export function ConfirmDialog({
         </div>
         <p style={{ fontFamily: 'var(--ui)', fontSize: 13.5, lineHeight: 1.55, color: 'var(--ink-2)', margin: '0 0 18px' }}>{children}</p>
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
-          <Btn kind="ghost" onClick={onCancel}>Cancel</Btn>
+          <Btn kind="ghost" onClick={onCancel}>{t('common.cancel')}</Btn>
           <Btn kind="danger" onClick={onConfirm}>{confirmLabel}</Btn>
         </div>
       </div>

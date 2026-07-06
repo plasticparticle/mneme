@@ -2,11 +2,12 @@ import type { VNode } from 'preact';
 import { Fragment } from 'preact';
 import { useEffect, useState } from 'preact/hooks';
 import type { Editor } from '@tiptap/core';
+import { t, type MessageKey } from '../i18n';
 import { Icon, type IconName } from '../ui/Icon';
 
 interface Tool {
   icon: IconName;
-  label: string;
+  label: MessageKey; // resolved via t() at render time so locale switches apply
   isActive: (e: Editor) => boolean;
   run: (e: Editor) => void;
   group?: boolean; // render a divider before this tool
@@ -14,22 +15,22 @@ interface Tool {
 
 // The full formatting set wired to real ProseMirror commands.
 const TOOLS: Tool[] = [
-  { icon: 'bold', label: 'Bold', isActive: (e) => e.isActive('bold'), run: (e) => e.chain().focus().toggleBold().run() },
-  { icon: 'italic', label: 'Italic', isActive: (e) => e.isActive('italic'), run: (e) => e.chain().focus().toggleItalic().run() },
-  { icon: 'heading', label: 'Heading', isActive: (e) => e.isActive('heading', { level: 2 }), run: (e) => e.chain().focus().toggleHeading({ level: 2 }).run(), group: true },
-  { icon: 'quote', label: 'Quote', isActive: (e) => e.isActive('blockquote'), run: (e) => e.chain().focus().toggleBlockquote().run() },
-  { icon: 'list', label: 'Bullet list', isActive: (e) => e.isActive('bulletList'), run: (e) => e.chain().focus().toggleBulletList().run(), group: true },
-  { icon: 'checklist', label: 'Checklist', isActive: (e) => e.isActive('taskList'), run: (e) => e.chain().focus().toggleTaskList().run() },
+  { icon: 'bold', label: 'editorx.tool.bold', isActive: (e) => e.isActive('bold'), run: (e) => e.chain().focus().toggleBold().run() },
+  { icon: 'italic', label: 'editorx.tool.italic', isActive: (e) => e.isActive('italic'), run: (e) => e.chain().focus().toggleItalic().run() },
+  { icon: 'heading', label: 'editorx.tool.heading', isActive: (e) => e.isActive('heading', { level: 2 }), run: (e) => e.chain().focus().toggleHeading({ level: 2 }).run(), group: true },
+  { icon: 'quote', label: 'editorx.slash.quote', isActive: (e) => e.isActive('blockquote'), run: (e) => e.chain().focus().toggleBlockquote().run() },
+  { icon: 'list', label: 'editorx.slash.bulletList', isActive: (e) => e.isActive('bulletList'), run: (e) => e.chain().focus().toggleBulletList().run(), group: true },
+  { icon: 'checklist', label: 'editorx.slash.checklist', isActive: (e) => e.isActive('taskList'), run: (e) => e.chain().focus().toggleTaskList().run() },
 ];
 
 // Shown only while the cursor is inside a table (useEditorTick keeps it live).
 const TABLE_TOOLS: Tool[] = [
-  { icon: 'rowplus', label: 'Add row below', isActive: () => false, run: (e) => e.chain().focus().addRowAfter().run(), group: true },
-  { icon: 'colplus', label: 'Add column right', isActive: () => false, run: (e) => e.chain().focus().addColumnAfter().run() },
-  { icon: 'rowminus', label: 'Delete row', isActive: () => false, run: (e) => e.chain().focus().deleteRow().run() },
-  { icon: 'colminus', label: 'Delete column', isActive: () => false, run: (e) => e.chain().focus().deleteColumn().run() },
-  { icon: 'table', label: 'Toggle header row', isActive: () => false, run: (e) => e.chain().focus().toggleHeaderRow().run() },
-  { icon: 'trash', label: 'Delete table', isActive: () => false, run: (e) => e.chain().focus().deleteTable().run() },
+  { icon: 'rowplus', label: 'editorx.tool.addRowBelow', isActive: () => false, run: (e) => e.chain().focus().addRowAfter().run(), group: true },
+  { icon: 'colplus', label: 'editorx.tool.addColumnRight', isActive: () => false, run: (e) => e.chain().focus().addColumnAfter().run() },
+  { icon: 'rowminus', label: 'editorx.tool.deleteRow', isActive: () => false, run: (e) => e.chain().focus().deleteRow().run() },
+  { icon: 'colminus', label: 'editorx.tool.deleteColumn', isActive: () => false, run: (e) => e.chain().focus().deleteColumn().run() },
+  { icon: 'table', label: 'editorx.tool.toggleHeaderRow', isActive: () => false, run: (e) => e.chain().focus().toggleHeaderRow().run() },
+  { icon: 'trash', label: 'editorx.tool.deleteTable', isActive: () => false, run: (e) => e.chain().focus().deleteTable().run() },
 ];
 
 /** Re-render whenever the selection/document changes so active states track the cursor. */
@@ -60,7 +61,7 @@ export function ModeSegmented({
     const active = mode === value;
     return (
       <button
-        title={active ? `Editing as ${label}` : `Switch to ${label}`}
+        title={active ? t('editorx.mode.editingAs', { mode: label }) : t('editorx.mode.switchTo', { mode: label })}
         onMouseDown={(ev) => {
           ev.preventDefault(); // don't steal the editor selection
           if (!active) onChange(value);
@@ -86,8 +87,8 @@ export function ModeSegmented({
         borderRadius: 11, background: 'var(--surface-2)', border: '1px solid var(--line)',
       }}
     >
-      {segment('rich', 'feather', 'Rich text')}
-      {segment('markdown', 'code', 'Markdown')}
+      {segment('rich', 'feather', t('editorx.mode.rich'))}
+      {segment('markdown', 'code', t('editorx.mode.markdown'))}
     </div>
   );
 }
@@ -111,18 +112,18 @@ export function EditorToolbar({ editor, floating }: { editor: Editor | null; flo
         flexWrap: floating ? undefined : 'wrap', // narrow hosts (template sheet) wrap instead of clipping
       }}
     >
-      {tools.map((t) => {
-        const active = !!editor && t.isActive(editor);
+      {tools.map((tool) => {
+        const active = !!editor && tool.isActive(editor);
         return (
-          <Fragment key={t.icon}>
-            {t.group && <span style={{ width: 1, height: 22, background: 'var(--line)', margin: '0 4px', flexShrink: 0 }} />}
+          <Fragment key={tool.icon}>
+            {tool.group && <span style={{ width: 1, height: 22, background: 'var(--line)', margin: '0 4px', flexShrink: 0 }} />}
             <button
-              title={t.label}
+              title={t(tool.label)}
               disabled={!editor}
               onMouseDown={(ev) => {
                 // Keep the editor selection — don't let the button steal focus.
                 ev.preventDefault();
-                if (editor) t.run(editor);
+                if (editor) tool.run(editor);
               }}
               style={{
                 width: sz, height: sz, borderRadius: big ? 11 : 10, flexShrink: 0,
@@ -132,7 +133,7 @@ export function EditorToolbar({ editor, floating }: { editor: Editor | null; flo
                 color: active ? 'var(--accent-ink)' : 'var(--ink-2)',
               }}
             >
-              <Icon name={t.icon} size={big ? 20 : 19} />
+              <Icon name={tool.icon} size={big ? 20 : 19} />
             </button>
           </Fragment>
         );

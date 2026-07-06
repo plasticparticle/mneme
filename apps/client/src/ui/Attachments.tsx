@@ -10,6 +10,7 @@ import type { VNode } from 'preact';
 import { useEffect, useState } from 'preact/hooks';
 import type { JournalEntry, MediaAttachment } from '../sync/engine';
 import { useAppData } from '../state/data';
+import { t, fmtNumber } from '../i18n';
 import { Icon } from './Icon';
 import { Btn } from './primitives';
 import { fmtDuration } from './VideoCapture';
@@ -17,17 +18,17 @@ import { fmtDuration } from './VideoCapture';
 export type MediaResolver = (att: MediaAttachment) => Promise<Blob | null>;
 
 export function fmtBytes(n: number): string {
-  if (n < 1024) return `${n} B`;
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(0)} KB`;
-  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+  if (n < 1024) return t('media.bytes.b', { n: fmtNumber(n) });
+  if (n < 1024 * 1024) return t('media.bytes.kb', { n: fmtNumber(n / 1024, { maximumFractionDigits: 0 }) });
+  return t('media.bytes.mb', { n: fmtNumber(n / (1024 * 1024), { minimumFractionDigits: 1, maximumFractionDigits: 1 }) });
 }
 
 /** Short human noun for a media kind ("video recording", "photo", …). */
 export function mediaNoun(kind: MediaAttachment['kind']): string {
-  if (kind === 'audio') return 'audio recording';
-  if (kind === 'video') return 'video recording';
-  if (kind === 'image') return 'photo';
-  return 'file';
+  if (kind === 'audio') return t('media.noun.audio');
+  if (kind === 'video') return t('media.noun.video');
+  if (kind === 'image') return t('media.noun.image');
+  return t('media.noun.file');
 }
 
 function mediaIcon(kind: MediaAttachment['kind']): 'mic' | 'video' | 'image' | 'file' {
@@ -79,6 +80,7 @@ export function ConfirmDeleteDialog({
   onConfirm: () => void;
 }): VNode {
   const noun = mediaNoun(att.kind);
+  const info = att.durationMs ? `${fmtDuration(att.durationMs)}, ${fmtBytes(att.bytes)}` : fmtBytes(att.bytes);
   return (
     <div
       role="dialog"
@@ -94,19 +96,20 @@ export function ConfirmDeleteDialog({
             <Icon name={mediaIcon(att.kind)} size={17} color="#E4573D" />
           </span>
           <h3 style={{ fontFamily: 'var(--serif)', fontSize: 19, fontWeight: 500, color: 'var(--ink)', margin: 0 }}>
-            Delete this {noun}?
+            {t('media.delete.title', { noun })}
           </h3>
         </div>
         <p style={{ fontFamily: 'var(--ui)', fontSize: 13.5, lineHeight: 1.55, color: 'var(--ink-2)', margin: '0 0 18px' }}>
-          {att.name ? <><strong style={{ color: 'var(--ink)' }}>{att.name}</strong> will be removed</> : <>It will be removed</>} from
-          this entry and the {noun} itself
-          {att.durationMs ? ` (${fmtDuration(att.durationMs)}, ${fmtBytes(att.bytes)})` : ` (${fmtBytes(att.bytes)})`} will be
-          deleted from this device and the sync server.{' '}
-          <strong style={{ color: 'var(--ink)' }}>This cannot be undone or recovered.</strong>
+          {att.name
+            ? t('media.delete.body', { name: att.name, noun, info })
+            : t('media.delete.bodyUnnamed', { noun, info })}{' '}
+          <strong style={{ color: 'var(--ink)' }}>{t('media.delete.irreversible')}</strong>
         </p>
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10 }}>
-          <Btn kind="ghost" onClick={onCancel}>Cancel</Btn>
-          <Btn kind="danger" onClick={onConfirm}>Delete {noun.includes('recording') ? 'recording' : noun}</Btn>
+          <Btn kind="ghost" onClick={onCancel}>{t('common.cancel')}</Btn>
+          <Btn kind="danger" onClick={onConfirm}>
+            {t('media.delete.confirm', { noun: att.kind === 'audio' || att.kind === 'video' ? t('media.noun.recording') : noun })}
+          </Btn>
         </div>
       </div>
     </div>
@@ -136,21 +139,21 @@ export function MediaCard({
       onClick={retry}
       style={{ fontFamily: 'var(--ui)', fontSize: 12.5, fontWeight: 600, color: 'var(--accent-ink)', background: 'transparent', border: '1px solid var(--line)', borderRadius: 999, padding: '4px 12px', cursor: 'pointer' }}
     >
-      Not available yet — retry
+      {t('media.retryUnavailable')}
     </button>
   );
 
   const placeholder = (
     <div style={{ height: compact ? 64 : 150, display: 'flex', flexDirection: compact ? 'row' : 'column', alignItems: 'center', justifyContent: 'center', gap: 9, color: 'var(--ink-3)' }}>
       <Icon name={mediaIcon(att.kind)} size={compact ? 18 : 22} color="var(--ink-3)" />
-      {failed ? retryBtn : <span style={{ fontFamily: 'var(--ui)', fontSize: 12.5 }}>Loading {mediaNoun(att.kind)}…</span>}
+      {failed ? retryBtn : <span style={{ fontFamily: 'var(--ui)', fontSize: 12.5 }}>{t('media.loading', { noun: mediaNoun(att.kind) })}</span>}
     </div>
   );
 
   const deleteBtn = onDelete && (
     <button
       onClick={() => setConfirming(true)}
-      title={`Delete ${mediaNoun(att.kind)}`}
+      title={t('media.delete.confirm', { noun: mediaNoun(att.kind) })}
       style={{ width: 26, height: 26, borderRadius: 8, border: 'none', background: 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'var(--ink-3)', flexShrink: 0 }}
     >
       <Icon name="x" size={14} />
@@ -160,13 +163,13 @@ export function MediaCard({
   // Generic files have no preview: one row with the name, size, and a download link.
   if (att.kind === 'file') {
     return (
-      <div style={{ borderRadius: 14, border: '1px solid var(--line)', background: 'var(--surface-2)', display: 'flex', alignItems: 'center', gap: 11, padding: '10px 9px 10px 13px' }}>
+      <div style={{ borderRadius: 14, border: '1px solid var(--line)', background: 'var(--surface-2)', display: 'flex', alignItems: 'center', gap: 11, paddingBlock: 10, paddingInlineStart: 13, paddingInlineEnd: 9 }}>
         <span style={{ width: 38, height: 38, borderRadius: 11, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--surface)', border: '1px solid var(--line)' }}>
           <Icon name="file" size={18} color="var(--ink-2)" />
         </span>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontFamily: 'var(--ui)', fontSize: 13.5, fontWeight: 600, color: 'var(--ink)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-            {att.name || 'Attached file'}
+            {att.name || t('media.attachedFile')}
           </div>
           <div style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--ink-3)', marginTop: 2 }}>
             {fmtBytes(att.bytes)}{att.mime ? ` · ${att.mime}` : ''}
@@ -175,8 +178,8 @@ export function MediaCard({
         {url ? (
           <a
             href={url}
-            download={att.name || 'attachment'}
-            title="Download file"
+            download={att.name || t('media.attachmentFilename')}
+            title={t('media.downloadFile')}
             style={{ width: 30, height: 30, borderRadius: 9, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--accent-ink)', flexShrink: 0 }}
           >
             <Icon name="download" size={16} />
@@ -184,7 +187,7 @@ export function MediaCard({
         ) : failed ? (
           retryBtn
         ) : (
-          <span style={{ fontFamily: 'var(--ui)', fontSize: 12, color: 'var(--ink-3)', flexShrink: 0 }}>Loading…</span>
+          <span style={{ fontFamily: 'var(--ui)', fontSize: 12, color: 'var(--ink-3)', flexShrink: 0 }}>{t('common.loading')}</span>
         )}
         {deleteBtn}
         {confirming && (
@@ -202,16 +205,16 @@ export function MediaCard({
           : att.kind === 'image'
             ? <img
                 src={url}
-                alt={att.name || 'photo'}
+                alt={att.name || t('media.noun.image')}
                 onClick={onOpen}
                 style={{ display: 'block', width: '100%', maxHeight: 560, objectFit: 'cover', cursor: onOpen ? 'zoom-in' : 'default', background: 'var(--surface)' }}
               />
             : <video src={url} controls playsInline style={{ display: 'block', width: '100%', maxHeight: 420, background: '#1a140e' }} />
         : placeholder}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 7, padding: '5px 7px 5px 11px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 7, paddingBlock: 5, paddingInlineStart: 11, paddingInlineEnd: 7 }}>
         <Icon name={mediaIcon(att.kind)} size={14} color="var(--ink-3)" />
         <span style={{ fontFamily: 'var(--mono)', fontSize: 11.5, color: 'var(--ink-3)', flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-          {att.name || att.kind} · {att.durationMs ? `${fmtDuration(att.durationMs)} · ` : ''}{fmtBytes(att.bytes)}
+          {att.name || mediaNoun(att.kind)} · {att.durationMs ? `${fmtDuration(att.durationMs)} · ` : ''}{fmtBytes(att.bytes)}
         </span>
         {deleteBtn}
       </div>
@@ -260,7 +263,7 @@ function GalleryTile({
       {url ? (
         <img
           src={url}
-          alt={att.name || 'photo'}
+          alt={att.name || t('media.noun.image')}
           onClick={onOpen}
           style={{ display: 'block', width: '100%', height: '100%', objectFit: 'cover', cursor: onOpen ? 'zoom-in' : 'default' }}
         />
@@ -272,18 +275,18 @@ function GalleryTile({
               onClick={retry}
               style={{ fontFamily: 'var(--ui)', fontSize: 11.5, fontWeight: 600, color: 'var(--accent-ink)', background: 'transparent', border: '1px solid var(--line)', borderRadius: 999, padding: '3px 10px', cursor: 'pointer' }}
             >
-              Retry
+              {t('common.retry')}
             </button>
           ) : (
-            <span style={{ fontFamily: 'var(--ui)', fontSize: 11.5 }}>Loading…</span>
+            <span style={{ fontFamily: 'var(--ui)', fontSize: 11.5 }}>{t('common.loading')}</span>
           )}
         </div>
       )}
       {onDelete && (
         <button
           onClick={() => setConfirming(true)}
-          title="Delete photo"
-          style={{ position: 'absolute', top: 7, right: 7, width: 26, height: 26, borderRadius: 999, border: 'none', background: 'rgba(30,22,16,.55)', backdropFilter: 'blur(2px)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#fff' }}
+          title={t('media.delete.confirm', { noun: t('media.noun.image') })}
+          style={{ position: 'absolute', top: 7, insetInlineEnd: 7, width: 26, height: 26, borderRadius: 999, border: 'none', background: 'rgba(30,22,16,.55)', backdropFilter: 'blur(2px)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#fff' }}
         >
           <Icon name="x" size={13} />
         </button>

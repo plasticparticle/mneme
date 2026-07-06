@@ -12,6 +12,7 @@
 import { Node, mergeAttributes, type Editor } from '@tiptap/core';
 import { render, type VNode } from 'preact';
 import { useState } from 'preact/hooks';
+import { t, fmtNumber } from '../i18n';
 import type { MediaAttachment } from '../sync/engine';
 import { useMediaUrl, type MediaResolver } from '../ui/Attachments';
 import { ConfirmDialog } from '../ui/ConfirmDialog';
@@ -82,9 +83,12 @@ export function insertLocation(editor: Editor, data: LocationData): void {
 }
 
 function fmtDistance(km: number): string {
-  if (km < 1) return `${Math.round(km * 1000)} m`;
-  if (km < 10) return `${km.toFixed(1)} km`;
-  return `${Math.round(km)} km`;
+  if (km < 1) return t('editorx.location.distanceM', { n: fmtNumber(Math.round(km * 1000)) });
+  if (km < 10)
+    return t('editorx.location.distanceKm', {
+      n: fmtNumber(km, { minimumFractionDigits: 1, maximumFractionDigits: 1 }),
+    });
+  return t('editorx.location.distanceKm', { n: fmtNumber(Math.round(km)) });
 }
 
 // The travel photo under the map — lazily resolved, with a loading placeholder.
@@ -93,16 +97,16 @@ function LocationPhoto({ att, resolve }: { att: MediaAttachment; resolve: MediaR
   return (
     <div style={{ marginTop: 8, borderRadius: 12, overflow: 'hidden', border: '1px solid var(--line)', background: 'var(--surface-2)' }}>
       {url ? (
-        <img src={url} alt={att.name || 'travel photo'} style={{ display: 'block', width: '100%', maxHeight: 360, objectFit: 'cover' }} />
+        <img src={url} alt={att.name || t('editorx.location.travelPhoto')} style={{ display: 'block', width: '100%', maxHeight: 360, objectFit: 'cover' }} />
       ) : (
         <div style={{ height: 120, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 9, color: 'var(--ink-3)' }}>
           <Icon name="image" size={18} color="var(--ink-3)" />
           {failed ? (
             <button onClick={retry} style={{ fontFamily: 'var(--ui)', fontSize: 12, fontWeight: 600, color: 'var(--accent-ink)', background: 'transparent', border: '1px solid var(--line)', borderRadius: 999, padding: '3px 10px', cursor: 'pointer' }}>
-              Not available yet — retry
+              {t('editorx.location.retry')}
             </button>
           ) : (
-            <span style={{ fontFamily: 'var(--ui)', fontSize: 12 }}>Loading photo…</span>
+            <span style={{ fontFamily: 'var(--ui)', fontSize: 12 }}>{t('editorx.location.loadingPhoto')}</span>
           )}
         </div>
       )}
@@ -130,24 +134,24 @@ export function LocationCard({
     <div style={{ borderRadius: 14, overflow: 'hidden', border: '1px solid var(--line)', background: 'var(--surface-2)' }}>
       <div style={{ position: 'relative', width: '100%', aspectRatio: aspect, background: 'var(--surface)' }}>
         {url ? (
-          <img src={url} alt="map" style={{ display: 'block', width: '100%', height: '100%', objectFit: 'cover' }} />
+          <img src={url} alt={t('editorx.location.mapAlt')} style={{ display: 'block', width: '100%', height: '100%', objectFit: 'cover' }} />
         ) : (
           <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, color: 'var(--ink-3)' }}>
             <Icon name="pin" size={22} color="var(--ink-3)" />
             {failed ? (
               <button onClick={retry} style={{ fontFamily: 'var(--ui)', fontSize: 12, fontWeight: 600, color: 'var(--accent-ink)', background: 'transparent', border: '1px solid var(--line)', borderRadius: 999, padding: '3px 10px', cursor: 'pointer' }}>
-                Not available yet — retry
+                {t('editorx.location.retry')}
               </button>
             ) : (
-              <span style={{ fontFamily: 'var(--ui)', fontSize: 12 }}>Loading map…</span>
+              <span style={{ fontFamily: 'var(--ui)', fontSize: 12 }}>{t('editorx.location.loadingMap')}</span>
             )}
           </div>
         )}
         {onDelete && (
           <button
             onClick={() => setConfirming(true)}
-            title="Delete location"
-            style={{ position: 'absolute', top: 8, right: 8, width: 28, height: 28, borderRadius: 999, border: 'none', background: 'rgba(30,22,16,.55)', backdropFilter: 'blur(2px)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#fff' }}
+            title={t('editorx.location.delete')}
+            style={{ position: 'absolute', top: 8, insetInlineEnd: 8, width: 28, height: 28, borderRadius: 999, border: 'none', background: 'rgba(30,22,16,.55)', backdropFilter: 'blur(2px)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#fff' }}
           >
             <Icon name="x" size={14} />
           </button>
@@ -157,8 +161,8 @@ export function LocationCard({
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 11px' }}>
         <Icon name="pin" size={15} color="var(--accent-ink)" />
         <span style={{ flex: 1, minWidth: 0, fontFamily: 'var(--ui)', fontSize: 13, fontWeight: 600, color: 'var(--ink)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-          {data.from.label || 'Pinned location'}
-          {data.to && <span style={{ color: 'var(--ink-3)', fontWeight: 500 }}> → {data.to.label || 'Destination'}</span>}
+          {data.from.label || t('editorx.location.pinned')}
+          {data.to && <span style={{ color: 'var(--ink-3)', fontWeight: 500 }}> → {data.to.label || t('editorx.location.destination')}</span>}
         </span>
         {distance !== null && (
           <span style={{ flexShrink: 0, fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--ink-3)' }}>{fmtDistance(distance)}</span>
@@ -170,16 +174,16 @@ export function LocationCard({
       {confirming && (
         <ConfirmDialog
           icon="pin"
-          title="Delete this location?"
-          confirmLabel="Delete location"
+          title={t('editorx.location.confirmTitle')}
+          confirmLabel={t('editorx.location.delete')}
           onCancel={() => setConfirming(false)}
           onConfirm={() => {
             setConfirming(false);
             onDelete?.();
           }}
         >
-          The map{data.photo ? ' and travel photo' : ''} will be removed from this entry and deleted from this device and the
-          sync server. <strong style={{ color: 'var(--ink)' }}>This cannot be undone.</strong>
+          {data.photo ? t('editorx.location.confirmBody.mapPhoto') : t('editorx.location.confirmBody.map')}{' '}
+          <strong style={{ color: 'var(--ink)' }}>{t('editorx.location.cannotUndo')}</strong>
         </ConfirmDialog>
       )}
     </div>

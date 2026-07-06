@@ -2,15 +2,13 @@ import type { VNode } from 'preact';
 import { useEffect, useState } from 'preact/hooks';
 import { Icon } from './Icon';
 import { Btn } from './primitives';
+import { t, fmtDate, monthName, weekdayName } from '../i18n';
 
 // The editor's date/time metadata line, made editable: clicking it opens a
 // month-grid + time picker so an entry can be re-dated (e.g. written the
 // morning after). All math is local time — this edits exactly the local-time
 // label the editor header shows. createdAt travels inside the encrypted entry
 // body, so the relay never sees the chosen date (§3).
-
-const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-const WD = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
 const pad = (n: number): string => String(n).padStart(2, '0');
 
@@ -20,10 +18,10 @@ function monthMeta(year: number, month: number): { offset: number; days: number 
 }
 
 function dateLabel(d: Date): string {
-  return d.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+  return fmtDate(d, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 }
 function timeLabel(d: Date): string {
-  return d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  return fmtDate(d, { hour: 'numeric', minute: '2-digit' });
 }
 
 export function EntryDateTime({ value, desk, onChange }: { value: number; desk: boolean; onChange: (ts: number) => void }): VNode {
@@ -32,7 +30,7 @@ export function EntryDateTime({ value, desk, onChange }: { value: number; desk: 
   return (
     <>
       <button
-        title="Change date & time"
+        title={t('editor.date.change')}
         onClick={() => setOpen(true)}
         style={{ display: 'inline-flex', alignItems: 'center', gap: 7, background: 'transparent', border: 'none', borderRadius: 8, padding: '3px 8px', margin: '-3px -8px', cursor: 'pointer', color: 'var(--ink-2)', transition: 'all .14s' }}
         onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface-2)'; e.currentTarget.style.color = 'var(--ink)'; }}
@@ -107,28 +105,29 @@ function DateTimeSheet({ value, desk, onClose, onSave }: { value: number; desk: 
       >
         {!desk && <div style={{ width: 38, height: 4, borderRadius: 9, background: 'var(--line)', margin: '0 auto 14px' }} />}
 
-        <div style={{ fontFamily: 'var(--ui)', fontSize: 11.5, fontWeight: 700, letterSpacing: 0.8, textTransform: 'uppercase', color: 'var(--ink-3)' }}>Entry date & time</div>
+        <div style={{ fontFamily: 'var(--ui)', fontSize: 11.5, fontWeight: 700, letterSpacing: 0.8, textTransform: 'uppercase', color: 'var(--ink-3)' }}>{t('editor.date.heading')}</div>
         <div style={{ fontFamily: 'var(--serif)', fontSize: 19, fontWeight: 500, color: 'var(--ink)', margin: '3px 0 16px' }}>
           {dateLabel(draft)} · {timeLabel(draft)}
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-            <span style={{ fontFamily: 'var(--serif)', fontSize: 18, fontWeight: 500, color: 'var(--ink)' }}>{MONTHS[view.m]}</span>
+            <span style={{ fontFamily: 'var(--serif)', fontSize: 18, fontWeight: 500, color: 'var(--ink)' }}>{monthName(view.m)}</span>
             <span style={{ fontFamily: 'var(--ui)', fontSize: 14, color: 'var(--ink-3)' }}>{view.y}</span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
             {!isCurrentMonth && (
-              <Btn kind="quiet" size="sm" onClick={() => setView({ y: now.getFullYear(), m: now.getMonth() })}>Today</Btn>
+              <Btn kind="quiet" size="sm" onClick={() => setView({ y: now.getFullYear(), m: now.getMonth() })}>{t('common.today')}</Btn>
             )}
-            <button onClick={() => nav(-1)} style={navBtn}><Icon name="left" size={17} color="var(--ink-2)" /></button>
-            <button onClick={() => nav(1)} style={navBtn}><Icon name="right" size={17} color="var(--ink-2)" /></button>
+            <button onClick={() => nav(-1)} style={navBtn}><Icon name="left" size={17} color="var(--ink-2)" dirFlip /></button>
+            <button onClick={() => nav(1)} style={navBtn}><Icon name="right" size={17} color="var(--ink-2)" dirFlip /></button>
           </div>
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 2, marginBottom: 4 }}>
-          {WD.map((w) => (
-            <div key={w} style={{ textAlign: 'center', fontFamily: 'var(--ui)', fontSize: 10.5, fontWeight: 700, letterSpacing: 0.5, color: 'var(--ink-3)', textTransform: 'uppercase', padding: '2px 0' }}>{w[0]}</div>
+          {/* Mon-first columns; getDay() has 0=Sunday, so column i is weekday (i+1)%7. */}
+          {Array.from({ length: 7 }).map((_, i) => (
+            <div key={i} style={{ textAlign: 'center', fontFamily: 'var(--ui)', fontSize: 10.5, fontWeight: 700, letterSpacing: 0.5, color: 'var(--ink-3)', textTransform: 'uppercase', padding: '2px 0' }}>{weekdayName((i + 1) % 7, 'narrow')}</div>
           ))}
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 2 }}>
@@ -158,7 +157,7 @@ function DateTimeSheet({ value, desk, onClose, onSave }: { value: number; desk: 
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginTop: 14, paddingTop: 14, borderTop: '1px solid var(--line)' }}>
-          <span style={{ fontFamily: 'var(--ui)', fontSize: 11.5, fontWeight: 700, letterSpacing: 0.8, textTransform: 'uppercase', color: 'var(--ink-3)' }}>Time</span>
+          <span style={{ fontFamily: 'var(--ui)', fontSize: 11.5, fontWeight: 700, letterSpacing: 0.8, textTransform: 'uppercase', color: 'var(--ink-3)' }}>{t('editor.date.time')}</span>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <input
               type="time"
@@ -166,13 +165,13 @@ function DateTimeSheet({ value, desk, onClose, onSave }: { value: number; desk: 
               onInput={(e) => setTime((e.target as HTMLInputElement).value)}
               style={{ fontFamily: 'var(--mono)', fontSize: 15, padding: '7px 10px', borderRadius: 10, border: '1px solid var(--line)', background: 'var(--paper)', color: 'var(--ink)', outline: 'none' }}
             />
-            <Btn kind="soft" size="sm" onClick={toNow}>Now</Btn>
+            <Btn kind="soft" size="sm" onClick={toNow}>{t('editor.date.now')}</Btn>
           </div>
         </div>
 
         <div style={{ display: 'flex', gap: 10, marginTop: 18 }}>
-          <Btn kind="ghost" onClick={onClose} style={{ flex: 1 }}>Cancel</Btn>
-          <Btn kind="primary" onClick={() => onSave(draft.getTime())} style={{ flex: 2 }}>Set date & time</Btn>
+          <Btn kind="ghost" onClick={onClose} style={{ flex: 1 }}>{t('common.cancel')}</Btn>
+          <Btn kind="primary" onClick={() => onSave(draft.getTime())} style={{ flex: 2 }}>{t('editor.date.set')}</Btn>
         </div>
       </div>
     </div>

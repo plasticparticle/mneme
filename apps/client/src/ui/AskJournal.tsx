@@ -7,6 +7,7 @@ import type { JSX, VNode } from 'preact';
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { Icon } from './Icon';
 import { Btn } from './primitives';
+import { t, tp } from '../i18n';
 import { useAppData } from '../state/data';
 import { makeProvider } from '../ai/provider';
 import { buildJournalContext, CLOUD_BUDGET_CHARS, LOCAL_BUDGET_CHARS } from '../ai/context';
@@ -21,7 +22,8 @@ export function AskJournalSheet({ desk, onClose }: { desk: boolean; onClose: () 
   const [input, setInput] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const [contextNote, setContextNote] = useState('');
+  // Kept as data (not a prebuilt string) so the note re-translates on locale change.
+  const [contextNote, setContextNote] = useState<{ count: number; truncated: boolean } | null>(null);
   const abortRef = useRef<AbortController | null>(null);
   const logRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -44,7 +46,7 @@ export function AskJournalSheet({ desk, onClose }: { desk: boolean; onClose: () 
     const q = input.trim();
     if (!q || busy) return;
     const ctx = buildJournalContext(entries, q, provider.local ? LOCAL_BUDGET_CHARS : CLOUD_BUDGET_CHARS);
-    setContextNote(`Using ${ctx.entryCount} ${ctx.entryCount === 1 ? 'entry' : 'entries'} as context${ctx.truncated ? ' (truncated to fit)' : ''}`);
+    setContextNote({ count: ctx.entryCount, truncated: ctx.truncated });
     const history: AiMessage[] = [...transcript, { role: 'user', content: q }];
     setTranscript([...history, { role: 'assistant', content: '' }]);
     setInput('');
@@ -57,11 +59,11 @@ export function AskJournalSheet({ desk, onClose }: { desk: boolean; onClose: () 
         system: chatSystemPrompt(ctx.text),
         messages: history,
         signal: ac.signal,
-        onToken: (t) =>
+        onToken: (tok) =>
           setTranscript((prev) => {
             const next = [...prev];
             const last = next[next.length - 1];
-            next[next.length - 1] = { ...last, content: last.content + t };
+            next[next.length - 1] = { ...last, content: last.content + tok };
             return next;
           }),
       });
@@ -70,12 +72,12 @@ export function AskJournalSheet({ desk, onClose }: { desk: boolean; onClose: () 
       if (err.hint !== 'aborted') {
         setError(
           err.hint === 'auth'
-            ? 'The API key was rejected — check it in AI settings.'
+            ? t('assistant.error.keyRejected')
             : err.hint === 'refused'
-              ? 'The model declined to answer.'
+              ? t('assistant.error.refusedAnswer')
               : provider.local
-                ? 'Could not reach Ollama — is it running? (ollama serve)'
-                : `Request failed: ${err.message}`,
+                ? t('assistant.error.ollamaUnreachable')
+                : t('assistant.error.requestFailed', { message: err.message }),
         );
         // Drop an empty assistant bubble; keep partial text if any arrived.
         setTranscript((prev) => (prev[prev.length - 1]?.content === '' ? prev.slice(0, -1) : prev));
@@ -92,17 +94,17 @@ export function AskJournalSheet({ desk, onClose }: { desk: boolean; onClose: () 
   const panel = (
       <div
         onClick={(e) => e.stopPropagation()}
-        style={{ width: desk ? 'min(440px, 40vw)' : '100%', flexShrink: 0, height: desk ? '100%' : '88%', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', background: 'var(--surface)', borderRadius: desk ? 0 : '24px 24px 0 0', border: desk ? 'none' : '1px solid var(--line)', borderLeft: '1px solid var(--line)', boxShadow: desk ? 'none' : '0 20px 60px rgba(30,20,12,.3)', overflow: 'hidden' }}
+        style={{ width: desk ? 'min(440px, 40vw)' : '100%', flexShrink: 0, height: desk ? '100%' : '88%', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', background: 'var(--surface)', borderRadius: desk ? 0 : '24px 24px 0 0', border: desk ? 'none' : '1px solid var(--line)', borderInlineStart: '1px solid var(--line)', boxShadow: desk ? 'none' : '0 20px 60px rgba(30,20,12,.3)', overflow: 'hidden' }}
       >
         <div style={{ padding: desk ? '18px 22px 12px' : '14px 20px 10px', borderBottom: '1px solid var(--line)' }}>
           {!desk && <div style={{ width: 38, height: 4, borderRadius: 9, background: 'var(--line)', margin: '0 auto 12px' }} />}
           <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
             <Icon name="feather" size={17} color="var(--accent)" />
-            <h3 style={{ fontFamily: 'var(--serif)', fontSize: 18, fontWeight: 500, color: 'var(--ink)', margin: 0, flex: 1 }}>Ask my journal</h3>
+            <h3 style={{ fontFamily: 'var(--serif)', fontSize: 18, fontWeight: 500, color: 'var(--ink)', margin: 0, flex: 1 }}>{t('assistant.ask.title')}</h3>
             <span style={{ fontFamily: 'var(--mono)', fontSize: 10, letterSpacing: 0.4, textTransform: 'uppercase', color: provider.local ? 'var(--accent-ink)' : 'var(--ink-3)', background: provider.local ? 'var(--accent-soft)' : 'var(--paper)', border: `1px solid ${provider.local ? 'var(--accent-line)' : 'var(--line)'}`, borderRadius: 6, padding: '2px 7px' }}>
-              {provider.local ? 'on this device' : 'sent to Anthropic'}
+              {provider.local ? t('assistant.badge.onDevice') : t('assistant.badge.sentToAnthropic')}
             </span>
-            <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, color: 'var(--ink-3)' }} aria-label="Close">
+            <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, color: 'var(--ink-3)' }} aria-label={t('common.close')}>
               <Icon name="x" size={16} />
             </button>
           </div>
@@ -112,10 +114,10 @@ export function AskJournalSheet({ desk, onClose }: { desk: boolean; onClose: () 
           {transcript.length === 0 && (
             <div style={{ margin: 'auto', textAlign: 'center', maxWidth: 380, display: 'flex', flexDirection: 'column', gap: 8 }}>
               <p style={{ ...pStyle, fontSize: 14, color: 'var(--ink-2)' }}>
-                Ask anything about what you've written — "what did I do last weekend?", "when did I first mention the garden?", "summarize my June".
+                {t('assistant.ask.emptyHint')}
               </p>
               <p style={{ ...pStyle, fontSize: 11.5, color: 'var(--ink-3)' }}>
-                Each question searches your journal afresh; the conversation is not saved.
+                {t('assistant.ask.notSaved')}
               </p>
             </div>
           )}
@@ -139,19 +141,23 @@ export function AskJournalSheet({ desk, onClose }: { desk: boolean; onClose: () 
         </div>
 
         <div style={{ borderTop: '1px solid var(--line)', padding: desk ? '12px 22px 16px' : '10px 18px 18px' }}>
-          {contextNote && <div style={{ fontFamily: 'var(--ui)', fontSize: 11, color: 'var(--ink-3)', marginBottom: 7 }}>{contextNote}</div>}
+          {contextNote && (
+            <div style={{ fontFamily: 'var(--ui)', fontSize: 11, color: 'var(--ink-3)', marginBottom: 7 }}>
+              {tp(contextNote.truncated ? 'assistant.ask.contextTruncated' : 'assistant.ask.context', contextNote.count)}
+            </div>
+          )}
           <form onSubmit={(e) => { e.preventDefault(); void send(); }} style={{ display: 'flex', gap: 9 }}>
             <input
               ref={inputRef}
               value={input}
               onInput={(e) => setInput((e.target as HTMLInputElement).value)}
-              placeholder="Ask your journal…"
+              placeholder={t('assistant.ask.placeholder')}
               style={{ flex: 1, fontFamily: 'var(--ui)', fontSize: 14, color: 'var(--ink)', padding: '11px 14px', borderRadius: 12, background: 'var(--paper)', border: '1px solid var(--line)', outline: 'none' }}
             />
             {busy ? (
-              <Btn kind="ghost" size="md" onClick={() => abortRef.current?.abort()}>Stop</Btn>
+              <Btn kind="ghost" size="md" onClick={() => abortRef.current?.abort()}>{t('assistant.stop')}</Btn>
             ) : (
-              <Btn kind="primary" size="md" type="submit" style={{ opacity: input.trim() ? 1 : 0.55 }}>Ask</Btn>
+              <Btn kind="primary" size="md" type="submit" style={{ opacity: input.trim() ? 1 : 0.55 }}>{t('assistant.ask.send')}</Btn>
             )}
           </form>
         </div>

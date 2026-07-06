@@ -7,14 +7,16 @@ import type { JSX, VNode } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { Icon } from './Icon';
 import { Btn } from './primitives';
+import { t, type MessageKey } from '../i18n';
 import { makeProvider } from '../ai/provider';
 import { editorSystemPrompt, editorUserMessage, type AiEditorAction } from '../ai/prompts';
 import { toAiError, type AiSettings } from '../ai/types';
 
-const TITLES: Record<AiEditorAction, string> = {
-  continue: 'Continue writing',
-  summarize: 'Summarize entry',
-  title: 'Suggest a title',
+// Message keys (not the translated strings) — resolved with t() at render time.
+const TITLE_KEYS: Record<AiEditorAction, MessageKey> = {
+  continue: 'assistant.action.continue',
+  summarize: 'assistant.action.summarize',
+  title: 'assistant.action.title',
 };
 
 const pStyle: JSX.CSSProperties = { fontFamily: 'var(--ui)', fontSize: 13, lineHeight: 1.55, color: 'var(--ink-2)', margin: 0 };
@@ -48,19 +50,19 @@ export function AiActionDialog({ action, entryTitle, entryText, settings, onInse
         messages: [{ role: 'user', content: editorUserMessage(action) }],
         maxTokens: 1024,
         signal: ac.signal,
-        onToken: (t) => setText((prev) => prev + t),
+        onToken: (tok) => setText((prev) => prev + tok),
       })
       .catch((e: unknown) => {
         const err = toAiError(e);
         if (err.hint !== 'aborted') {
           setError(
             err.hint === 'auth'
-              ? 'The API key was rejected — check it in AI settings.'
+              ? t('assistant.error.keyRejected')
               : err.hint === 'refused'
-                ? 'The model declined.'
+                ? t('assistant.error.refused')
                 : provider.local
-                  ? 'Could not reach Ollama — is it running? (ollama serve)'
-                  : `Request failed: ${err.message}`,
+                  ? t('assistant.error.ollamaUnreachable')
+                  : t('assistant.error.requestFailed', { message: err.message }),
           );
         }
       })
@@ -85,9 +87,9 @@ export function AiActionDialog({ action, entryTitle, entryText, settings, onInse
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
           <Icon name="feather" size={16} color="var(--accent)" />
-          <h3 style={{ fontFamily: 'var(--serif)', fontSize: 17, fontWeight: 500, color: 'var(--ink)', margin: 0, flex: 1 }}>{TITLES[action]}</h3>
+          <h3 style={{ fontFamily: 'var(--serif)', fontSize: 17, fontWeight: 500, color: 'var(--ink)', margin: 0, flex: 1 }}>{t(TITLE_KEYS[action])}</h3>
           <span style={{ fontFamily: 'var(--mono)', fontSize: 10, letterSpacing: 0.4, textTransform: 'uppercase', color: provider.local ? 'var(--accent-ink)' : 'var(--ink-3)', background: provider.local ? 'var(--accent-soft)' : 'var(--paper)', border: `1px solid ${provider.local ? 'var(--accent-line)' : 'var(--line)'}`, borderRadius: 6, padding: '2px 7px' }}>
-            {provider.local ? 'on this device' : 'sent to Anthropic'}
+            {provider.local ? t('assistant.badge.onDevice') : t('assistant.badge.sentToAnthropic')}
           </span>
         </div>
 
@@ -95,34 +97,34 @@ export function AiActionDialog({ action, entryTitle, entryText, settings, onInse
           <p style={{ ...pStyle, color: 'var(--accent-ink)' }}>{error}</p>
         ) : titleOptions.length > 0 ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <p style={pStyle}>Pick a title:</p>
-            {titleOptions.map((t) => (
+            <p style={pStyle}>{t('assistant.action.pickTitle')}</p>
+            {titleOptions.map((opt) => (
               <button
-                key={t}
-                onClick={() => { onPickTitle(t); onClose(); }}
-                style={{ fontFamily: 'var(--serif)', fontSize: 15.5, color: 'var(--ink)', textAlign: 'left', padding: '11px 14px', borderRadius: 12, background: 'var(--paper)', border: '1px solid var(--line)', cursor: 'pointer' }}
+                key={opt}
+                onClick={() => { onPickTitle(opt); onClose(); }}
+                style={{ fontFamily: 'var(--serif)', fontSize: 15.5, color: 'var(--ink)', textAlign: 'start', padding: '11px 14px', borderRadius: 12, background: 'var(--paper)', border: '1px solid var(--line)', cursor: 'pointer' }}
               >
-                {t}
+                {opt}
               </button>
             ))}
           </div>
         ) : (
           <div style={{ overflowY: 'auto', minHeight: 90, padding: '12px 14px', borderRadius: 12, background: 'var(--paper)', border: '1px solid var(--line)', fontFamily: 'var(--serif)', fontSize: 15, lineHeight: 1.65, color: 'var(--ink)', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
-            {text || <span style={{ color: 'var(--ink-3)' }}>{busy ? 'Thinking…' : '(nothing generated)'}</span>}
+            {text || <span style={{ color: 'var(--ink-3)' }}>{busy ? t('assistant.action.thinking') : t('assistant.action.nothing')}</span>}
           </div>
         )}
 
         <div style={{ display: 'flex', gap: 10 }}>
           {busy ? (
             <>
-              <Btn kind="ghost" size="md" onClick={() => abortRef.current?.abort()} style={{ flex: 1 }}>Stop</Btn>
-              <Btn kind="ghost" size="md" onClick={onClose} style={{ flex: 1 }}>Cancel</Btn>
+              <Btn kind="ghost" size="md" onClick={() => abortRef.current?.abort()} style={{ flex: 1 }}>{t('assistant.stop')}</Btn>
+              <Btn kind="ghost" size="md" onClick={onClose} style={{ flex: 1 }}>{t('common.cancel')}</Btn>
             </>
           ) : (
             <>
-              <Btn kind="ghost" size="md" onClick={onClose} style={{ flex: 1 }}>Discard</Btn>
+              <Btn kind="ghost" size="md" onClick={onClose} style={{ flex: 1 }}>{t('assistant.discard')}</Btn>
               {action !== 'title' && text && !error && (
-                <Btn kind="primary" size="md" onClick={() => { onInsert(text); onClose(); }} style={{ flex: 2 }}>Insert at cursor</Btn>
+                <Btn kind="primary" size="md" onClick={() => { onInsert(text); onClose(); }} style={{ flex: 2 }}>{t('assistant.action.insert')}</Btn>
               )}
             </>
           )}

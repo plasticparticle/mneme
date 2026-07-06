@@ -8,6 +8,7 @@ import type { VNode } from 'preact';
 import type { JSONContent } from '@tiptap/core';
 import type { JournalEntry, MediaAttachment } from '../sync/engine';
 import { docImages } from '../editor/media';
+import { t } from '../i18n';
 import { useMediaUrl, type MediaResolver } from './Attachments';
 
 /** Image attachments of an entry, preferring inline bodyJson, then legacy attachments. */
@@ -72,7 +73,7 @@ export function EntryThumbs({ images, resolve, size = 34 }: { images: MediaAttac
       {shown.map((att) => (
         <Thumb key={att.id} att={att} resolve={resolve} size={size} />
       ))}
-      {extra > 0 && <Thumb key="more" att={images[3]} resolve={resolve} size={size} overlay={`+${extra}`} />}
+      {extra > 0 && <Thumb key="more" att={images[3]} resolve={resolve} size={size} overlay={t('media.moreCount', { count: extra })} />}
     </div>
   );
 }

@@ -7,6 +7,7 @@ import type { JSX, VNode } from 'preact';
 import { useState } from 'preact/hooks';
 import { Icon } from './Icon';
 import { Btn } from './primitives';
+import { t } from '../i18n';
 
 type Step = 'confirm' | 'working' | 'error';
 
@@ -21,7 +22,8 @@ export function DeleteVaultSheet({ desk, onClose, deleteVault }: {
   const [step, setStep] = useState<Step>('confirm');
   const [typed, setTyped] = useState('');
   const [error, setError] = useState('');
-  const armed = typed.trim() === 'delete';
+  const word = t('vault.delete.word');
+  const armed = typed.trim().toLowerCase() === word.toLowerCase();
 
   const run = async (): Promise<void> => {
     if (!armed) return;
@@ -43,9 +45,9 @@ export function DeleteVaultSheet({ desk, onClose, deleteVault }: {
       return (
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14, padding: '12px 0' }}>
           <Icon name="trash" size={26} color="var(--accent)" />
-          <div style={{ fontFamily: 'var(--ui)', fontSize: 14, fontWeight: 600, color: 'var(--ink)' }}>Deleting your vault…</div>
+          <div style={{ fontFamily: 'var(--ui)', fontSize: 14, fontWeight: 600, color: 'var(--ink)' }}>{t('vault.delete.working')}</div>
           <p style={{ ...pStyle, fontSize: 12.5, textAlign: 'center' }}>
-            Removing everything from the server, then erasing this device.
+            {t('vault.delete.workingBody')}
           </p>
         </div>
       );
@@ -54,14 +56,11 @@ export function DeleteVaultSheet({ desk, onClose, deleteVault }: {
     if (step === 'error') {
       return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <p style={pStyle}>
-            The vault could not be deleted — <strong style={{ color: 'var(--ink)' }}>nothing was removed</strong>.
-            Deletion needs a live connection to the server; check it and try again.
-          </p>
+          <p style={pStyle}>{t('vault.delete.error')}</p>
           <div style={{ fontFamily: 'var(--mono)', fontSize: 12, color: 'var(--ink-2)', padding: '10px 12px', borderRadius: 10, background: 'var(--paper)', border: '1px solid var(--line)', overflowWrap: 'anywhere' }}>{error}</div>
           <div style={{ display: 'flex', gap: 10 }}>
-            <Btn kind="ghost" size="md" onClick={onClose} style={{ flex: 1 }}>Close</Btn>
-            <Btn kind="primary" size="md" onClick={() => void run()} style={{ flex: 2 }}>Try again</Btn>
+            <Btn kind="ghost" size="md" onClick={onClose} style={{ flex: 1 }}>{t('common.close')}</Btn>
+            <Btn kind="primary" size="md" onClick={() => void run()} style={{ flex: 2 }}>{t('vault.tryAgain')}</Btn>
           </div>
         </div>
       );
@@ -70,34 +69,28 @@ export function DeleteVaultSheet({ desk, onClose, deleteVault }: {
     // confirm
     return (
       <form onSubmit={(e) => { e.preventDefault(); void run(); }} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-        <p style={pStyle}>
-          This permanently deletes <strong style={{ color: 'var(--ink)' }}>every entry, recording and template</strong> —
-          from the server and from this device. There is no undo, no backup, and no one who can restore it for you.
-        </p>
+        <p style={pStyle}>{t('vault.delete.body')}</p>
         <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: '12px 14px', borderRadius: 12, background: 'var(--accent-soft)', border: '1px solid var(--accent-line)', fontFamily: 'var(--ui)', fontSize: 12.5, lineHeight: 1.5, color: 'var(--accent-ink)' }}>
           <Icon name="trash" size={16} color="var(--accent)" />
-          <span>
-            Your recovery phrase will open an <strong>empty</strong> vault afterwards. Other devices keep what they
-            already hold locally until you delete it there too — but they can no longer sync.
-          </span>
+          <span>{t('vault.delete.callout')}</span>
         </div>
         <label style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
           <span style={{ fontFamily: 'var(--ui)', fontSize: 12, fontWeight: 600, color: 'var(--ink-2)' }}>
-            Type <span style={{ fontFamily: 'var(--mono)', color: 'var(--accent-ink)' }}>delete</span> to confirm
+            {t('vault.delete.typeToConfirm', { word })}
           </span>
           <input
             value={typed}
             onInput={(e) => setTyped((e.target as HTMLInputElement).value)}
-            placeholder="delete"
+            placeholder={word}
             autocomplete="off"
             spellcheck={false}
             style={{ fontFamily: 'var(--mono)', fontSize: 14, padding: '10px 12px', borderRadius: 10, border: `1.5px solid ${armed ? 'var(--accent)' : 'var(--line)'}`, background: 'var(--paper)', color: 'var(--ink)', outline: 'none', boxSizing: 'border-box', width: '100%' }}
           />
         </label>
         <div style={{ display: 'flex', gap: 10, marginTop: 2 }}>
-          <Btn kind="ghost" size="md" onClick={onClose} style={{ flex: 1 }}>Cancel</Btn>
+          <Btn kind="ghost" size="md" onClick={onClose} style={{ flex: 1 }}>{t('common.cancel')}</Btn>
           <Btn kind={armed ? 'primary' : 'ghost'} size="md" type="submit" style={{ flex: 2, opacity: armed ? 1 : 0.55, pointerEvents: armed ? 'auto' : 'none' }}>
-            {armed ? 'Delete vault forever' : 'Type “delete” first'}
+            {armed ? t('vault.delete.forever') : t('vault.delete.typeFirst', { word })}
           </Btn>
         </div>
       </form>
@@ -115,7 +108,7 @@ export function DeleteVaultSheet({ desk, onClose, deleteVault }: {
       >
         {!desk && <div style={{ width: 38, height: 4, borderRadius: 9, background: 'var(--line)', margin: '0 auto 16px' }} />}
         <h3 style={{ fontFamily: 'var(--serif)', fontSize: 19, fontWeight: 500, color: 'var(--ink)', margin: '0 0 16px', display: 'flex', alignItems: 'center', gap: 9 }}>
-          <Icon name="trash" size={18} color="var(--accent)" /> Delete vault
+          <Icon name="trash" size={18} color="var(--accent)" /> {t('vault.delete.title')}
         </h3>
         {body}
       </div>

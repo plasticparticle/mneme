@@ -28,6 +28,7 @@ import type { JSONContent } from '@tiptap/core';
 import { blocksToDoc, textToDoc, docToText, docMediaIds } from '../editor/doc';
 import { LocalDb, destroyOwnerDb, type MediaRecord } from '../db';
 import { makeThumbnail } from '../ui/thumbnail';
+import { t, tp, fmtDate } from '../i18n';
 
 export type SyncStatus = 'locked' | 'connecting' | 'online' | 'offline';
 
@@ -309,11 +310,11 @@ function defaultEntryTitle(ts: number): string {
 // "12 Jun"). `last` was a hardcoded sample string; this derives it from real data.
 export function relativeDay(ts: number, now: number): string {
   const days = Math.round((startOfLocalDay(now) - startOfLocalDay(ts)) / 86_400_000);
-  if (days <= 0) return 'Today';
-  if (days === 1) return 'Yesterday';
-  if (days < 7) return `${days} days ago`;
-  if (days < 14) return 'Last week';
-  return new Date(ts).toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+  if (days <= 0) return t('common.today');
+  if (days === 1) return t('common.yesterday');
+  if (days < 7) return tp('shell.daysAgo', days);
+  if (days < 14) return t('shell.lastWeek');
+  return fmtDate(ts, { day: 'numeric', month: 'short' });
 }
 
 export function AppDataProvider({ children }: { children: ComponentChildren }): VNode {

@@ -10,15 +10,9 @@ import { Btn } from './primitives';
 import { generateMnemonic, mnemonicWords } from '../crypto/mnemonic';
 import { ManagerCredential } from '../screens/Onboarding';
 import type { RotationProgress } from '../sync/rotate';
+import { t, type MessageKey } from '../i18n';
 
 type Step = 'warn' | 'reveal' | 'confirm' | 'working' | 'done' | 'error';
-
-const PHASE_LABEL: Record<RotationProgress['phase'], string> = {
-  pull: 'Collecting your entries…',
-  entries: 'Re-encrypting entries…',
-  media: 'Re-encrypting recordings…',
-  wipe: 'Retiring the old phrase…',
-};
 
 const pStyle: JSX.CSSProperties = { fontFamily: 'var(--ui)', fontSize: 13.5, lineHeight: 1.55, color: 'var(--ink-2)', margin: 0 };
 
@@ -65,21 +59,14 @@ export function RotatePhraseSheet({ desk, onClose, rotate }: {
     if (step === 'warn') {
       return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <p style={pStyle}>
-            If your twelve words may have been seen by someone else, replace them. Mneme will generate a
-            <strong style={{ color: 'var(--ink)' }}> new phrase</strong>, re-encrypt your entire journal under it,
-            and permanently retire the current one.
-          </p>
+          <p style={pStyle}>{t('vault.rotate.warn.body')}</p>
           <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', padding: '12px 14px', borderRadius: 12, background: 'var(--accent-soft)', border: '1px solid var(--accent-line)', fontFamily: 'var(--ui)', fontSize: 12.5, lineHeight: 1.5, color: 'var(--accent-ink)' }}>
             <Icon name="shield" size={16} color="var(--accent)" />
-            <span>
-              Afterwards the old phrase unlocks <strong>nothing</strong> — not even encrypted data. Every other
-              device will need the new phrase to sign in again.
-            </span>
+            <span>{t('vault.rotate.warn.callout')}</span>
           </div>
           <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
-            <Btn kind="ghost" size="md" onClick={onClose} style={{ flex: 1 }}>Cancel</Btn>
-            <Btn kind="primary" size="md" onClick={() => setStep('reveal')} style={{ flex: 2 }}>Generate new phrase</Btn>
+            <Btn kind="ghost" size="md" onClick={onClose} style={{ flex: 1 }}>{t('common.cancel')}</Btn>
+            <Btn kind="primary" size="md" onClick={() => setStep('reveal')} style={{ flex: 2 }}>{t('vault.rotate.generate')}</Btn>
           </div>
         </div>
       );
@@ -89,7 +76,7 @@ export function RotatePhraseSheet({ desk, onClose, rotate }: {
       return (
         <form onSubmit={(e) => { e.preventDefault(); setStep('confirm'); }} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           <ManagerCredential phrase={mnemonic} />
-          <p style={pStyle}>Your new recovery phrase. Write it down in order — it replaces the old one completely.</p>
+          <p style={pStyle}>{t('vault.rotate.reveal.body')}</p>
           <div style={{ position: 'relative' }}>
             <div style={{ display: 'grid', gridTemplateColumns: desk ? 'repeat(3, 1fr)' : 'repeat(2, 1fr)', gap: 7, padding: 12, borderRadius: 14, background: 'var(--paper)', border: '1px solid var(--line)', filter: revealed ? 'none' : 'blur(7px)', transition: 'filter .2s', userSelect: 'none' }}>
               {words.map((w, i) => (
@@ -102,17 +89,17 @@ export function RotatePhraseSheet({ desk, onClose, rotate }: {
             {!revealed && (
               <button type="button" onClick={() => setRevealed(true)} style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 7, background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--ink)' }}>
                 <Icon name="eye" size={20} color="var(--ink)" />
-                <span style={{ fontFamily: 'var(--ui)', fontWeight: 600, fontSize: 13.5 }}>Tap to reveal</span>
+                <span style={{ fontFamily: 'var(--ui)', fontWeight: 600, fontSize: 13.5 }}>{t('vault.rotate.tapToReveal')}</span>
               </button>
             )}
           </div>
           <div style={{ display: 'flex', gap: 8 }}>
-            <Btn kind="ghost" size="sm" icon={revealed ? 'eyeoff' : 'eye'} onClick={() => setRevealed((r) => !r)}>{revealed ? 'Hide' : 'Reveal'}</Btn>
-            <Btn kind="ghost" size="sm" icon="copy" onClick={async () => { try { await navigator.clipboard.writeText(mnemonic); } catch { /* clipboard unavailable */ } setCopied(true); setTimeout(() => setCopied(false), 1400); }}>{copied ? 'Copied' : 'Copy'}</Btn>
+            <Btn kind="ghost" size="sm" icon={revealed ? 'eyeoff' : 'eye'} onClick={() => setRevealed((r) => !r)}>{revealed ? t('vault.rotate.hide') : t('vault.rotate.reveal')}</Btn>
+            <Btn kind="ghost" size="sm" icon="copy" onClick={async () => { try { await navigator.clipboard.writeText(mnemonic); } catch { /* clipboard unavailable */ } setCopied(true); setTimeout(() => setCopied(false), 1400); }}>{copied ? t('common.copied') : t('common.copy')}</Btn>
           </div>
           <div style={{ display: 'flex', gap: 10, marginTop: 2 }}>
-            <Btn kind="ghost" size="md" onClick={onClose} style={{ flex: 1 }}>Cancel</Btn>
-            <Btn kind="primary" size="md" type="submit" style={{ flex: 2 }}>I’ve written it down</Btn>
+            <Btn kind="ghost" size="md" onClick={onClose} style={{ flex: 1 }}>{t('common.cancel')}</Btn>
+            <Btn kind="primary" size="md" type="submit" style={{ flex: 2 }}>{t('vault.rotate.written')}</Btn>
           </div>
         </form>
       );
@@ -121,17 +108,17 @@ export function RotatePhraseSheet({ desk, onClose, rotate }: {
     if (step === 'confirm') {
       return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-          <p style={pStyle}>Confirm three words from the <strong style={{ color: 'var(--ink)' }}>new</strong> phrase. After this step the old phrase stops working.</p>
+          <p style={pStyle}>{t('vault.rotate.confirm.body')}</p>
           {quizIdx.map((i) => (
             <div key={i}>
               <div style={{ fontFamily: 'var(--ui)', fontSize: 12, fontWeight: 600, color: 'var(--ink-2)', marginBottom: 7 }}>
-                Word <span style={{ fontFamily: 'var(--mono)', color: 'var(--accent-ink)' }}>#{i + 1}</span>
+                {t('vault.rotate.confirm.word', { num: i + 1 })}
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 7 }}>
                 {options(i).map((opt) => {
                   const sel = picks[i] === opt;
                   return (
-                    <button key={opt} onClick={() => setPicks((p) => ({ ...p, [i]: opt }))} style={{ fontFamily: 'var(--mono)', fontSize: 13.5, fontWeight: 500, padding: '10px 11px', borderRadius: 10, cursor: 'pointer', textAlign: 'left', background: sel ? 'var(--accent-soft)' : 'var(--paper)', border: `1.5px solid ${sel ? 'var(--accent)' : 'var(--line)'}`, color: sel ? 'var(--accent-ink)' : 'var(--ink)' }}>
+                    <button key={opt} onClick={() => setPicks((p) => ({ ...p, [i]: opt }))} style={{ fontFamily: 'var(--mono)', fontSize: 13.5, fontWeight: 500, padding: '10px 11px', borderRadius: 10, cursor: 'pointer', textAlign: 'start', background: sel ? 'var(--accent-soft)' : 'var(--paper)', border: `1.5px solid ${sel ? 'var(--accent)' : 'var(--line)'}`, color: sel ? 'var(--accent-ink)' : 'var(--ink)' }}>
                       {opt}
                     </button>
                   );
@@ -140,9 +127,9 @@ export function RotatePhraseSheet({ desk, onClose, rotate }: {
             </div>
           ))}
           <div style={{ display: 'flex', gap: 10, marginTop: 2 }}>
-            <Btn kind="ghost" size="md" onClick={() => setStep('reveal')} style={{ flex: 1 }}>Back</Btn>
+            <Btn kind="ghost" size="md" onClick={() => setStep('reveal')} style={{ flex: 1 }}>{t('common.back')}</Btn>
             <Btn kind={allCorrect ? 'primary' : 'ghost'} size="md" onClick={() => allCorrect && void run()} style={{ flex: 2, opacity: allCorrect ? 1 : 0.55, pointerEvents: allCorrect ? 'auto' : 'none' }}>
-              {allCorrect ? 'Replace phrase now' : 'Select all three words'}
+              {allCorrect ? t('vault.rotate.now') : t('vault.rotate.selectAll')}
             </Btn>
           </div>
         </div>
@@ -155,14 +142,12 @@ export function RotatePhraseSheet({ desk, onClose, rotate }: {
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14, padding: '12px 0' }}>
           <Icon name="lock" size={26} color="var(--accent)" />
           <div style={{ fontFamily: 'var(--ui)', fontSize: 14, fontWeight: 600, color: 'var(--ink)' }}>
-            {progress ? PHASE_LABEL[progress.phase] : 'Preparing…'}
+            {progress ? t(`vault.rotate.phase.${progress.phase}` as MessageKey) : t('vault.rotate.preparing')}
           </div>
           <div style={{ width: '100%', height: 6, borderRadius: 99, background: 'var(--line)', overflow: 'hidden' }}>
             <div style={{ width: `${pct}%`, height: '100%', borderRadius: 99, background: 'var(--accent)', transition: 'width .25s' }} />
           </div>
-          <p style={{ ...pStyle, fontSize: 12.5, textAlign: 'center' }}>
-            Keep this window open. Your journal is being re-encrypted under the new phrase.
-          </p>
+          <p style={{ ...pStyle, fontSize: 12.5, textAlign: 'center' }}>{t('vault.rotate.keepOpen')}</p>
         </div>
       );
     }
@@ -171,13 +156,9 @@ export function RotatePhraseSheet({ desk, onClose, rotate }: {
       return (
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14, padding: '10px 0', textAlign: 'center' }}>
           <Icon name="check" size={28} color="var(--accent)" />
-          <div style={{ fontFamily: 'var(--ui)', fontSize: 15, fontWeight: 600, color: 'var(--ink)' }}>Phrase replaced</div>
-          <p style={pStyle}>
-            The old phrase now unlocks nothing. Sign your other devices in again with the
-            <strong style={{ color: 'var(--ink)' }}> new twelve words</strong> — and if a password manager stored the
-            old phrase, update it there too.
-          </p>
-          <Btn kind="primary" size="md" full onClick={onClose}>Done</Btn>
+          <div style={{ fontFamily: 'var(--ui)', fontSize: 15, fontWeight: 600, color: 'var(--ink)' }}>{t('vault.rotate.done.title')}</div>
+          <p style={pStyle}>{t('vault.rotate.done.body')}</p>
+          <Btn kind="primary" size="md" full onClick={onClose}>{t('common.done')}</Btn>
         </div>
       );
     }
@@ -185,14 +166,11 @@ export function RotatePhraseSheet({ desk, onClose, rotate }: {
     // error
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-        <p style={pStyle}>
-          The migration stopped before the old phrase was retired, so <strong style={{ color: 'var(--ink)' }}>nothing
-          was lost</strong> — your journal still opens with the current phrase. You can retry with the same new phrase.
-        </p>
+        <p style={pStyle}>{t('vault.rotate.error.body')}</p>
         <div style={{ fontFamily: 'var(--mono)', fontSize: 12, color: 'var(--ink-2)', padding: '10px 12px', borderRadius: 10, background: 'var(--paper)', border: '1px solid var(--line)', overflowWrap: 'anywhere' }}>{error}</div>
         <div style={{ display: 'flex', gap: 10 }}>
-          <Btn kind="ghost" size="md" onClick={onClose} style={{ flex: 1 }}>Close</Btn>
-          <Btn kind="primary" size="md" onClick={() => void run()} style={{ flex: 2 }}>Try again</Btn>
+          <Btn kind="ghost" size="md" onClick={onClose} style={{ flex: 1 }}>{t('common.close')}</Btn>
+          <Btn kind="primary" size="md" onClick={() => void run()} style={{ flex: 2 }}>{t('vault.tryAgain')}</Btn>
         </div>
       </div>
     );
@@ -209,7 +187,7 @@ export function RotatePhraseSheet({ desk, onClose, rotate }: {
       >
         {!desk && <div style={{ width: 38, height: 4, borderRadius: 9, background: 'var(--line)', margin: '0 auto 16px' }} />}
         <h3 style={{ fontFamily: 'var(--serif)', fontSize: 19, fontWeight: 500, color: 'var(--ink)', margin: '0 0 16px', display: 'flex', alignItems: 'center', gap: 9 }}>
-          <Icon name="shield" size={18} color="var(--accent)" /> Replace recovery phrase
+          <Icon name="shield" size={18} color="var(--accent)" /> {t('vault.rotate.title')}
         </h3>
         {body}
       </div>

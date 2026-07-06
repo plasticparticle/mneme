@@ -12,6 +12,7 @@
 import { Extension, Node, mergeAttributes, type Editor, type Range } from '@tiptap/core';
 import { PluginKey } from '@tiptap/pm/state';
 import { Suggestion, exitSuggestion, type SuggestionProps } from '@tiptap/suggestion';
+import { t, fmtDate } from '../i18n';
 import type { JournalEntry } from '../sync/engine';
 import type { SlashCommand, SlashHandle, SlashMenuState } from './slash';
 
@@ -54,12 +55,12 @@ export function wikiLinkNode(handlers?: WikiLinkHandlers): Node {
         dom.className = 'mneme-wikilink';
         const entryId = String(node.attrs.entryId ?? '');
         const live = handlers ? handlers.resolveTitle(entryId) : String(node.attrs.label ?? '');
-        dom.textContent = live ?? String(node.attrs.label ?? '') ?? 'Untitled';
+        dom.textContent = live ?? String(node.attrs.label ?? '') ?? t('common.untitled');
         if (handlers && live === null) {
           dom.dataset.missing = '';
-          dom.title = 'Linked entry no longer exists';
+          dom.title = t('editorx.wikilink.missing');
         } else if (handlers?.onOpen) {
-          dom.title = 'Open linked entry';
+          dom.title = t('editorx.wikilink.open');
           dom.addEventListener('click', (ev) => {
             ev.preventDefault();
             handlers.onOpen?.(entryId);
@@ -81,13 +82,11 @@ function insertEntryLink(editor: Editor, range: Range, target: JournalEntry): vo
     .focus()
     .deleteRange(range)
     .insertContent([
-      { type: ENTRY_LINK_NODE, attrs: { entryId: target.id, label: target.title || 'Untitled' } },
+      { type: ENTRY_LINK_NODE, attrs: { entryId: target.id, label: target.title || t('common.untitled') } },
       { type: 'text', text: ' ' },
     ])
     .run();
 }
-
-const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
 /** Picker items for the "[[" suggester: other live entries matching the query,
  * most recently touched first, shaped as SlashCommands so <SlashMenu> renders them. */
@@ -99,14 +98,13 @@ export function buildEntryLinkItems(
   const q = query.trim().toLowerCase();
   return entries
     .filter((e) => e.id !== currentEntryId && !e.deleted)
-    .filter((e) => !q || (e.title || 'Untitled').toLowerCase().includes(q))
+    .filter((e) => !q || (e.title || t('common.untitled')).toLowerCase().includes(q))
     .sort((a, b) => b.updatedAt - a.updatedAt)
     .slice(0, 8)
     .map((e) => {
-      const d = new Date(e.createdAt);
       return {
-        title: e.title || 'Untitled',
-        hint: `${MON[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`,
+        title: e.title || t('common.untitled'),
+        hint: fmtDate(e.createdAt, { month: 'short', day: 'numeric', year: 'numeric' }),
         icon: 'link' as const,
         keywords: '',
         run: (editor, range) => insertEntryLink(editor, range, e),

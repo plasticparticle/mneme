@@ -1,5 +1,6 @@
 import type { VNode, ComponentChildren } from 'preact';
 import { useState } from 'preact/hooks';
+import { t, tp, fmtNumber, type MessageKey } from '../i18n';
 import { Icon } from '../ui/Icon';
 import { Btn, Cover, SyncBadge, SyncNotice, Spinner } from '../ui/primitives';
 import { hexA } from '../ui/color';
@@ -28,7 +29,7 @@ export function NewJournalSheet({
   const [color, setColor] = useState(JCOLORS[1]);
   const [cover, setCover] = useState<CoverPattern>('lines');
   const [tpl, setTpl] = useState('blank'); // template id, or 'blank'
-  const draft: Journal = { id: 'new', name: name || 'Untitled journal', subtitle: 'New journal', color, cover, count: 0, last: 'Just now' };
+  const draft: Journal = { id: 'new', name: name || t('journals.untitled'), subtitle: t('journals.new'), color, cover, count: 0, last: t('journals.justNow') };
 
   const body = (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
@@ -39,14 +40,14 @@ export function NewJournalSheet({
             autoFocus
             value={name}
             onInput={(e) => setName((e.target as HTMLInputElement).value)}
-            placeholder="Name your journal"
+            placeholder={t('journals.name.placeholder')}
             style={{ width: '100%', boxSizing: 'border-box', border: 'none', outline: 'none', background: 'transparent', fontFamily: 'var(--serif)', fontSize: 22, color: 'var(--ink)', fontWeight: 500 }}
           />
           <div style={{ height: 1, background: 'var(--line)', marginTop: 4 }} />
         </div>
       </div>
 
-      <Field label="Colour">
+      <Field label={t('journals.field.colour')}>
         <div style={{ display: 'flex', gap: 9, flexWrap: 'wrap' }}>
           {JCOLORS.map((c) => (
             <button
@@ -58,7 +59,7 @@ export function NewJournalSheet({
         </div>
       </Field>
 
-      <Field label="Cover">
+      <Field label={t('journals.field.cover')}>
         <div style={{ display: 'flex', gap: 8 }}>
           {JCOVERS.map((cv) => (
             <button
@@ -67,15 +68,15 @@ export function NewJournalSheet({
               style={{ flex: 1, padding: 7, borderRadius: 12, cursor: 'pointer', background: 'var(--paper)', border: `1.5px solid ${cover === cv ? 'var(--accent)' : 'var(--line)'}`, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}
             >
               <Cover journal={{ color, cover: cv }} w={28} h={36} r={6} />
-              <span style={{ fontFamily: 'var(--ui)', fontSize: 10.5, color: 'var(--ink-2)', textTransform: 'capitalize' }}>{cv}</span>
+              <span style={{ fontFamily: 'var(--ui)', fontSize: 10.5, color: 'var(--ink-2)' }}>{t(`journals.cover.${cv}` as MessageKey)}</span>
             </button>
           ))}
         </div>
       </Field>
 
-      <Field label="Start from">
+      <Field label={t('journals.field.startFrom')}>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          {[{ id: 'blank', label: 'Blank' }, ...templates.map((t) => ({ id: t.id, label: t.name || 'Untitled template' }))].map(({ id, label }) => (
+          {[{ id: 'blank', label: t('journals.blank') }, ...templates.map((tm) => ({ id: tm.id, label: tm.name || t('journals.untitledTemplate') }))].map(({ id, label }) => (
             <button
               key={id}
               onClick={() => setTpl(id)}
@@ -87,7 +88,7 @@ export function NewJournalSheet({
         </div>
         {(() => {
           // Picking a template shows what the journal's first entry will hold.
-          const sel = templates.find((t) => t.id === tpl);
+          const sel = templates.find((tm) => tm.id === tpl);
           return sel ? (
             <div style={{ marginTop: 10, border: '1px solid var(--line)', borderRadius: 12, background: 'var(--paper)', maxHeight: 150, overflowY: 'auto', overscrollBehavior: 'contain', padding: '10px 14px' }}>
               <DocPreview json={sel.bodyJson} text={sel.bodyText} size={13} />
@@ -97,19 +98,19 @@ export function NewJournalSheet({
       </Field>
 
       <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
-        <Btn kind="ghost" size="md" onClick={onClose} style={{ flex: 1 }}>Cancel</Btn>
+        <Btn kind="ghost" size="md" onClick={onClose} style={{ flex: 1 }}>{t('common.cancel')}</Btn>
         <Btn
           kind="primary"
           size="md"
           onClick={() =>
             onCreate(
-              { ...draft, id: 'j-' + Date.now(), name: name || 'Untitled journal', subtitle: 'New journal' },
-              templates.find((t) => t.id === tpl),
+              { ...draft, id: 'j-' + Date.now(), name: name || t('journals.untitled'), subtitle: t('journals.new') },
+              templates.find((tm) => tm.id === tpl),
             )
           }
           style={{ flex: 2 }}
         >
-          Create journal
+          {t('journals.create')}
         </Btn>
       </div>
     </div>
@@ -125,7 +126,7 @@ export function NewJournalSheet({
         style={{ width: desk ? 440 : '100%', boxSizing: 'border-box', background: 'var(--surface)', borderRadius: desk ? 20 : '24px 24px 0 0', border: '1px solid var(--line)', padding: desk ? 26 : '20px 22px 30px', boxShadow: '0 20px 60px rgba(30,20,12,.3)' }}
       >
         {!desk && <div style={{ width: 38, height: 4, borderRadius: 9, background: 'var(--line)', margin: '0 auto 16px' }} />}
-        <h3 style={{ fontFamily: 'var(--serif)', fontSize: 19, fontWeight: 500, color: 'var(--ink)', margin: '0 0 18px' }}>New journal</h3>
+        <h3 style={{ fontFamily: 'var(--serif)', fontSize: 19, fontWeight: 500, color: 'var(--ink)', margin: '0 0 18px' }}>{t('journals.new')}</h3>
         {body}
       </div>
     </div>
@@ -148,7 +149,7 @@ export function EditJournalSheet({
   const [name, setName] = useState(journal.name);
   const [color, setColor] = useState(journal.color);
   const [cover, setCover] = useState<CoverPattern>(journal.cover);
-  const draft: Journal = { ...journal, name: name || 'Untitled journal', color, cover };
+  const draft: Journal = { ...journal, name: name || t('journals.untitled'), color, cover };
 
   const body = (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
@@ -159,14 +160,14 @@ export function EditJournalSheet({
             autoFocus
             value={name}
             onInput={(e) => setName((e.target as HTMLInputElement).value)}
-            placeholder="Name your journal"
+            placeholder={t('journals.name.placeholder')}
             style={{ width: '100%', boxSizing: 'border-box', border: 'none', outline: 'none', background: 'transparent', fontFamily: 'var(--serif)', fontSize: 22, color: 'var(--ink)', fontWeight: 500 }}
           />
           <div style={{ height: 1, background: 'var(--line)', marginTop: 4 }} />
         </div>
       </div>
 
-      <Field label="Colour">
+      <Field label={t('journals.field.colour')}>
         <div style={{ display: 'flex', gap: 9, flexWrap: 'wrap' }}>
           {JCOLORS.map((c) => (
             <button
@@ -178,7 +179,7 @@ export function EditJournalSheet({
         </div>
       </Field>
 
-      <Field label="Cover">
+      <Field label={t('journals.field.cover')}>
         <div style={{ display: 'flex', gap: 8 }}>
           {JCOVERS.map((cv) => (
             <button
@@ -187,21 +188,21 @@ export function EditJournalSheet({
               style={{ flex: 1, padding: 7, borderRadius: 12, cursor: 'pointer', background: 'var(--paper)', border: `1.5px solid ${cover === cv ? 'var(--accent)' : 'var(--line)'}`, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}
             >
               <Cover journal={{ color, cover: cv }} w={28} h={36} r={6} />
-              <span style={{ fontFamily: 'var(--ui)', fontSize: 10.5, color: 'var(--ink-2)', textTransform: 'capitalize' }}>{cv}</span>
+              <span style={{ fontFamily: 'var(--ui)', fontSize: 10.5, color: 'var(--ink-2)' }}>{t(`journals.cover.${cv}` as MessageKey)}</span>
             </button>
           ))}
         </div>
       </Field>
 
       <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
-        <Btn kind="ghost" size="md" onClick={onClose} style={{ flex: 1 }}>Cancel</Btn>
+        <Btn kind="ghost" size="md" onClick={onClose} style={{ flex: 1 }}>{t('common.cancel')}</Btn>
         <Btn
           kind="primary"
           size="md"
-          onClick={() => onSave({ name: name.trim() || 'Untitled journal', color, cover })}
+          onClick={() => onSave({ name: name.trim() || t('journals.untitled'), color, cover })}
           style={{ flex: 2 }}
         >
-          Save changes
+          {t('journals.saveChanges')}
         </Btn>
       </div>
     </div>
@@ -217,7 +218,7 @@ export function EditJournalSheet({
         style={{ width: desk ? 440 : '100%', boxSizing: 'border-box', background: 'var(--surface)', borderRadius: desk ? 20 : '24px 24px 0 0', border: '1px solid var(--line)', padding: desk ? 26 : '20px 22px 30px', boxShadow: '0 20px 60px rgba(30,20,12,.3)' }}
       >
         {!desk && <div style={{ width: 38, height: 4, borderRadius: 9, background: 'var(--line)', margin: '0 auto 16px' }} />}
-        <h3 style={{ fontFamily: 'var(--serif)', fontSize: 19, fontWeight: 500, color: 'var(--ink)', margin: '0 0 18px' }}>Edit journal</h3>
+        <h3 style={{ fontFamily: 'var(--serif)', fontSize: 19, fontWeight: 500, color: 'var(--ink)', margin: '0 0 18px' }}>{t('journals.edit.title')}</h3>
         {body}
       </div>
     </div>
@@ -238,7 +239,7 @@ function AccountChip(): VNode {
     <div style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
       <div style={{ width: 40, height: 40, borderRadius: 999, background: 'linear-gradient(145deg, var(--accent), #8E4128)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontFamily: 'var(--serif)', fontSize: 18, fontWeight: 600, flexShrink: 0 }}>V</div>
       <div style={{ minWidth: 0 }}>
-        <div style={{ fontFamily: 'var(--ui)', fontSize: 14, fontWeight: 600, color: 'var(--ink)' }}>Your vault</div>
+        <div style={{ fontFamily: 'var(--ui)', fontSize: 14, fontWeight: 600, color: 'var(--ink)' }}>{t('journals.vault')}</div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <Icon name="lock" size={11} color="var(--accent)" />
           <span style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--ink-3)' }}>7f3a · velvet harbor</span>
@@ -253,10 +254,10 @@ function AccountChip(): VNode {
 function SyncingTag(): VNode {
   return (
     <span
-      title="This notebook is still syncing to the relay"
+      title={t('journals.syncingTag.title')}
       style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontFamily: 'var(--ui)', fontSize: 11.5, fontWeight: 600, color: 'var(--accent-ink)' }}
     >
-      <Spinner size={11} /> Syncing…
+      <Spinner size={11} /> {t('journals.syncingTag')}
     </span>
   );
 }
@@ -265,7 +266,7 @@ function JournalCard({ j, onOpen, syncing }: { j: Journal; onOpen: (j: Journal) 
   return (
     <button
       onClick={() => onOpen(j)}
-      style={{ display: 'flex', alignItems: 'center', gap: 14, width: '100%', textAlign: 'left', cursor: 'pointer', padding: 14, borderRadius: 16, background: 'var(--surface)', border: '1px solid var(--line)', transition: 'all .15s' }}
+      style={{ display: 'flex', alignItems: 'center', gap: 14, width: '100%', textAlign: 'start', cursor: 'pointer', padding: 14, borderRadius: 16, background: 'var(--surface)', border: '1px solid var(--line)', transition: 'all .15s' }}
       onMouseEnter={(e) => { e.currentTarget.style.borderColor = hexA(j.color, 0.5); e.currentTarget.style.transform = 'translateY(-1px)'; }}
       onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--line)'; e.currentTarget.style.transform = 'none'; }}
     >
@@ -274,14 +275,14 @@ function JournalCard({ j, onOpen, syncing }: { j: Journal; onOpen: (j: Journal) 
         <div style={{ fontFamily: 'var(--serif)', fontSize: 18, fontWeight: 500, color: 'var(--ink)' }}>{j.name}</div>
         <div style={{ fontFamily: 'var(--ui)', fontSize: 13, color: 'var(--ink-2)', marginTop: 1 }}>{j.subtitle}</div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 7 }}>
-          <span style={{ fontFamily: 'var(--ui)', fontSize: 12, color: 'var(--ink-3)' }}>{j.count} {j.count === 1 ? 'entry' : 'entries'}</span>
+          <span style={{ fontFamily: 'var(--ui)', fontSize: 12, color: 'var(--ink-3)' }}>{tp('common.entries', j.count)}</span>
           {j.last && <span style={{ width: 3, height: 3, borderRadius: 9, background: 'var(--ink-3)' }} />}
           {j.last && <span style={{ fontFamily: 'var(--ui)', fontSize: 12, color: 'var(--ink-3)' }}>{j.last}</span>}
           {syncing && <span style={{ width: 3, height: 3, borderRadius: 9, background: 'var(--ink-3)' }} />}
           {syncing && <SyncingTag />}
         </div>
       </div>
-      <Icon name="right" size={18} color="var(--ink-3)" />
+      <Icon name="right" size={18} color="var(--ink-3)" dirFlip />
     </button>
   );
 }
@@ -294,8 +295,8 @@ export function JournalsScreen({ desk, journals, onOpen, onNew, onEdit, onDelete
   const uploading = !syncing && pendingCount > 0;
   const uploadBanner = uploading && (
     <SyncNotice
-      title="Finishing sync…"
-      body={`${pendingCount} ${pendingCount === 1 ? 'change is' : 'changes are'} being encrypted and uploaded to the relay. Imported entries appear in their notebooks as they sync.`}
+      title={t('journals.uploading.title')}
+      body={tp('journals.uploading.body', pendingCount)}
     />
   );
   if (desk) {
@@ -303,13 +304,13 @@ export function JournalsScreen({ desk, journals, onOpen, onNew, onEdit, onDelete
       <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: 'var(--paper)' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '26px 34px 18px' }}>
           <div>
-            <h1 style={{ fontFamily: 'var(--serif)', fontSize: 30, fontWeight: 500, color: 'var(--ink)', margin: 0 }}>Journals</h1>
-            <p style={{ fontFamily: 'var(--ui)', fontSize: 13.5, color: 'var(--ink-3)', margin: '4px 0 0' }}>{journals.length} notebooks · {journals.reduce((a, b) => a + b.count, 0)} entries · all encrypted</p>
+            <h1 style={{ fontFamily: 'var(--serif)', fontSize: 30, fontWeight: 500, color: 'var(--ink)', margin: 0 }}>{t('journals.title')}</h1>
+            <p style={{ fontFamily: 'var(--ui)', fontSize: 13.5, color: 'var(--ink-3)', margin: '4px 0 0' }}>{t('journals.summary.desk', { notebooks: tp('journals.notebooks', journals.length), entries: tp('common.entries', journals.reduce((a, b) => a + b.count, 0)) })}</p>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <SyncBadge />
             <SearchBar desk onClick={onSearch} />
-            <Btn kind="primary" icon="plus" onClick={onNew}>New journal</Btn>
+            <Btn kind="primary" icon="plus" onClick={onNew}>{t('journals.new')}</Btn>
           </div>
         </div>
         {syncing && <div style={{ padding: '0 34px 14px' }}><SyncNotice /></div>}
@@ -324,14 +325,14 @@ export function JournalsScreen({ desk, journals, onOpen, onNew, onEdit, onDelete
                 tabIndex={0}
                 onClick={() => onOpen(j)}
                 onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen(j); } }}
-                style={{ textAlign: 'left', cursor: 'pointer', borderRadius: 18, overflow: 'hidden', background: 'var(--surface)', border: '1px solid var(--line)', transition: 'all .15s', padding: 0 }}
+                style={{ textAlign: 'start', cursor: 'pointer', borderRadius: 18, overflow: 'hidden', background: 'var(--surface)', border: '1px solid var(--line)', transition: 'all .15s', padding: 0 }}
                 onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 12px 30px rgba(40,28,18,.1)'; }}
                 onMouseLeave={(e) => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = 'none'; }}
               >
                 <div style={{ height: 96, background: hexA(j.color, 0.12), position: 'relative', borderBottom: '1px solid var(--line)' }}>
                   <div style={{ position: 'absolute', inset: 0, backgroundImage: coverBg(j), backgroundSize: coverSize(j.cover) }} />
-                  <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: 6, background: j.color }} />
-                  <span style={{ position: 'absolute', right: 12, top: 12, fontFamily: 'var(--mono)', fontSize: 11, color: hexA(j.color, 0.9), background: 'var(--surface)', padding: '2px 8px', borderRadius: 7, border: `1px solid ${hexA(j.color, 0.3)}` }}>{j.count}</span>
+                  <div style={{ position: 'absolute', insetInlineStart: 0, top: 0, bottom: 0, width: 6, background: j.color }} />
+                  <span style={{ position: 'absolute', insetInlineEnd: 12, top: 12, fontFamily: 'var(--mono)', fontSize: 11, color: hexA(j.color, 0.9), background: 'var(--surface)', padding: '2px 8px', borderRadius: 7, border: `1px solid ${hexA(j.color, 0.3)}` }}>{fmtNumber(j.count)}</span>
                 </div>
                 <div style={{ padding: '14px 16px 16px' }}>
                   <div style={{ fontFamily: 'var(--serif)', fontSize: 19, fontWeight: 500, color: 'var(--ink)' }}>{j.name}</div>
@@ -340,11 +341,11 @@ export function JournalsScreen({ desk, journals, onOpen, onNew, onEdit, onDelete
                     {pendingJournalIds.has(j.id) ? (
                       <SyncingTag />
                     ) : (
-                      <span style={{ fontFamily: 'var(--ui)', fontSize: 12, color: 'var(--ink-3)' }}>{j.last ? `Edited ${j.last}` : 'No entries yet'}</span>
+                      <span style={{ fontFamily: 'var(--ui)', fontSize: 12, color: 'var(--ink-3)' }}>{j.last ? t('journals.edited', { last: j.last }) : t('journals.noEntriesYet')}</span>
                     )}
                     <div style={{ display: 'flex', alignItems: 'center', gap: 2, margin: -6 }}>
                       <button
-                        title="Edit journal"
+                        title={t('journals.edit.title')}
                         onClick={(e) => { e.stopPropagation(); onEdit(j); }}
                         style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28, borderRadius: 8, border: 'none', background: 'transparent', cursor: 'pointer', opacity: 0.55 }}
                         onMouseEnter={(e) => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.background = 'var(--accent-soft)'; }}
@@ -353,7 +354,7 @@ export function JournalsScreen({ desk, journals, onOpen, onNew, onEdit, onDelete
                         <Icon name="edit" size={15} color="var(--ink-2)" />
                       </button>
                       <button
-                        title="Delete journal"
+                        title={t('journals.delete.title')}
                         onClick={(e) => { e.stopPropagation(); onDelete(j); }}
                         style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 28, height: 28, borderRadius: 8, border: 'none', background: 'transparent', cursor: 'pointer', opacity: 0.55 }}
                         onMouseEnter={(e) => { e.currentTarget.style.opacity = '1'; e.currentTarget.style.background = 'var(--accent-soft)'; }}
@@ -373,7 +374,7 @@ export function JournalsScreen({ desk, journals, onOpen, onNew, onEdit, onDelete
               onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--line)'; e.currentTarget.style.color = 'var(--ink-3)'; }}
             >
               <div style={{ width: 44, height: 44, borderRadius: 999, border: '1.5px solid currentColor', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Icon name="plus" size={22} /></div>
-              <span style={{ fontFamily: 'var(--ui)', fontSize: 14, fontWeight: 600 }}>New journal</span>
+              <span style={{ fontFamily: 'var(--ui)', fontSize: 14, fontWeight: 600 }}>{t('journals.new')}</span>
             </button>
           </div>
         </div>
@@ -389,14 +390,14 @@ export function JournalsScreen({ desk, journals, onOpen, onNew, onEdit, onDelete
           <AccountChip />
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <SyncBadge />
-            <button style={{ width: 38, height: 38, borderRadius: 999, border: '1px solid var(--line)', background: 'var(--surface)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+            <button aria-label={t('common.settings')} style={{ width: 38, height: 38, borderRadius: 999, border: '1px solid var(--line)', background: 'var(--surface)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
               <Icon name="settings" size={19} color="var(--ink-2)" />
             </button>
           </div>
         </div>
 
-        <h1 style={{ fontFamily: 'var(--serif)', fontSize: 32, fontWeight: 500, color: 'var(--ink)', margin: '24px 0 2px' }}>Journals</h1>
-        <p style={{ fontFamily: 'var(--ui)', fontSize: 13.5, color: 'var(--ink-3)', margin: 0 }}>{journals.length} notebooks · all encrypted on this device</p>
+        <h1 style={{ fontFamily: 'var(--serif)', fontSize: 32, fontWeight: 500, color: 'var(--ink)', margin: '24px 0 2px' }}>{t('journals.title')}</h1>
+        <p style={{ fontFamily: 'var(--ui)', fontSize: 13.5, color: 'var(--ink-3)', margin: 0 }}>{t('journals.summary.mobile', { notebooks: tp('journals.notebooks', journals.length) })}</p>
 
         <div style={{ margin: '18px 0' }}><SearchBar onClick={onSearch} /></div>
 
@@ -410,9 +411,9 @@ export function JournalsScreen({ desk, journals, onOpen, onNew, onEdit, onDelete
             style={{ display: 'flex', alignItems: 'center', gap: 12, width: '100%', cursor: 'pointer', padding: 16, borderRadius: 16, background: 'transparent', border: '1.5px dashed var(--line)', color: 'var(--ink-3)' }}
           >
             <div style={{ width: 46, height: 46, borderRadius: 11, border: '1.5px dashed currentColor', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><Icon name="plus" size={22} /></div>
-            <div style={{ textAlign: 'left' }}>
-              <div style={{ fontFamily: 'var(--ui)', fontSize: 15, fontWeight: 600, color: 'var(--ink)' }}>New journal</div>
-              <div style={{ fontFamily: 'var(--ui)', fontSize: 12.5, color: 'var(--ink-3)' }}>Personal, travel, dreams…</div>
+            <div style={{ textAlign: 'start' }}>
+              <div style={{ fontFamily: 'var(--ui)', fontSize: 15, fontWeight: 600, color: 'var(--ink)' }}>{t('journals.new')}</div>
+              <div style={{ fontFamily: 'var(--ui)', fontSize: 12.5, color: 'var(--ink-3)' }}>{t('journals.newHint')}</div>
             </div>
           </button>
         </div>
@@ -423,9 +424,9 @@ export function JournalsScreen({ desk, journals, onOpen, onNew, onEdit, onDelete
 
 function SearchBar({ desk, onClick }: { desk?: boolean; onClick: () => void }): VNode {
   return (
-    <button onClick={onClick} style={{ display: 'flex', alignItems: 'center', gap: 9, padding: desk ? '8px 14px' : '11px 14px', borderRadius: 12, background: 'var(--surface)', border: '1px solid var(--line)', width: desk ? 220 : '100%', boxSizing: 'border-box', cursor: 'text', textAlign: 'left' }}>
+    <button onClick={onClick} style={{ display: 'flex', alignItems: 'center', gap: 9, padding: desk ? '8px 14px' : '11px 14px', borderRadius: 12, background: 'var(--surface)', border: '1px solid var(--line)', width: desk ? 220 : '100%', boxSizing: 'border-box', cursor: 'text', textAlign: 'start' }}>
       <Icon name="search" size={17} color="var(--ink-3)" />
-      <span style={{ fontFamily: 'var(--ui)', fontSize: 13.5, color: 'var(--ink-3)' }}>Search all entries</span>
+      <span style={{ fontFamily: 'var(--ui)', fontSize: 13.5, color: 'var(--ink-3)' }}>{t('journals.searchAll')}</span>
     </button>
   );
 }

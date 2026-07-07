@@ -359,13 +359,13 @@ export function PreferencesSheet({ desk, theme, onClose, ownerId, status, onLock
       <div title={ownerId ? t('prefs.vault.idTitle', { id: ownerId }) : undefined} style={{ display: 'flex', alignItems: 'center', gap: 11, padding: '11px 13px', borderRadius: 12, border: '1px solid var(--line)', background: 'var(--paper)', marginBottom: 8 }}>
         <div style={{ width: 34, height: 34, borderRadius: 999, flexShrink: 0, background: 'linear-gradient(145deg, var(--accent), var(--accent-ink))', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontFamily: 'var(--serif)', fontSize: 16, fontWeight: 600 }}>V</div>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, minWidth: 0 }}>
-            <span style={{ fontFamily: 'var(--mono)', fontSize: 12.5, fontWeight: 600, color: 'var(--ink)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              {ownerId ? `${ownerId.slice(0, 12)}…` : t('prefs.vault.yourVault')}
-            </span>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
             {ownerId && (
-              <span style={{ fontFamily: 'var(--ui)', fontSize: 9.5, fontWeight: 700, letterSpacing: 0.6, textTransform: 'uppercase', color: 'var(--ink-3)', flexShrink: 0 }}>{t('prefs.vault.idLabel')}</span>
+              <span style={{ fontFamily: 'var(--ui)', fontSize: 9.5, fontWeight: 700, letterSpacing: 0.6, textTransform: 'uppercase', color: 'var(--ink-3)' }}>{t('prefs.vault.idLabel')}</span>
             )}
+            <span style={{ fontFamily: 'var(--mono)', fontSize: 12.5, fontWeight: 600, color: 'var(--ink)', wordBreak: 'break-all' }}>
+              {ownerId ?? t('prefs.vault.yourVault')}
+            </span>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 2 }}>
             <ConnectionDot status={status} size={7} />

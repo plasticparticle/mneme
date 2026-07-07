@@ -102,6 +102,10 @@ no live/streaming map. (No CSP is currently enforced; if one is added it must al
 
 ## 3. Cryptographic building blocks
 
+> The full crypto deep-dive — key derivation tree, the ciphertext envelope, media chunking, at-rest
+> seals, and rotation — lives in **[ENCRYPTION.md](./ENCRYPTION.md)**. This section is the threat-model
+> summary.
+
 All cryptography runs **in the client**, once, for every shell (the PWA has no Rust/Go to host it).
 The server does exactly one cryptographic operation: **verifying an Ed25519 signature** for auth — it
 never decrypts anything.
@@ -310,6 +314,43 @@ In rough priority order:
 6. 🔧 **Production deployment guide**: enforce TLS, set `CORS_ORIGINS` to the real client origin, rotate
    the MinIO/Postgres dev credentials.
 7. 🔧 **External security review** before any 1.0 / real-data use.
+
+---
+
+## 7b. Internal code review — findings & status
+
+A code-level audit of `apps/client/` (crypto, sync, local DB, onboarding) and `server/` (auth, sync,
+store, reminders) was performed on **2026-06-09** against the threat model in CLAUDE.md §1/§3. It was a
+point-in-time review of a pre-1.0 codebase; the findings are folded in here (rather than kept as a
+separate document) so this file stays the single source of security truth. Statuses are **current**,
+not as-of-review — two findings have since been addressed.
+
+Severities reflect impact **within the stated threat model** (the relay operator is out-of-trust, so
+"a malicious relay can do X" is a real finding unless §3 lists X as an accepted leak).
+
+| # | Sev | Finding | Status | Tracked in |
+|---|-----|---------|--------|-----------|
+| 1 | High | AEAD does not authenticate `entry_id` / `deleted` / `lww_clock` — a hostile relay can relabel, resurrect, or pin entries (media chunks *do* bind AAD; entry bodies don't) | 🔧 Open | §6.1, [ENCRYPTION.md §3](./ENCRYPTION.md) |
+| 2 | High | No Content-Security-Policy — the design's primary mitigation for in-memory keys is absent | 🔧 Open | §6.2, §7.2 |
+| 3 | High | Owner binding at `/v1/register` is unauthenticated (anyone with the owner pubkey can attach a device → write/DoS) | 🔧 Open | §6.5 |
+| 4 | Med | No auto-lock / key-lifetime limit | ✅ **Fixed** — 15-min inactivity auto-lock + manual lock (§4, §6.11) | §4 |
+| 5 | Med | `lww_clock` is attacker-controllable client wall-clock (future-dated writes pin an entry) | 🔧 Open | §6.9 |
+| 6 | Med | No rate limiting / abuse controls on any endpoint | 🔧 Open | §6.5, §7.4 |
+| 7 | Med | Relay can silently roll back / drop / reorder the record set (no freshness proof) | 🔧 Open | §6.7 |
+| 8 | Low | Recovery phrase can be copied to the system clipboard | ⚠️ Accepted (UI-nudged; convenience vs. exposure) | §6.11 |
+| 9 | Low | External Google Fonts (privacy leak, no SRI, weakens CSP story) | ✅ **Fixed** — fonts self-hosted via `@fontsource-variable` | — |
+| 10 | Low | Device/owner enumeration via distinct error responses | 🔧 Open | §6.5 |
+| 11 | Low | Relay serves plain HTTP, no HSTS; TLS is deployment-dependent | 🔧 Open (Caddy prod stack terminates TLS — [DEPLOYMENT.md](./DEPLOYMENT.md)) | §6.4 |
+| 12 | Info | Session revocation absent; `CORS_ORIGINS` defaults to `*`; dev secrets shipped | 🔧 Open (override in prod) | §7.6 |
+
+**Positives recorded at review time (still true):** all Postgres access uses parameterized `pgx`
+queries; local SQLite `search()` escapes `LIKE` wildcards; session tokens are random 32-byte values
+stored only as SHA-256 hashes; challenges are single-use and TTL-bounded; the ciphertext format carries
+a version byte from day one; entry IDs are random, not time-encoded.
+
+**Suggested remediation order:** finding 1 (AEAD framing — cheap, also hardens 5 and 7) → finding 2
+(CSP) → finding 3 (authenticated owner binding) → findings 5/6 (clock sanity, rate limiting) →
+findings 10–12 (polish).
 
 ---
 

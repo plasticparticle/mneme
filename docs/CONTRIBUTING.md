@@ -54,6 +54,11 @@ pnpm --filter client exec tsx apps/client/scripts/integration.ts          # regi
 pnpm --filter client exec tsx apps/client/scripts/templates-roundtrip.ts  # templates through the entry oplog
 ```
 
+There are more focused regression scripts in `apps/client/scripts/` — e.g. `seedlock-methods.ts`
+(passphrase/security-key seals, no relay needed), `journal-sync-roundtrip.ts` and
+`interview-types-roundtrip.ts` (record routing, relay needed), `ai-roundtrip.ts`, `labbook-repro.ts`,
+`location-repro.ts`, and `dayone-import*.ts`. Each feature's CLAUDE.md §0 note names its check.
+
 There's no CI yet and no ESLint config yet — `typecheck` + `build` + `go test` are the gates. Adding
 ESLint/Prettier and a CI workflow is welcome (see SECURITY.md backlog).
 
@@ -69,8 +74,9 @@ ESLint/Prettier and a CI workflow is welcome (see SECURITY.md backlog).
 ## Security-sensitive changes
 
 If you touch crypto, auth, sync, or anything that crosses the client↔server boundary:
-- Re-read [SECURITY.md](./SECURITY.md) and keep the attack-vector list honest — if a change opens or
-  closes a vector, update that doc.
+- Re-read [SECURITY.md](./SECURITY.md) (threat model + attack vectors) and
+  [ENCRYPTION.md](./ENCRYPTION.md) (the primitives). Keep both honest — if a change opens or closes a
+  vector, or alters a primitive/envelope, update the relevant doc.
 - Keys must never reach the DOM, logs, or the server. The server must never need to decrypt.
 - Run the `e2e` test and the client integration script.
 

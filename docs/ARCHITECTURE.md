@@ -279,21 +279,31 @@ rendering, and no heavy queries — load is I/O, not CPU (CLAUDE.md §7).
 
 ## 10. What's built vs. planned
 
+The full, current status board — built, planned, and deliberately-not-building — lives in
+[ROADMAP.md](./ROADMAP.md), and the complete feature list is in [FEATURES.md](./FEATURES.md). A
+snapshot of the load-bearing pieces:
+
 | Area | Status |
 |---|---|
-| UI (4 screens, responsive, dark mode) | ✅ built |
+| UI (4 screens, responsive, 6 skins × 6 accents, light/dark/system) | ✅ built |
+| Localization — 12-language UI (incl. RTL Arabic), device-local | ✅ built |
 | Crypto (BIP39 → keys → XChaCha20 AEAD, chunked media) | ✅ built |
+| Seed at-rest sealing — Argon2id passphrase + FIDO2/WebAuthn PRF, auto-lock | ✅ built |
 | Relay (auth, LWW push/pull, media relay, reminders CRUD, account deletion, CORS) | ✅ built |
 | Client ↔ relay encrypted sync (offline outbox, dirty flags) | ✅ wired |
-| Durable local DB (wa-sqlite on OPFS, per owner) | ✅ built |
-| Real TipTap editor (rich text, slash palette, inline media) | ✅ built |
-| Media — video/audio recording, image & file attachments (encrypted, chunked, MinIO) | ✅ built |
-| Entry templates (encrypted, ride the entry oplog) | ✅ built |
+| Durable local DB (wa-sqlite on OPFS, per owner, schema v8) | ✅ built |
+| TipTap editor — rich text, tables, code highlighting, math, wikilinks + backlinks | ✅ built |
+| Media — video/audio, images/galleries/lightbox, files, location maps (encrypted, MinIO) | ✅ built |
+| Templates, multiple journals, interview types (encrypted, ride the entry oplog) | ✅ built |
 | Vault-wide search (⌘/Ctrl+K) | ✅ built (substring) |
 | Recovery-phrase rotation + account wipe | ✅ built |
+| AI assistant (Anthropic + Ollama; ask / write / guided interviews; off by default) | ✅ built |
+| Day One import | ✅ built |
+| Admin dashboard, operator vault deletion, backup + restore (CLI + admin) | ✅ built |
+| Production deploy stack (Caddy + compose.prod), self-hosted fonts, runtime relay URL | ✅ built |
 | FTS5 full-text index | 🔜 blocked on a custom wa-sqlite wasm build |
-| Seed at-rest encryption (Argon2id) | 🔜 later |
-| Reminders UI + push transport (Web Push / APNs / FCM) | 🔜 later |
-| Export/import | 🔜 later |
-| Tauri desktop + mobile shells | 🔜 later |
+| Tauri desktop + mobile shells (Track A foundation done) + OS-keychain seal | 🔜 in progress |
+| Reminders UI + local scheduled notifications | 🔜 next |
+| Export / non-Day-One import | 🔜 later |
+| CSP, rate limiting, HLC/Lamport clock, AEAD framing binding | 🔜 security backlog |
 | `packages/proto` shared wire-format | 🔜 later (JSON for now) |

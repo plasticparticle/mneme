@@ -1,20 +1,39 @@
 # Mneme docs
 
-Documentation index. Start here, then dive into whichever rabbit hole you need.
+The full documentation set. The top-level [`../README.md`](../README.md) is the friendly tour and the
+quick local start; everything here is the detailed reference. Start wherever your curiosity (or your
+incident) points you.
+
+## For everyone
 
 | Doc | What's in it |
 |---|---|
-| [ARCHITECTURE.md](./ARCHITECTURE.md) | How the system fits together — components, key derivation, the sync sequence, the data model, and what's built vs. planned. Has diagrams. |
-| [SECURITY.md](./SECURITY.md) | The E2EE model, the cryptographic building blocks and why, and a frank list of **attack vectors and known weaknesses** (mitigated / accepted / open). |
-| [API.md](./API.md) | The relay's HTTP API — endpoints, request/response shapes, auth. |
-| [CONTRIBUTING.md](./CONTRIBUTING.md) | Setup, the quality gates (typecheck/build/test/e2e), conventions, and where things live. |
+| [FEATURES.md](./FEATURES.md) | Everything Mneme can do **today**, in one place. |
+| [ROADMAP.md](./ROADMAP.md) | Honest status board — built, planned, and deliberately-not-building. |
 
-Related, outside `docs/`:
+## How it works
 
+| Doc | What's in it |
+|---|---|
+| [ARCHITECTURE.md](./ARCHITECTURE.md) | How the system fits together — components, key derivation, the sync sequence, the data model. Has diagrams. |
+| [ENCRYPTION.md](./ENCRYPTION.md) | The cryptography: primitives, the key hierarchy, the ciphertext envelope, at-rest seals, and rotation. |
+| [SECURITY.md](./SECURITY.md) | The E2EE threat model and a frank list of **attack vectors and known weaknesses** (mitigated / accepted / open), including the folded-in code-review findings. |
+| [API.md](./API.md) | The relay's HTTP API — endpoints, request/response shapes, auth, admin, backups. |
+
+## Running it
+
+| Doc | What's in it |
+|---|---|
+| [DEPLOYMENT.md](./DEPLOYMENT.md) | Self-hosted **production** deployment: the Docker + Caddy stack, HTTPS on a LAN, first start. |
+| [MAINTENANCE.md](./MAINTENANCE.md) | Day-two operations: backups, restore, upgrades, health checks, troubleshooting. |
+| [CONTRIBUTING.md](./CONTRIBUTING.md) | Dev setup, the quality gates, conventions, and where things live. |
+
+## Related, outside `docs/`
+
+- [`../README.md`](../README.md) — the friendly overview + quick local start.
+- [`../server/README.md`](../server/README.md) — running and testing the Go relay specifically.
 - [`../CLAUDE.md`](../CLAUDE.md) — the **decision document** and source of truth (§1–§12 in German;
   §0 is an English operating guide). Locked decisions and the build-order roadmap live here.
-- [`../README.md`](../README.md) — the friendly project overview + quick start.
-- [`../server/README.md`](../server/README.md) — running and testing the Go relay specifically.
 
 > If a doc here ever disagrees with `CLAUDE.md` on a *decision*, `CLAUDE.md` wins. These docs describe
 > and explain; `CLAUDE.md` decides.

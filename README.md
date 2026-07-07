@@ -52,7 +52,8 @@ if you want to win a pub quiz). Fittingly, she did not offer a password reset ei
 ## What you can do with it
 
 Mneme is a full journaling environment, not a text box. Everything below is **built and working
-today** (in the browser app):
+today** (in the browser app). This is the highlight reel; the exhaustive, up-to-date list lives in
+[`docs/FEATURES.md`](./docs/FEATURES.md).
 
 ### Writing
 - **A real rich-text editor** (TipTap/ProseMirror) with a Zen writing surface — serif body text, a
@@ -179,7 +180,15 @@ nothing but an empty vault**.
 
 ---
 
-## Quick start (running it on your own machine)
+## Quick start (kicking the tyres on your own machine)
+
+> [!NOTE]
+> This is the **dev** setup — the fastest way to see Mneme run. It uses published ports, `_dev`
+> default passwords, and plain HTTP. It is emphatically **not** how you should host your actual
+> journal. When you want a real, HTTPS, restart-on-crash, backed-up deployment, follow
+> **[docs/DEPLOYMENT.md](./docs/DEPLOYMENT.md)** instead. Running your real diary on the dev stack is
+> like storing your valuables in the display safe from the hardware store: technically a safe, spiritually
+> a cardboard box.
 
 You'll need **Node 20+** and **pnpm 10** (the repo pins it; `corepack` handles it).
 
@@ -230,8 +239,10 @@ The root `docker-compose.yml` is the **dev** stack (published ports, `_dev` defa
 secrets, HTTP). For a real self-hosted deployment there's a separate production stack —
 `docker-compose.prod.yml` plus the `./deploy/prod.sh` wrapper — that adds Caddy in front
 to serve the built client and the relay on **one HTTPS origin**, `restart: unless-stopped`
-on every service, and rolling encrypted backups. The full runbook (HTTPS on a LAN, backups,
-restore, staying up) lives in **[`deploy/README.md`](./deploy/README.md)**.
+on every service, and rolling encrypted backups. The full runbook (HTTPS on a LAN, first
+start, staying up) lives in **[`docs/DEPLOYMENT.md`](./docs/DEPLOYMENT.md)**, and day-two
+operations (backups, restore, upgrades, troubleshooting) in
+**[`docs/MAINTENANCE.md`](./docs/MAINTENANCE.md)**.
 
 **Prerequisites on the host:** Docker Engine + the Compose plugin, enabled at boot, and a
 clone of this repo.
@@ -258,8 +269,9 @@ Open `https://<host>/mneme/`. Because the client needs a secure context (OPFS + 
 capture), Caddy issues certificates from its own internal CA — accept the browser warning
 once per device, or install its root cert (details in the runbook). Deploying a new version
 is the same `./deploy/prod.sh up -d --build`; `./deploy/prod.sh down` stops the stack while
-keeping all data. **See [`deploy/README.md`](./deploy/README.md) for backups, disaster
-recovery, and the full operations crib sheet.**
+keeping all data. **See [`docs/DEPLOYMENT.md`](./docs/DEPLOYMENT.md) for the full setup runbook
+and [`docs/MAINTENANCE.md`](./docs/MAINTENANCE.md) for backups, disaster recovery, and the
+operations crib sheet.**
 
 ### The admin dashboard
 
@@ -300,12 +312,16 @@ with [`docs/README.md`](./docs/README.md):
 
 | Doc | What's in it |
 |---|---|
+| [`docs/FEATURES.md`](./docs/FEATURES.md) | Everything Mneme can do today, in one place. |
+| [`docs/ROADMAP.md`](./docs/ROADMAP.md) | Honest status board: built, planned, and deliberately-not-building. |
 | [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md) | Components, key derivation, the sync sequence, the data model — with diagrams. |
-| [`docs/SECURITY.md`](./docs/SECURITY.md) | The E2EE model, the crypto choices, and a frank list of attack vectors and known weaknesses. |
+| [`docs/ENCRYPTION.md`](./docs/ENCRYPTION.md) | The cryptography: primitives, key hierarchy, the ciphertext envelope, at-rest seals, rotation. |
+| [`docs/SECURITY.md`](./docs/SECURITY.md) | The E2EE threat model and a frank list of attack vectors and known weaknesses. |
 | [`docs/API.md`](./docs/API.md) | The relay's HTTP API reference, including the admin surface. |
+| [`docs/DEPLOYMENT.md`](./docs/DEPLOYMENT.md) | Self-hosted production deployment: the Docker + Caddy stack, HTTPS on a LAN, first start. |
+| [`docs/MAINTENANCE.md`](./docs/MAINTENANCE.md) | Day-two operations: backups, restore, upgrades, health checks, troubleshooting. |
 | [`docs/CONTRIBUTING.md`](./docs/CONTRIBUTING.md) | Setup, the quality gates, conventions, and where things live. |
 | [`server/README.md`](./server/README.md) | Running, configuring, and testing the Go relay specifically. |
-| [`deploy/README.md`](./deploy/README.md) | Self-hosted production deployment: the Docker+Caddy prod stack, HTTPS on a LAN, backups, and disaster recovery. |
 | [`CLAUDE.md`](./CLAUDE.md) | The decision document and source of truth (German; §0 is an English operating guide). |
 
 ---
@@ -317,11 +333,12 @@ built, and the client is genuinely wired to the relay: real BIP39 onboarding, cl
 encryption, encrypted push/pull sync, a durable local database, a real editor, encrypted media, AI
 assistant, templates, search, and phrase rotation all work end-to-end today, in the browser.
 
-Still ahead: a full-text search index (blocked on a custom wa-sqlite build), reminders UI + push
-notifications, broader export, and the native **Tauri** desktop and mobile shells with OS-keychain
-storage. There has been **no external security audit** — treat the guarantees as careful design
-intent, not certification, and don't trust it with data you can't afford to lose until it's had
-more eyes. The roadmap lives in [`CLAUDE.md`](./CLAUDE.md) §10.
+Still ahead: a full-text search index (blocked on a custom wa-sqlite build), a reminders UI + local
+scheduled notifications, broader export, and the native **Tauri** desktop and mobile shells with
+OS-keychain storage. There has been **no external security audit** — treat the guarantees as careful
+design intent, not certification, and don't trust it with data you can't afford to lose until it's had
+more eyes. The full status board is in [`docs/ROADMAP.md`](./docs/ROADMAP.md); the binding build order
+is [`CLAUDE.md`](./CLAUDE.md) §10.
 
 ---
 

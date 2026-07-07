@@ -158,8 +158,35 @@ export class RelayClient {
   }
 }
 
-/** The relay base URL: VITE_RELAY_URL in the app, localhost:8080 by default. */
+// A self-hoster points the app at their own relay; under Tauri there is no
+// dev-server origin to infer it from, so the URL is a runtime setting persisted
+// here rather than only a build-time env var.
+const RELAY_URL_KEY = 'mneme:relay-url';
+
+/** The user-set relay override, or null when unset (empty is treated as unset). */
+export function getStoredRelayUrl(): string | null {
+  try {
+    const v = localStorage.getItem(RELAY_URL_KEY);
+    return v && v.trim() ? v.trim() : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Persist the relay override, or clear it when passed null/empty. */
+export function setStoredRelayUrl(url: string | null): void {
+  try {
+    if (url && url.trim()) localStorage.setItem(RELAY_URL_KEY, url.trim());
+    else localStorage.removeItem(RELAY_URL_KEY);
+  } catch {
+    /* storage unavailable — the build-time default still applies */
+  }
+}
+
+/** The relay base URL: a user override, else VITE_RELAY_URL, else localhost:8080. */
 export function defaultRelayUrl(): string {
+  const stored = getStoredRelayUrl();
+  if (stored) return stored;
   const env = (import.meta as { env?: Record<string, string | undefined> }).env;
   return env?.VITE_RELAY_URL ?? 'http://localhost:8080';
 }

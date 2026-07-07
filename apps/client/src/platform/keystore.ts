@@ -1,83 +1,29 @@
-// What the PWA persists outside the per-owner OPFS database: the optional
-// Argon2id-sealed seed (§6 at-rest) and the seed-key-sealed AI settings.
-// IndexedDB rather than localStorage because the records carry binary fields
-// and IDB is async.
-import { isSealedSeed, type SealedSeed } from '../crypto/seedlock';
+// Keystore dispatcher — the stable public API for at-rest seal storage (§6).
+// Callers (state/data.tsx) import these six functions and never learn which
+// backend serves them: the browser bundle uses IndexedDB (keystore.web.ts), the
+// Tauri shell uses OS secure storage (keystore.tauri.ts, Track B). The `KeyStore`
+// type below is what forces both backends to keep identical signatures.
+import { isTauri } from './shell';
+import type { SealedSeed } from '../crypto/seedlock';
 import type { SealedAiSettings } from '../ai/settings';
+import * as web from './keystore.web';
+import * as tauri from './keystore.tauri';
 
-const DB_NAME = 'mneme-keystore';
-const STORE = 'kv';
-const KEY = 'sealed-seed';
-const AI_KEY = 'ai-settings';
-
-function openDb(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, 1);
-    req.onupgradeneeded = () => req.result.createObjectStore(STORE);
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error ?? new Error('indexeddb unavailable'));
-  });
+export interface KeyStore {
+  loadSealedSeed(): Promise<SealedSeed | null>;
+  storeSealedSeed(record: SealedSeed): Promise<void>;
+  clearSealedSeed(): Promise<void>;
+  loadAiSettingsRecord(): Promise<SealedAiSettings | null>;
+  storeAiSettingsRecord(record: SealedAiSettings): Promise<void>;
+  clearAiSettingsRecord(): Promise<void>;
 }
 
-async function run<T>(mode: IDBTransactionMode, op: (store: IDBObjectStore) => IDBRequest<T>): Promise<T> {
-  const db = await openDb();
-  try {
-    return await new Promise<T>((resolve, reject) => {
-      const req = op(db.transaction(STORE, mode).objectStore(STORE));
-      req.onsuccess = () => resolve(req.result);
-      req.onerror = () => reject(req.error ?? new Error('keystore operation failed'));
-    });
-  } finally {
-    db.close();
-  }
-}
+// Assigning each module to KeyStore makes a signature drift a compile error.
+const backend: KeyStore = isTauri() ? (tauri satisfies KeyStore) : (web satisfies KeyStore);
 
-/** null when nothing is stored or IndexedDB is unavailable (private mode, Node). */
-export async function loadSealedSeed(): Promise<SealedSeed | null> {
-  if (typeof indexedDB === 'undefined') return null;
-  try {
-    const rec = (await run('readonly', (s) => s.get(KEY))) as SealedSeed | undefined;
-    return rec && isSealedSeed(rec) ? rec : null;
-  } catch {
-    return null;
-  }
-}
-
-/** Throws when persistence fails — callers degrade to the nothing-stored mode. */
-export async function storeSealedSeed(record: SealedSeed): Promise<void> {
-  await run('readwrite', (s) => s.put(record, KEY));
-}
-
-export async function clearSealedSeed(): Promise<void> {
-  if (typeof indexedDB === 'undefined') return;
-  try {
-    await run('readwrite', (s) => s.delete(KEY));
-  } catch {
-    /* nothing stored / no IDB — locked-out is the safe default */
-  }
-}
-
-/** null when nothing is stored or IndexedDB is unavailable. */
-export async function loadAiSettingsRecord(): Promise<SealedAiSettings | null> {
-  if (typeof indexedDB === 'undefined') return null;
-  try {
-    const rec = (await run('readonly', (s) => s.get(AI_KEY))) as SealedAiSettings | undefined;
-    return rec && rec.v === 1 ? rec : null;
-  } catch {
-    return null;
-  }
-}
-
-/** Throws when persistence fails — callers degrade to the not-configured mode. */
-export async function storeAiSettingsRecord(record: SealedAiSettings): Promise<void> {
-  await run('readwrite', (s) => s.put(record, AI_KEY));
-}
-
-export async function clearAiSettingsRecord(): Promise<void> {
-  if (typeof indexedDB === 'undefined') return;
-  try {
-    await run('readwrite', (s) => s.delete(AI_KEY));
-  } catch {
-    /* nothing stored / no IDB — not-configured is the safe default */
-  }
-}
+export const loadSealedSeed = (): Promise<SealedSeed | null> => backend.loadSealedSeed();
+export const storeSealedSeed = (record: SealedSeed): Promise<void> => backend.storeSealedSeed(record);
+export const clearSealedSeed = (): Promise<void> => backend.clearSealedSeed();
+export const loadAiSettingsRecord = (): Promise<SealedAiSettings | null> => backend.loadAiSettingsRecord();
+export const storeAiSettingsRecord = (record: SealedAiSettings): Promise<void> => backend.storeAiSettingsRecord(record);
+export const clearAiSettingsRecord = (): Promise<void> => backend.clearAiSettingsRecord();

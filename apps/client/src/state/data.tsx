@@ -8,7 +8,7 @@ import type { ComponentChildren, VNode } from 'preact';
 import { createContext } from 'preact';
 import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 
-import { RelayClient, RelayError, defaultRelayUrl } from '../sync/relay';
+import { RelayClient, RelayError, defaultRelayUrl, setStoredRelayUrl } from '../sync/relay';
 import { authenticate, type Session } from '../sync/identity';
 import { deriveIdentity, type Identity } from '../crypto/keys';
 import { mnemonicToSeed } from '../crypto/mnemonic';
@@ -172,6 +172,14 @@ interface AppData {
    * never an offline queue.
    */
   deleteVault(): Promise<void>;
+  /** The relay base URL currently in effect (a user override, else the build default). */
+  relayUrl: string;
+  /**
+   * Point the app at a different relay (self-hosters), or pass null to fall back
+   * to the build-time default. Persisted across restarts; re-creates the relay
+   * client, so a signed-in session must re-authenticate against the new server.
+   */
+  setRelayUrl(url: string | null): void;
 }
 
 const Ctx = createContext<AppData | null>(null);
@@ -318,7 +326,10 @@ export function relativeDay(ts: number, now: number): string {
 }
 
 export function AppDataProvider({ children }: { children: ComponentChildren }): VNode {
-  const relay = useMemo(() => new RelayClient(defaultRelayUrl()), []);
+  // The relay URL is a runtime setting (self-hosters, and Tauri has no origin to
+  // infer it from). Changing it re-creates the client via this dep.
+  const [relayUrl, setRelayUrlState] = useState<string>(() => defaultRelayUrl());
+  const relay = useMemo(() => new RelayClient(relayUrl), [relayUrl]);
   // The durable local source of truth (wa-sqlite, §5a). `entries` below is a
   // reactive mirror of it; writes go to both so the UI updates synchronously.
   const db = useMemo(() => new LocalDb(), []);
@@ -1494,6 +1505,14 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
     lock(); // drops the in-memory identity and lands on onboarding
   }, [relay, db, lock]);
 
+  // Repoint the app at a different relay. Persist first, then recompute from the
+  // same resolution the client uses, so an empty value cleanly reverts to the
+  // build default. The relay memo depends on relayUrl, so this swaps the client.
+  const setRelayUrl: AppData['setRelayUrl'] = useCallback((url) => {
+    setStoredRelayUrl(url);
+    setRelayUrlState(defaultRelayUrl());
+  }, []);
+
   // Background loop. While online: periodic flush + pull. While offline: retry the
   // relay handshake until it comes back, then resume syncing automatically.
   useEffect(() => {
@@ -1550,6 +1569,6 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
     [templates, locale],
   );
 
-  const value: AppData = { status, hasVault, vaultMethod, ownerId, pendingCount, pendingJournalIds, syncTotal, saving, bootstrapping, entries: liveEntries, journals: journalsWithCounts, templates: localizedTemplates, interviewTypes, aiSettings, saveAiSettings, signIn, unlock, unlockWithKey, setDeviceUnlock, lock, createEntry, updateEntry, deleteEntry, newJournal, updateJournal, deleteJournal, createTemplate, updateTemplate, deleteTemplate, createInterviewType, updateInterviewType, deleteInterviewType, addMedia, removeMedia, mediaBlob, mediaThumb, rotatePhrase, deleteVault };
+  const value: AppData = { status, hasVault, vaultMethod, ownerId, pendingCount, pendingJournalIds, syncTotal, saving, bootstrapping, entries: liveEntries, journals: journalsWithCounts, templates: localizedTemplates, interviewTypes, aiSettings, saveAiSettings, signIn, unlock, unlockWithKey, setDeviceUnlock, lock, createEntry, updateEntry, deleteEntry, newJournal, updateJournal, deleteJournal, createTemplate, updateTemplate, deleteTemplate, createInterviewType, updateInterviewType, deleteInterviewType, addMedia, removeMedia, mediaBlob, mediaThumb, rotatePhrase, deleteVault, relayUrl, setRelayUrl };
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

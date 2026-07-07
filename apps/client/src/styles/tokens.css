@@ -13,9 +13,9 @@
   --ph-a: #ede6d7;
   --ph-b: #f6f1e6;
 
-  --ui: 'Hanken Grotesk', system-ui, -apple-system, sans-serif;
-  --serif: 'Newsreader', Georgia, serif;
-  --mono: 'Spline Sans Mono', ui-monospace, monospace;
+  --ui: 'Hanken Grotesk Variable', 'Hanken Grotesk', system-ui, -apple-system, sans-serif;
+  --serif: 'Newsreader Variable', 'Newsreader', Georgia, serif;
+  --mono: 'Spline Sans Mono Variable', 'Spline Sans Mono', ui-monospace, monospace;
 
   --editor-font: var(--serif);
   --editor-size: 18px;
@@ -58,8 +58,8 @@
   --line: #e4e4e2;
   --ph-a: #ebebea;
   --ph-b: #f5f5f4;
-  --serif: 'Hanken Grotesk', system-ui, -apple-system, sans-serif;
-  --editor-font: 'Newsreader', Georgia, serif;
+  --serif: 'Hanken Grotesk Variable', 'Hanken Grotesk', system-ui, -apple-system, sans-serif;
+  --editor-font: 'Newsreader Variable', 'Newsreader', Georgia, serif;
 }
 [data-skin='modern'][data-theme='dark'] {
   --paper: #131313;
@@ -87,8 +87,8 @@
   --line: #d6dde5;
   --ph-a: #e2e8ee;
   --ph-b: #eef1f4;
-  --serif: 'Hanken Grotesk', system-ui, -apple-system, sans-serif;
-  --editor-font: 'Hanken Grotesk', system-ui, -apple-system, sans-serif;
+  --serif: 'Hanken Grotesk Variable', 'Hanken Grotesk', system-ui, -apple-system, sans-serif;
+  --editor-font: 'Hanken Grotesk Variable', 'Hanken Grotesk', system-ui, -apple-system, sans-serif;
 }
 [data-skin='terminal'][data-theme='dark'] {
   --paper: #0d1117;

@@ -6,8 +6,6 @@
 import { isTauri } from './shell';
 import type { SealedSeed } from '../crypto/seedlock';
 import type { SealedAiSettings } from '../ai/settings';
-import * as web from './keystore.web';
-import * as tauri from './keystore.tauri';
 
 export interface KeyStore {
   loadSealedSeed(): Promise<SealedSeed | null>;
@@ -18,12 +16,20 @@ export interface KeyStore {
   clearAiSettingsRecord(): Promise<void>;
 }
 
-// Assigning each module to KeyStore makes a signature drift a compile error.
-const backend: KeyStore = isTauri() ? (tauri satisfies KeyStore) : (web satisfies KeyStore);
+// Lazy dynamic import so only the reachable backend ships per platform: once
+// Track B fills keystore.tauri.ts with @tauri-apps/* code, a static import here
+// would bundle (and evaluate) the native backend in every PWA build. Typing the
+// promise as KeyStore still makes a signature drift in either backend a compile
+// error; the resolved module is cached after the first call.
+let backend: Promise<KeyStore> | null = null;
+function load(): Promise<KeyStore> {
+  backend ??= isTauri() ? import('./keystore.tauri') : import('./keystore.web');
+  return backend;
+}
 
-export const loadSealedSeed = (): Promise<SealedSeed | null> => backend.loadSealedSeed();
-export const storeSealedSeed = (record: SealedSeed): Promise<void> => backend.storeSealedSeed(record);
-export const clearSealedSeed = (): Promise<void> => backend.clearSealedSeed();
-export const loadAiSettingsRecord = (): Promise<SealedAiSettings | null> => backend.loadAiSettingsRecord();
-export const storeAiSettingsRecord = (record: SealedAiSettings): Promise<void> => backend.storeAiSettingsRecord(record);
-export const clearAiSettingsRecord = (): Promise<void> => backend.clearAiSettingsRecord();
+export const loadSealedSeed = async (): Promise<SealedSeed | null> => (await load()).loadSealedSeed();
+export const storeSealedSeed = async (record: SealedSeed): Promise<void> => (await load()).storeSealedSeed(record);
+export const clearSealedSeed = async (): Promise<void> => (await load()).clearSealedSeed();
+export const loadAiSettingsRecord = async (): Promise<SealedAiSettings | null> => (await load()).loadAiSettingsRecord();
+export const storeAiSettingsRecord = async (record: SealedAiSettings): Promise<void> => (await load()).storeAiSettingsRecord(record);
+export const clearAiSettingsRecord = async (): Promise<void> => (await load()).clearAiSettingsRecord();

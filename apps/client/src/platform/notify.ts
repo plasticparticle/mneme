@@ -7,8 +7,6 @@
 // Content stays generic per §3 (the relay never sees it, and neither should the OS
 // lock screen leak entry text) — the app decrypts and shows the real entry on tap.
 import { isTauri } from './shell';
-import * as web from './notify.web';
-import * as tauri from './notify.tauri';
 
 export interface NotifyOptions {
   title: string;
@@ -33,4 +31,19 @@ export interface Notifier {
   cancel(id: string): Promise<void>;
 }
 
-export const notifier: Notifier = isTauri() ? (tauri satisfies Notifier) : (web satisfies Notifier);
+// Lazy dynamic import, mirroring keystore.ts: once Track B adds the
+// @tauri-apps/plugin-notification import to notify.tauri.ts, a static import
+// here would bundle the native backend into every PWA build. Typing the promise
+// as Notifier keeps signature drift in either backend a compile error.
+let backend: Promise<Notifier> | null = null;
+function load(): Promise<Notifier> {
+  backend ??= isTauri() ? import('./notify.tauri') : import('./notify.web');
+  return backend;
+}
+
+export const notifier: Notifier = {
+  available: async () => (await load()).available(),
+  notify: async (opts) => (await load()).notify(opts),
+  schedule: async (opts) => (await load()).schedule(opts),
+  cancel: async (id) => (await load()).cancel(id),
+};

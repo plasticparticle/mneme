@@ -8,7 +8,7 @@ import type { ComponentChildren, VNode } from 'preact';
 import { createContext } from 'preact';
 import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 
-import { RelayClient, RelayError, defaultRelayUrl, setStoredRelayUrl } from '../sync/relay';
+import { RelayClient, RelayError, resolveRelayUrl, buildDefaultRelayUrl, setStoredRelayUrl } from '../sync/relay';
 import { authenticate, type Session } from '../sync/identity';
 import { deriveIdentity, type Identity } from '../crypto/keys';
 import { mnemonicToSeed } from '../crypto/mnemonic';
@@ -177,7 +177,8 @@ interface AppData {
   /**
    * Point the app at a different relay (self-hosters), or pass null to fall back
    * to the build-time default. Persisted across restarts; re-creates the relay
-   * client, so a signed-in session must re-authenticate against the new server.
+   * client, and a signed-in session drops its old token and re-authenticates
+   * (TOFU device registration) against the new server right away.
    */
   setRelayUrl(url: string | null): void;
 }
@@ -328,7 +329,7 @@ export function relativeDay(ts: number, now: number): string {
 export function AppDataProvider({ children }: { children: ComponentChildren }): VNode {
   // The relay URL is a runtime setting (self-hosters, and Tauri has no origin to
   // infer it from). Changing it re-creates the client via this dep.
-  const [relayUrl, setRelayUrlState] = useState<string>(() => defaultRelayUrl());
+  const [relayUrl, setRelayUrlState] = useState<string>(() => resolveRelayUrl());
   const relay = useMemo(() => new RelayClient(relayUrl), [relayUrl]);
   // The durable local source of truth (wa-sqlite, §5a). `entries` below is a
   // reactive mirror of it; writes go to both so the UI updates synchronously.
@@ -660,6 +661,22 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
     },
     [relay, flush, pull, setStatusLive],
   );
+
+  // A new RelayClient (the user re-pointed the app at another server) makes
+  // everything tied to the old one stale: the bearer token and the pull cursor.
+  // If the new relay happened to accept the old token, a stale cursor would
+  // silently skip records below the old high-water mark — so drop the session
+  // and re-authenticate immediately (TOFU registration makes the device known
+  // to the new relay; connect() resets the cursor).
+  const prevRelay = useRef(relay);
+  useEffect(() => {
+    if (prevRelay.current === relay) return; // mount / unrelated re-render
+    prevRelay.current = relay;
+    if (!identity.current) return;
+    session.current = null;
+    cursor.current = 0;
+    void connect(true);
+  }, [relay, connect]);
 
   // Shared tail of signIn and unlock: derive the identity from the seed, open
   // the per-owner DB, hydrate the UI, and kick off the first sync.
@@ -1505,12 +1522,14 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
     lock(); // drops the in-memory identity and lands on onboarding
   }, [relay, db, lock]);
 
-  // Repoint the app at a different relay. Persist first, then recompute from the
-  // same resolution the client uses, so an empty value cleanly reverts to the
-  // build default. The relay memo depends on relayUrl, so this swaps the client.
+  // Repoint the app at a different relay. Persist best-effort, but drive the
+  // live session from the value in hand: if the localStorage write fails
+  // (private mode, quota), this run still honors the user's choice instead of
+  // silently reverting. The relay memo depends on relayUrl, so this swaps the
+  // client; the effect below drops the old session against it.
   const setRelayUrl: AppData['setRelayUrl'] = useCallback((url) => {
     setStoredRelayUrl(url);
-    setRelayUrlState(defaultRelayUrl());
+    setRelayUrlState(url?.trim() ? url.trim() : buildDefaultRelayUrl());
   }, []);
 
   // Background loop. While online: periodic flush + pull. While offline: retry the

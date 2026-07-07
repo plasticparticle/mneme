@@ -7,7 +7,9 @@
 import type { NotifyOptions, ScheduledNotify } from './notify';
 
 export async function available(): Promise<boolean> {
-  return typeof Notification !== 'undefined';
+  // 'denied' is neither granted nor grantable — requestPermission() is a no-op
+  // there, so reporting true would offer notifications that can never fire.
+  return typeof Notification !== 'undefined' && Notification.permission !== 'denied';
 }
 
 export async function notify({ title, body }: NotifyOptions): Promise<void> {

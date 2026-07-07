@@ -4,10 +4,10 @@
 //   pnpm --filter client exec tsx scripts/interview-types-roundtrip.ts
 import { generateMnemonic } from '../src/crypto/mnemonic';
 import { identityFromMnemonic, authenticate } from '../src/sync/identity';
-import { RelayClient, defaultRelayUrl } from '../src/sync/relay';
+import { RelayClient, resolveRelayUrl } from '../src/sync/relay';
 import { pushEntries, pushInterviewTypes, pullEntries, type JournalEntry, type InterviewType } from '../src/sync/engine';
 
-const relay = new RelayClient(defaultRelayUrl());
+const relay = new RelayClient(resolveRelayUrl());
 const id = identityFromMnemonic(generateMnemonic());
 const s = await authenticate(relay, id);
 console.log('authenticated · owner', s.ownerId.slice(0, 12) + '…');

@@ -52,7 +52,14 @@ export class RelayError extends Error {
 }
 
 export class RelayClient {
-  constructor(private readonly baseUrl: string) {}
+  private readonly baseUrl: string;
+
+  constructor(baseUrl: string) {
+    // Requests are built by plain concatenation with an absolute path, so a
+    // trailing slash in a user-entered base URL would yield "//v1/..." — the Go
+    // mux 301s that to the cleaned path and browsers downgrade the POST to GET.
+    this.baseUrl = baseUrl.replace(/\/+$/, '');
+  }
 
   register(ownerPubkey: string, devicePubkey: string, signature: string): Promise<RegisterResp> {
     return this.post('/v1/register', { owner_pubkey: ownerPubkey, device_pubkey: devicePubkey, signature });
@@ -163,6 +170,24 @@ export class RelayClient {
 // here rather than only a build-time env var.
 const RELAY_URL_KEY = 'mneme:relay-url';
 
+/**
+ * Canonicalize a user-entered relay URL: require an absolute http(s) URL and
+ * strip trailing slashes. Returns null when the input can't name a relay — the
+ * caller (the Preferences editor) uses that to reject the value with feedback
+ * instead of persisting a string fetch() would resolve relative to the app origin.
+ */
+export function normalizeRelayUrl(input: string): string | null {
+  const raw = input.trim();
+  if (!raw) return null;
+  try {
+    const u = new URL(raw);
+    if (u.protocol !== 'http:' && u.protocol !== 'https:') return null;
+    return u.href.replace(/\/+$/, '');
+  } catch {
+    return null;
+  }
+}
+
 /** The user-set relay override, or null when unset (empty is treated as unset). */
 export function getStoredRelayUrl(): string | null {
   try {
@@ -183,10 +208,13 @@ export function setStoredRelayUrl(url: string | null): void {
   }
 }
 
-/** The relay base URL: a user override, else VITE_RELAY_URL, else localhost:8080. */
-export function defaultRelayUrl(): string {
-  const stored = getStoredRelayUrl();
-  if (stored) return stored;
+/** The compile-time default relay URL: VITE_RELAY_URL, else localhost:8080. */
+export function buildDefaultRelayUrl(): string {
   const env = (import.meta as { env?: Record<string, string | undefined> }).env;
   return env?.VITE_RELAY_URL ?? 'http://localhost:8080';
+}
+
+/** The relay base URL in effect: the stored user override, else the build default. */
+export function resolveRelayUrl(): string {
+  return getStoredRelayUrl() ?? buildDefaultRelayUrl();
 }

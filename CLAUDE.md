@@ -2,10 +2,9 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-> **Note:** Sections §1–§12 below are the original **decision document** (in German). They are the
-> **source of truth** for architecture and are intentionally not in English (per §11, only this doc is
-> German; all code/comments/commits/API are English). This English preamble (§0) is the operating
-> guide; if it ever conflicts with §1–§12, §1–§12 win on decisions.
+> **Note:** Sections §1–§12 below are the original **decision document** — the **source of truth**
+> for architecture. This §0 preamble is the operating guide; if it ever conflicts with §1–§12,
+> §1–§12 win on decisions.
 
 ---
 
@@ -281,7 +280,7 @@ real responsive shell instead. The design system is implemented in `apps/client/
   remains a non-goal); their metadata — the journal id included — stays inside the ciphertext.
 
 ### What this is (one line)
-Open-source, local-first, **end-to-end-encrypted** journal (a Day One replacement). The server is a
+Open-source, local-first, **end-to-end-encrypted** journal. The server is a
 **dumb encrypted-blob relay** — it never sees plaintext, keys, or the mnemonic. See §1 (threat model)
 and §7 (why the server is trivial).
 
@@ -359,115 +358,115 @@ before the plaintext client UX is validated.**
   `src/sync/ids.ts`. (This is the leak-guard of §3 winning over the "ULID" wording in §5a/§11.)
 - **Never** put the entry date in cleartext IDs; never log/DOM the key; auto-lock on inactivity. (§3, §6)
 - Every new ciphertext persistence path **must** include the version byte. (§3, §11)
-- Reminders fire generic ("Erinnerung") — `fire_at` is a *consciously accepted* cleartext leak; the
+- Reminders fire generic ("Reminder") — `fire_at` is a *consciously accepted* cleartext leak; the
   client decrypts content locally. Don't try to "fix" accepted leaks in §3. (§3)
 - Migrations are versioned and **forward-only**. (§11)
 
 ---
 
-# Journal (Day One Replacement) — Decision Document
+# Journal — Decision Document
 
-> Briefing für Claude Code. Dieses Dokument ist die **Entscheidungs-Quelle der Wahrheit**.
-> Architektur-Entscheidungen unter „Locked Decisions" sind getroffen — **nicht neu aufrollen**,
-> nur umsetzen. Wo etwas offen ist, ist es als `OPEN:` markiert.
+> Briefing for Claude Code. This document is the **decision source of truth**.
+> Architecture decisions under "Locked Decisions" are made — **do not reopen them**,
+> only implement. Where something is unresolved, it is marked as `OPEN:`.
 
 ---
 
-## 1. Was wir bauen
+## 1. What we are building
 
-Ein **Open-Source, lokal-first, Ende-zu-Ende-verschlüsseltes Journal** als Day-One-Ersatz.
-Selbst-hostbar (Homelab). Eine Familie nutzt es mit **getrennten Accounts** — jeder Account ist
-ein **isolierter Mandant** (eigenes Tagebuch, kein geteilter Inhalt).
+An **open-source, local-first, end-to-end-encrypted journal**.
+Self-hostable (homelab). A family uses it with **separate accounts** — each account is
+an **isolated tenant** (its own journal, no shared content).
 
-**Threat-Model (zentral, bestimmt alles):** Der Server-Betreiber (Admin) ist **außerhalb** der
-Vertrauensgrenze. Der Server sieht **niemals** Klartext, Schlüssel oder Mnemonic — nur opake
-Chiffrat-Blobs. Admin **kann nicht lesen und kann nicht wiederherstellen**. Das ist eine bewusste
-Wahl mit einer scharfen Konsequenz: **vergessenes Mnemonic = Daten endgültig verloren**. Es gibt
-per Design keinen Admin-Recovery-Pfad. Der einzige Recovery-Anker ist das 12-Wort-Mnemonic beim User.
+**Threat model (central, drives everything):** The server operator (admin) is **outside** the
+trust boundary. The server **never** sees plaintext, keys, or the mnemonic — only opaque
+ciphertext blobs. The admin **cannot read and cannot recover**. This is a deliberate
+choice with a sharp consequence: **forgotten mnemonic = data permanently lost**. By design there
+is no admin recovery path. The only recovery anchor is the user's 12-word mnemonic.
 
 ---
 
 ## 2. Requirements
 
-**Muss:**
-- Flüssig auf Mobile **und** Desktop; Desktop als eigener Client.
-- PWA (für Dev-Speed + Browser-Zugang).
+**Must:**
+- Smooth on mobile **and** desktop; desktop as its own client.
+- PWA (for dev speed + browser access).
 - Offline-first.
 - E2EE.
-- Skaliert auf mehrere hundert User (→ Server-Last ist trivial, siehe §7).
-- Rich Text + Video + Audio.
-- Labelling, Volltext-Suche, Kalender, Reminder, Push Notifications.
-- Export/Import.
-- Metadaten pro Eintrag.
-- Öffentliche **und** private Eintrags-Templates.
+- Scales to several hundred users (→ server load is trivial, see §7).
+- Rich text + video + audio.
+- Labelling, full-text search, calendar, reminders, push notifications.
+- Export/import.
+- Metadata per entry.
+- Public **and** private entry templates.
 
-**Kann:** Tabellen, Listen, Checklisten, Bilder im Text.
+**Can:** Tables, lists, checklists, inline images.
 
-**Charakter:** Zen-Schreibmodus + schnelle Erfassung stehen im Vordergrund. **Kein** aufwändiges Layout.
+**Character:** Zen writing mode + quick capture come first. **No** elaborate layout.
 
 ---
 
-## 3. Locked Decisions (nicht neu aufrollen)
+## 3. Locked Decisions (do not reopen)
 
-| Bereich | Entscheidung | Grund (Kurz) |
+| Area | Decision | Reason (short) |
 |---|---|---|
-| Client-Codebase | **Vite + Preact + TypeScript**, eine Web-Codebase für alle Shells | Etablierter Stack, ein Editor/UI-Modell für PWA + alle Tauri-Shells |
-| Editor | **TipTap (ProseMirror)** | Tabellen/Listen/Checklisten/Inline-Media nativ; reiferes Fundament als Lexical |
-| Lokale DB | **wa-sqlite mit `OPFSCoopSyncVFS`** + **FTS5** | Vermeidet COOP/COEP-Header (Stand der Kunst 2026 für embedded media); FTS5 trägt die Suche |
-| Desktop + Mobile | **Tauri 2** (v2.10.x) als Shell um dieselbe Web-Codebase | iOS-PWA trägt Offline-first/Push/Reminder **nicht** (Storage-Eviction nach Inaktivität, Push nur installiert). Tauri = persistenter Container + native Notifications + OS-Keychain |
-| PWA | Browser-Zugang + Dev-Vehikel — **nicht** der ernsthafte Mobile-Client | s.o. |
-| Backend | **Go** (Relay) | I/O-bound, hoch-nebenläufig (Goroutines), statisches Binary, Homelab-Deploy. Keine Server-Krypto → Rust-Vorteile zahlen sich nicht aus |
-| Rust | **Nur** in den Tauri-Shells | Dort zwingend, sonst nirgends |
-| Krypto-Ort | **Krypto im Frontend**, einmal, für alle Clients | PWA hat keine Rust-Shell → Krypto kann nicht primär in Rust/Go leben |
-| Krypto-Library | **@noble/@scure** (`@scure/bip39`, `@noble/curves`, `@noble/ciphers`, `@noble/hashes`) — **überschreibt** das frühere „libsodium-wasm" (User-Entscheidung 2026-06-09) | Audited, synchron (kein wasm-Init), tree-shakeable. Primitive aus §6 unverändert (BIP39→HKDF-SHA256→XChaCha20-Poly1305, X25519/Ed25519) |
-| Server-DB | **PostgreSQL** (nur Bookkeeping: owners, device-pubkeys, blob-index, reminder-times, push-subs) | Speichert nur Opakes + Metadaten |
-| Media-Store | **S3-kompatibel, self-host** (MinIO/Garage), client-seitig **chunked** verschlüsselt | Chunking ermöglicht Range-Requests auf Chiffrat |
-| AEAD | **XChaCha20-Poly1305**, **random 24-Byte Nonce** | 192-Bit-Nonce → Random-Reuse vernachlässigbar (Grund gegen AES-GCM) |
-| Ciphertext-Format | **Versions-Byte-Präfix ab Tag 1**: `[version:1B][nonce:24B][ct+tag]` | Ohne das später keine saubere Primitiv-Rotation |
-| Recovery / Key-Backbone | **BIP39 12-Wort-Mnemonic** → Seed → Keys. Kein Login, keine E-Mail | Operationalisiert „Admin kann nicht recovern": das Mnemonic IST der einzige Recovery-Anker |
-| Sync-Modell | **Per-Entry Last-Write-Wins + Offline-Queue** — **kein CRDT** | Single-User/isolierte Mandanten: concurrent edits desselben alten Eintrags selten. CRDT spart man sich → keine Tombstone-Komplexität |
-| Tenancy | **Isolierte Mandanten only** — kein geteilter Inhalt, **kein** Multi-Recipient-Key-Wrapping | Sharing wäre eine separate, deutlich härtere Krypto (Revocation etc.) |
+| Client codebase | **Vite + Preact + TypeScript**, one web codebase for all shells | Established stack, one editor/UI model for PWA + all Tauri shells |
+| Editor | **TipTap (ProseMirror)** | Tables/lists/checklists/inline media native; more mature foundation than Lexical |
+| Local DB | **wa-sqlite with `OPFSCoopSyncVFS`** + **FTS5** | Avoids COOP/COEP headers (state of the art 2026 for embedded media); FTS5 carries search |
+| Desktop + Mobile | **Tauri 2** (v2.10.x) as a shell around the same web codebase | An iOS PWA does **not** carry offline-first/push/reminders (storage eviction after inactivity, push only when installed). Tauri = persistent container + native notifications + OS keychain |
+| PWA | Browser access + dev vehicle — **not** the serious mobile client | see above |
+| Backend | **Go** (relay) | I/O-bound, highly concurrent (goroutines), static binary, homelab deploy. No server crypto → Rust's advantages don't pay off |
+| Rust | **Only** in the Tauri shells | Mandatory there, nowhere else |
+| Crypto location | **Crypto in the frontend**, once, for all clients | The PWA has no Rust shell → crypto can't live primarily in Rust/Go |
+| Crypto library | **@noble/@scure** (`@scure/bip39`, `@noble/curves`, `@noble/ciphers`, `@noble/hashes`) — **overrides** the earlier "libsodium-wasm" (user decision 2026-06-09) | Audited, synchronous (no wasm init), tree-shakeable. Primitives from §6 unchanged (BIP39→HKDF-SHA256→XChaCha20-Poly1305, X25519/Ed25519) |
+| Server DB | **PostgreSQL** (bookkeeping only: owners, device pubkeys, blob index, reminder times, push subs) | Stores only opaque data + metadata |
+| Media store | **S3-compatible, self-hosted** (MinIO/Garage), client-side **chunked** encryption | Chunking enables range requests on ciphertext |
+| AEAD | **XChaCha20-Poly1305**, **random 24-byte nonce** | 192-bit nonce → random reuse negligible (reason against AES-GCM) |
+| Ciphertext format | **Version-byte prefix from day 1**: `[version:1B][nonce:24B][ct+tag]` | Without it, no clean primitive rotation later |
+| Recovery / key backbone | **BIP39 12-word mnemonic** → seed → keys. No login, no email | Operationalizes "admin cannot recover": the mnemonic IS the only recovery anchor |
+| Sync model | **Per-entry Last-Write-Wins + offline queue** — **no CRDT** | Single-user/isolated tenants: concurrent edits of the same old entry are rare. Skip CRDT → no tombstone complexity |
+| Tenancy | **Isolated tenants only** — no shared content, **no** multi-recipient key wrapping | Sharing would be separate, considerably harder crypto (revocation etc.) |
 
-### Explizite Non-Goals / Guards
-- **Keine Server-Krypto** außer TLS + opake Blob-Speicherung. Server entschlüsselt nie.
-- **Kein CRDT** einbauen (erst wenn concurrent multi-device edit desselben Eintrags real weh tut).
-- **Kein AES-GCM** (Nonce-Disziplin); XChaCha20-Poly1305 mit Random-Nonce.
-- **Keine geteilten Einträge** / kein Multi-Recipient-Envelope.
-- **Eintragsdatum NICHT in cleartext-IDs kodieren** — sonst leakt die Schreib-Chronologie.
+### Explicit non-goals / guards
+- **No server crypto** except TLS + opaque blob storage. The server never decrypts.
+- **Do not build a CRDT** (only if concurrent multi-device edit of the same entry actually hurts).
+- **No AES-GCM** (nonce discipline); XChaCha20-Poly1305 with a random nonce.
+- **No shared entries** / no multi-recipient envelope.
+- **Do NOT encode the entry date in cleartext IDs** — otherwise the writing chronology leaks.
 
-### Akzeptierte Leaks (bewusst, nicht „lösen")
-Der Server sieht **Metadaten**: Anzahl Einträge (≈ Frequenz), Blob-Größen, Edit-Häufigkeit,
-**Reminder-Zeitpunkte** (cleartext, da der Scheduler sie braucht). E2EE schützt **Inhalt**, nicht
-**Form**. Reminder feuern generisch („Erinnerung") — Inhalt entschlüsselt der Client lokal.
+### Accepted leaks (deliberate, do not "fix")
+The server sees **metadata**: number of entries (≈ frequency), blob sizes, edit frequency,
+**reminder times** (cleartext, since the scheduler needs them). E2EE protects **content**, not
+**form**. Reminders fire generically ("Reminder") — the client decrypts content locally.
 
 ---
 
-## 4. Repo-Struktur (Monorepo, pnpm + Go module)
+## 4. Repo structure (monorepo, pnpm + Go module)
 
 ```
 journal/
-├── CLAUDE.md                 # dieses Dokument
+├── CLAUDE.md                 # this document
 ├── README.md
-├── docker-compose.yml        # infra + server (siehe §8)
+├── docker-compose.yml        # infra + server (see §8)
 ├── .devcontainer/
-│   └── devcontainer.json     # Codespaces (siehe §9)
+│   └── devcontainer.json     # Codespaces (see §9)
 ├── pnpm-workspace.yaml
 ├── apps/
-│   ├── client/               # Vite + Preact + TS — DIE Web-Codebase (PWA + Tauri-Inhalt)
+│   ├── client/               # Vite + Preact + TS — THE web codebase (PWA + Tauri content)
 │   │   ├── src/
 │   │   │   ├── crypto/       # libsodium-wasm: mnemonic, seed→keys, aead, chunked-media
 │   │   │   ├── db/           # wa-sqlite OPFS, schema, migrations, FTS5, queries
 │   │   │   ├── sync/         # offline outbox, LWW oplog client, device-auth
 │   │   │   ├── editor/       # TipTap config (tables/lists/checklists/inline-media)
 │   │   │   ├── ui/           # zen-capture, timeline, calendar, labels, templates
-│   │   │   ├── platform/     # shell-abstraktion: key-storage, notifications
+│   │   │   ├── platform/     # shell abstraction: key-storage, notifications
 │   │   │   │   ├── pwa.ts     # WebCrypto/passphrase, web-push (VAPID)
 │   │   │   │   └── tauri.ts   # OS-keychain (Stronghold), native notifications
 │   │   │   └── main.tsx
 │   │   ├── public/manifest.webmanifest
 │   │   └── vite.config.ts    # + PWA/Workbox plugin
-│   └── desktop/              # Tauri 2 Shell — Desktop UND Mobile-Targets
-│       └── src-tauri/        # Rust: nur shell, plugins (notification, keychain, biometric)
+│   └── desktop/              # Tauri 2 shell — desktop AND mobile targets
+│       └── src-tauri/        # Rust: shell only, plugins (notification, keychain, biometric)
 ├── server/                   # Go relay
 │   ├── cmd/journald/main.go
 │   ├── internal/
@@ -476,32 +475,32 @@ journal/
 │   │   ├── sync/             # LWW oplog push/pull, blob relay
 │   │   ├── blobs/            # S3 coordination (presigned/relayed)
 │   │   ├── reminders/        # scheduler + push dispatch (VAPID + APNs/FCM via Tauri)
-│   │   └── store/            # Postgres (sqlc oder pgx)
+│   │   └── store/            # Postgres (sqlc or pgx)
 │   ├── migrations/           # goose/atlas SQL
 │   ├── Dockerfile
 │   └── go.mod
 └── packages/
-    └── proto/                # wire-format (protobuf) — sprachneutral, client+server teilen sich nur DAS
+    └── proto/                # wire format (protobuf) — language-neutral, client+server share ONLY this
 ```
 
-**Sharing-Hinweis:** Client und Server teilen **nur** das Wire-Format (`packages/proto`), nicht
-Krypto (die lebt im wasm-Frontend). Das ist der Grund, warum Polyglott (Go-Server + Rust-Shell)
-hier kein Makel ist — der wertvolle gemeinsame Teil ist sprachneutral.
+**Sharing note:** Client and server share **only** the wire format (`packages/proto`), not
+crypto (that lives in the wasm frontend). This is why being polyglot (Go server + Rust shell)
+is no flaw here — the valuable shared part is language-neutral.
 
 ---
 
-## 5. Datenmodell
+## 5. Data model
 
-### 5a. Client-SQLite (die *echte*, entschlüsselte DB — lokal, Source of Truth)
+### 5a. Client SQLite (the *real*, decrypted DB — local, source of truth)
 ```sql
--- alles im Klartext, weil nur auf dem entsperrten Gerät
+-- all in plaintext, because only on the unlocked device
 CREATE TABLE entries (
-  id          TEXT PRIMARY KEY,      -- ULID, NICHT datum-kodiert
+  id          TEXT PRIMARY KEY,      -- ULID, NOT date-encoded
   created_at  INTEGER NOT NULL,
   updated_at  INTEGER NOT NULL,
   title       TEXT,
   body_json   TEXT NOT NULL,         -- TipTap/ProseMirror JSON
-  lww_clock   INTEGER NOT NULL,      -- für LWW (hybrid logical clock empfohlen)
+  lww_clock   INTEGER NOT NULL,      -- for LWW (hybrid logical clock recommended)
   deleted     INTEGER NOT NULL DEFAULT 0
 );
 CREATE VIRTUAL TABLE entries_fts USING fts5(title, body_text, content='');
@@ -518,24 +517,24 @@ CREATE TABLE oplog_outbox (seq INTEGER PRIMARY KEY AUTOINCREMENT, entry_id TEXT,
 CREATE TABLE sync_state (k TEXT PRIMARY KEY, v TEXT);
 ```
 
-### 5b. Server-Postgres (nur Bookkeeping — **alles opak oder reine Metadaten**)
+### 5b. Server Postgres (bookkeeping only — **all opaque or pure metadata**)
 ```sql
--- owner-identität = public key abgeleitet aus dem mnemonic-seed; KEIN passwort, KEINE email
+-- owner identity = public key derived from the mnemonic seed; NO password, NO email
 CREATE TABLE owners (
-  owner_id    TEXT PRIMARY KEY,      -- = hash(owner_pubkey), aus seed abgeleitet
-  owner_pubkey BYTEA NOT NULL,       -- X25519, für sealed-box device-pairing
+  owner_id    TEXT PRIMARY KEY,      -- = hash(owner_pubkey), derived from seed
+  owner_pubkey BYTEA NOT NULL,       -- X25519, for sealed-box device pairing
   created_at  TIMESTAMPTZ DEFAULT now()
 );
 CREATE TABLE devices (
   device_id   TEXT PRIMARY KEY,
   owner_id    TEXT REFERENCES owners(owner_id),
-  device_pubkey BYTEA NOT NULL,      -- für challenge-response auth
+  device_pubkey BYTEA NOT NULL,      -- for challenge-response auth
   created_at  TIMESTAMPTZ DEFAULT now()
 );
-CREATE TABLE entry_blobs (             -- der LWW-oplog: opake chiffrat-blobs
+CREATE TABLE entry_blobs (             -- the LWW oplog: opaque ciphertext blobs
   owner_id    TEXT REFERENCES owners(owner_id),
   entry_id    TEXT NOT NULL,
-  lww_clock   BIGINT NOT NULL,        -- server vergleicht NUR diese zahl, sieht inhalt nie
+  lww_clock   BIGINT NOT NULL,        -- server compares ONLY this number, never sees content
   ciphertext  BYTEA NOT NULL,         -- [version][nonce][ct+tag]
   deleted     BOOLEAN DEFAULT false,
   updated_at  TIMESTAMPTZ DEFAULT now(),
@@ -545,62 +544,62 @@ CREATE TABLE media_blobs (
   owner_id TEXT, media_id TEXT, s3_key TEXT, bytes BIGINT, chunks INT,
   PRIMARY KEY (owner_id, media_id)
 );
-CREATE TABLE reminders (              -- fire_at ist CLEARTEXT (akzeptierter leak)
+CREATE TABLE reminders (              -- fire_at is CLEARTEXT (accepted leak)
   owner_id TEXT, reminder_id TEXT, fire_at TIMESTAMPTZ, dispatched BOOLEAN DEFAULT false,
   PRIMARY KEY (owner_id, reminder_id)
 );
 CREATE TABLE push_subs (owner_id TEXT, device_id TEXT, kind TEXT, endpoint TEXT, p256dh TEXT, auth TEXT);
 CREATE TABLE public_templates (id TEXT PRIMARY KEY, name TEXT, body_json JSONB, author_pubkey BYTEA, sig BYTEA);
 ```
-**Tenant-Isolation:** Jeder Handler scoped strikt auf `owner_id` aus dem authentifizierten Device.
-Server erzwingt die Mandanten-Grenze; ein Owner sieht nie Blobs eines anderen.
+**Tenant isolation:** Every handler scopes strictly to the `owner_id` from the authenticated device.
+The server enforces the tenant boundary; an owner never sees another's blobs.
 
 ---
 
-## 6. Krypto-Spezifikation
+## 6. Crypto specification
 
-### Key-Ableitung (alles client-seitig; Implementierung: @noble/@scure, siehe §3)
-> Implementiert in `apps/client/src/crypto/` (`mnemonic`, `keys`, `aead`). `owner_id` = base64url(sha256(ownerPub)),
-> identisch zur Relay-Ableitung. Device-Key wird aus dem Seed abgeleitet (info="device") → nichts wird persistiert.
+### Key derivation (all client-side; implementation: @noble/@scure, see §3)
+> Implemented in `apps/client/src/crypto/` (`mnemonic`, `keys`, `aead`). `owner_id` = base64url(sha256(ownerPub)),
+> identical to the relay derivation. The device key is derived from the seed (info="device") → nothing is persisted.
 ```
-mnemonic (BIP39, 128-bit entropy, 12 Wörter)
+mnemonic (BIP39, 128-bit entropy, 12 words)
   → seed (BIP39, PBKDF2)
   → root_key (HKDF-SHA256, salt="journal-v1")
-      ├─ data_key       (HKDF info="data")      # XChaCha20-Poly1305 für Einträge
+      ├─ data_key       (HKDF info="data")      # XChaCha20-Poly1305 for entries
       ├─ media_key      (HKDF info="media")      # chunked media
-      └─ identity_seed  (HKDF info="identity")   # → X25519 owner-keypair → owner_id = hash(pubkey)
+      └─ identity_seed  (HKDF info="identity")   # → X25519 owner keypair → owner_id = hash(pubkey)
 ```
-- **Eintrag verschlüsseln:** `version_byte || random_nonce(24) || XChaCha20Poly1305(data_key, nonce, body)`.
-- **Media:** in ~1 MiB-Chunks, jeder Chunk eigener Nonce; ermöglicht Range-Requests.
-- **owner_id** wird aus dem Seed abgeleitet → kein separates Signup, das Mnemonic *ist* der Account.
+- **Encrypt an entry:** `version_byte || random_nonce(24) || XChaCha20Poly1305(data_key, nonce, body)`.
+- **Media:** in ~1 MiB chunks, each chunk its own nonce; enables range requests.
+- **owner_id** is derived from the seed → no separate signup, the mnemonic *is* the account.
 
-### Multi-Device-Pairing (der seit Beginn harte Teil — jetzt gelöst)
-- **Primär (simpel, wie Evolu):** Mnemonic auf dem Zweitgerät **eintippen**. Kein Transport nötig,
-  der Server ist nicht beteiligt. Das Mnemonic ist das portable Secret.
-- **Optional (Komfort):** Zweitgerät erzeugt eigenes Keypair, zeigt Pubkey als QR; Erstgerät
-  `crypto_box_seal`t den Seed an diesen Pubkey, Transfer via Server-Relay (Server sieht nur sealed blob).
+### Multi-device pairing (the part that was hard from the start — now solved)
+- **Primary (simple, like Evolu):** **Type** the mnemonic on the second device. No transport needed,
+  the server is not involved. The mnemonic is the portable secret.
+- **Optional (convenience):** The second device generates its own keypair, shows the pubkey as a QR;
+  the first device `crypto_box_seal`s the seed to that pubkey, transfer via server relay (the server sees only a sealed blob).
 
-### Key-Storage at-rest — **Korrektur einer früheren Aussage**
-Frühere Notiz im Projekt sagte „WebCrypto non-extractable CryptoKey". Das ist mit libsodium **nicht
-sauber haltbar**: libsodium braucht die rohen Key-Bytes im wasm-Memory, „non-extractable" (ein
-WebCrypto-Konzept) greift dort nicht. Ehrliche Position:
-- **In-Memory während entsperrt ist unvermeidbar** für wasm-Krypto. Mitigation: strenge CSP gegen XSS,
-  Auto-Lock nach Inaktivität, Key nie in DOM/Logs.
-- **PWA at-rest:** Seed entweder gar nicht persistieren (Mnemonic/Passphrase bei Cold-Start neu) **oder**
-  Seed mit passphrase-abgeleitetem Key (**Argon2id**, `crypto_pwhash`) verschlüsselt in IndexedDB.
-- **Tauri at-rest:** Seed in **OS-Keychain** (Stronghold-Plugin), Entsperren via OS-Biometrie.
+### Key storage at-rest — **correction of an earlier statement**
+An earlier project note said "WebCrypto non-extractable CryptoKey". With libsodium that is **not
+cleanly tenable**: libsodium needs the raw key bytes in wasm memory, and "non-extractable" (a
+WebCrypto concept) doesn't apply there. Honest position:
+- **In-memory while unlocked is unavoidable** for wasm crypto. Mitigation: strict CSP against XSS,
+  auto-lock after inactivity, never put the key in DOM/logs.
+- **PWA at-rest:** Either don't persist the seed at all (re-enter mnemonic/passphrase on cold start) **or**
+  encrypt the seed with a passphrase-derived key (**Argon2id**, `crypto_pwhash`) in IndexedDB.
+- **Tauri at-rest:** Seed in the **OS keychain** (Stronghold plugin), unlock via OS biometrics.
 
-### Argon2id-Parameter
-`crypto_pwhash` mit `MODERATE` als Default; auf Mobile ggf. `INTERACTIVE` (Cold-Start-Budget).
-Salt random pro Owner, daneben gespeichert.
+### Argon2id parameters
+`crypto_pwhash` with `MODERATE` as the default; on mobile possibly `INTERACTIVE` (cold-start budget).
+Random salt per owner, stored alongside.
 
 ---
 
-## 7. Warum der Server trivial ist
-Mehrere hundert User × E2EE = der Server ist ein **dummes Blob-Relay**: kein Indexieren von Inhalt
-(geht nicht, ist Chiffrat), kein Rendering, keine schwere Query. LWW = ein Integer-Vergleich pro
-Eintrag. Last ist I/O, nicht CPU. „Skaliert auf hunderte User" ist hier de facto kostenlos — ein
-einzelnes Go-Binary auf dem Homelab trägt das mühelos.
+## 7. Why the server is trivial
+Several hundred users × E2EE = the server is a **dumb blob relay**: no content indexing
+(impossible, it's ciphertext), no rendering, no heavy queries. LWW = one integer comparison per
+entry. Load is I/O, not CPU. "Scales to hundreds of users" is effectively free here — a single
+Go binary on the homelab carries it easily.
 
 ---
 
@@ -631,7 +630,7 @@ services:
     volumes: [miniodata:/data]
     ports: ["9000:9000", "9001:9001"]
     healthcheck:
-      test: ["CMD-SHELL", "mc ready local || exit 1"]   # ggf. auf curl /minio/health/live anpassen
+      test: ["CMD-SHELL", "mc ready local || exit 1"]   # adjust to curl /minio/health/live if needed
       interval: 5s
       timeout: 5s
       retries: 10
@@ -659,7 +658,7 @@ services:
       minio:    { condition: service_started }
     ports: ["8080:8080"]
 
-  # Optional: Client-Dev-Server in compose (sonst direkt via `pnpm dev`)
+  # Optional: client dev server in compose (otherwise directly via `pnpm dev`)
   client:
     profiles: ["fullstack"]
     image: node:22
@@ -689,7 +688,7 @@ EXPOSE 8080
 ENTRYPOINT ["/journald"]
 ```
 
-Hochfahren: `docker compose up -d` (infra + server). Voll inkl. Client: `docker compose --profile fullstack up`.
+Start up: `docker compose up -d` (infra + server). Full, incl. client: `docker compose --profile fullstack up`.
 
 ---
 
@@ -715,40 +714,40 @@ Hochfahren: `docker compose up -d` (infra + server). Voll inkl. Client: `docker 
 }
 ```
 
-Im Codespace dann: `pnpm --filter client dev --host` → Port 5173 (PWA). Server läuft auf 8080.
+In the Codespace then: `pnpm --filter client dev --host` → port 5173 (PWA). The server runs on 8080.
 
-### Wichtiger Codespaces-Caveat
-**Codespaces deckt Server + Web-Client (PWA) end-to-end ab** — voll entwickelbar und testbar.
-Die **Tauri-Shells** (Desktop + Mobile) bauen **NICHT** sinnvoll in Codespaces: kein Display, und
-**iOS braucht zwingend macOS/Xcode**. Tauri-Builds passieren **lokal**. Reife-Flag: Tauri-2-Mobile
-ist stabil-nutzbar, aber „nicht alle Desktop-Plugins sind auf Mobile portiert" — vor dem
-Mobile-Push-Pfad die verfügbaren Notification-Plugins prüfen.
-
----
-
-## 10. Build-Reihenfolge (für Claude Code zu sequenzieren)
-
-1. **Scaffold + Infra:** Monorepo, compose, devcontainer, Postgres-Migrations, Go-Server-Skelett + `/healthz`.
-2. **Client lokal, plaintext:** Vite+Preact+TS, wa-sqlite OPFS + Schema + FTS5, TipTap, Zen-Capture, Timeline. **Noch keine Krypto, kein Sync** — erst UX validieren.
-3. **Krypto-Layer:** BIP39-Onboarding, seed→keys, XChaCha20 + Versions-Byte, at-rest-Modell (§6). Weiterhin local-only.
-4. **Sync:** LWW-Oplog Outbox (Client) + Go-Relay push/pull, Device-Auth (challenge-response), Encrypted-Blob-Transport.
-5. **Media:** chunked encryption + MinIO via server-koordinierten Upload.
-6. **Reminder + Push:** Server-Scheduler, Web-Push (VAPID) für PWA + native Notifications in Tauri.
-7. **Feature-Komplettierung:** Templates (public signiert-cleartext / private encrypted), Export/Import (verschlüsseltes Archiv + optionaler Plaintext-Export), Kalender/Labels/Metadaten-UI.
-8. **Tauri-Shells:** Desktop zuerst, dann Mobile — **lokal** gebaut, nicht in Codespaces.
+### Important Codespaces caveat
+**Codespaces covers server + web client (PWA) end-to-end** — fully developable and testable.
+The **Tauri shells** (desktop + mobile) do **NOT** build usefully in Codespaces: no display, and
+**iOS strictly requires macOS/Xcode**. Tauri builds happen **locally**. Maturity flag: Tauri 2 mobile
+is stable-usable, but "not all desktop plugins are ported to mobile" — before the
+mobile push path, check the available notification plugins.
 
 ---
 
-## 11. Konventionen
-- **Sprache:** Code, Kommentare, Variablen, Commits, API → **Englisch**. (Dieses Dokument bewusst Deutsch.)
+## 10. Build order (for Claude Code to sequence)
+
+1. **Scaffold + infra:** Monorepo, compose, devcontainer, Postgres migrations, Go server skeleton + `/healthz`.
+2. **Client local, plaintext:** Vite+Preact+TS, wa-sqlite OPFS + schema + FTS5, TipTap, zen capture, timeline. **No crypto yet, no sync** — validate UX first.
+3. **Crypto layer:** BIP39 onboarding, seed→keys, XChaCha20 + version byte, at-rest model (§6). Still local-only.
+4. **Sync:** LWW oplog outbox (client) + Go relay push/pull, device auth (challenge-response), encrypted-blob transport.
+5. **Media:** chunked encryption + MinIO via server-coordinated upload.
+6. **Reminders + push:** Server scheduler, web push (VAPID) for PWA + native notifications in Tauri.
+7. **Feature completion:** Templates (public signed-cleartext / private encrypted), export/import (encrypted archive + optional plaintext export), calendar/labels/metadata UI.
+8. **Tauri shells:** Desktop first, then mobile — built **locally**, not in Codespaces.
+
+---
+
+## 11. Conventions
+- **Language:** Code, comments, variables, commits, API → **English**.
 - **TS:** strict mode. **Go:** `gofmt`/`golangci-lint`. **Rust:** `clippy`.
-- **IDs:** ULID, nie datum-kodiert (Leak-Guard).
-- **Migrations:** versioniert, forward-only.
-- **Secrets:** nie committen; compose nutzt `_dev`-Defaults nur für lokal.
-- Bei jeder neuen Chiffrat-Persistenz: **Versions-Byte nicht vergessen.**
+- **IDs:** ULID, never date-encoded (leak guard).
+- **Migrations:** versioned, forward-only.
+- **Secrets:** never commit; compose uses `_dev` defaults for local only.
+- On every new ciphertext persistence: **don't forget the version byte.**
 
-## 12. OPEN (echte offene Punkte)
-- `OPEN:` Hybrid Logical Clock vs. simpler Lamport-Counter für `lww_clock`.
-- `OPEN:` Media-Upload: server-relayed vs. presigned S3-PUT (presigned = weniger Server-Last, aber MinIO-Endpoint muss erreichbar sein).
-- `OPEN:` Tauri-Mobile-Push-Plugin-Stand vor Schritt 6 verifizieren.
-- `OPEN:` `crypto-pouch`/Attachment-Verschlüsselung irrelevant (kein PouchDB) — gestrichen.
+## 12. OPEN (genuine open points)
+- `OPEN:` Hybrid logical clock vs. simple Lamport counter for `lww_clock`.
+- `OPEN:` Media upload: server-relayed vs. presigned S3-PUT (presigned = less server load, but the MinIO endpoint must be reachable).
+- `OPEN:` Verify the Tauri mobile push plugin state before step 6.
+- `OPEN:` `crypto-pouch`/attachment encryption irrelevant (no PouchDB) — dropped.

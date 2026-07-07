@@ -344,8 +344,12 @@ is [`CLAUDE.md`](./CLAUDE.md) §10.
 
 ## License
 
-Open source. (Specific license to be added — for now, assume "be kind, and don't pretend you wrote
-it.")
+[**GNU Affero General Public License v3.0 or later**](./LICENSE) (AGPL-3.0-or-later).
+
+Mneme is a network-served application, and the AGPL is a deliberate choice: anyone who runs a
+modified version of the relay as a hosted service must offer that modified source to its users. Use
+it, self-host it, fork it — but improvements to a public deployment stay open. See [`LICENSE`](./LICENSE)
+for the full text.
 
 ---
 

@@ -10,6 +10,14 @@ Mneme is a calm, paper-coloured notebook for your thoughts. It runs in your brow
 desktop and mobile shells are on the way), keeps the real database on your own device, and syncs
 through a server so clueless it couldn't spy on you if it tried.
 
+And when the blank page wins — as it does for most people, most of the time — Mneme sits you down for
+a **structured interview** instead. A **local AI model** (running on your own machine, so nothing
+leaves it) asks you one reflective question at a time and then drafts a full entry from your answers
+for you to keep or edit. It's the antidote to writer's block and blank-page anxiety, and the quiet
+engine behind actually building a writing habit: you never have to face an empty box or wonder where
+to start. The prompts are yours to shape, and it remembers past entries of the same kind so a
+recurring reflection stays continuous.
+
 ---
 
 ## Why this exists

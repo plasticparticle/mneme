@@ -1,5 +1,15 @@
 import { render } from 'preact';
 import type { VNode } from 'preact';
+// Self-hosted UI fonts, bundled by Vite — no external CDN, so the app renders
+// offline and under the Tauri custom-scheme origin (where a CDN <link> in the
+// PWA index.html would be blocked). Variable fonts cover every weight the design
+// uses. Newsreader must come from the `standard` files: they carry the opsz axis
+// alongside wght (matching the old Google Fonts opsz@6..72 request), so the serif
+// editor keeps optical sizing — `index.css` is the wght-only cut and would lose it.
+import '@fontsource-variable/hanken-grotesk/index.css';
+import '@fontsource-variable/newsreader/standard.css';
+import '@fontsource-variable/newsreader/standard-italic.css';
+import '@fontsource-variable/spline-sans-mono/index.css';
 import './styles/tokens.css';
 import { App } from './app';
 import { AppDataProvider } from './state/data';

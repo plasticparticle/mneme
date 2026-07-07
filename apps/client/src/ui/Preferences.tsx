@@ -9,8 +9,9 @@
 import type { VNode } from 'preact';
 import { useMemo, useRef, useState } from 'preact/hooks';
 import { Icon, type IconName } from './Icon';
-import { ConnectionDot, connLabel } from './primitives';
+import { Btn, ConnectionDot, connLabel } from './primitives';
 import { useAppData, type SyncStatus } from '../state/data';
+import { normalizeRelayUrl } from '../sync/relay';
 import { PALETTES, SKINS, type ThemeControls, type ThemeMode } from '../hooks/useTheme';
 import { compactCount, dayStreak, journaledDays, longestStreak, monthWords, totalWords } from '../state/stats';
 import { APP_VERSION, buildTimeLabel } from '../buildinfo';
@@ -84,6 +85,91 @@ function Row({ icon, label, value, danger, onClick }: {
       {value && <span style={{ fontFamily: 'var(--mono)', fontSize: 11.5, color: 'var(--ink-3)' }}>{value}</span>}
       <Icon name="right" size={15} color="var(--ink-3)" dirFlip />
     </button>
+  );
+}
+
+/** Relay server URL — a runtime setting for self-hosters, and required under
+    Tauri (no dev-server origin to infer it from). Collapsed to a Row that shows
+    the current host; expands to an inline editor. Empty reverts to the default. */
+function RelayServerRow(): VNode {
+  const { relayUrl, setRelayUrl } = useAppData();
+  const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState(relayUrl);
+  const [error, setError] = useState<string | null>(null);
+
+  let host = relayUrl;
+  try {
+    host = new URL(relayUrl).host;
+  } catch {
+    /* not a parseable URL — show the raw value */
+  }
+
+  const close = (): void => {
+    setOpen(false);
+    setError(null);
+  };
+
+  if (!open) {
+    return (
+      <Row
+        icon="link"
+        label="Relay server"
+        value={host}
+        onClick={() => {
+          setDraft(relayUrl);
+          setOpen(true);
+        }}
+      />
+    );
+  }
+
+  const save = (): void => {
+    if (!draft.trim()) {
+      setRelayUrl(null); // empty reverts to the build-time default
+      close();
+      return;
+    }
+    // Reject anything fetch() couldn't hit as an absolute http(s) URL — a bare
+    // host would resolve relative to the app origin and fail as a silent 404.
+    const normalized = normalizeRelayUrl(draft);
+    if (!normalized) {
+      setError('Enter a full URL including the scheme, e.g. https://relay.example.com');
+      return;
+    }
+    setRelayUrl(normalized);
+    close();
+  };
+
+  return (
+    <div style={{ padding: '12px 14px', borderRadius: 12, border: '1px solid var(--accent-line)', background: 'var(--paper)', display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <span style={{ fontFamily: 'var(--ui)', fontSize: 11, fontWeight: 700, letterSpacing: 0.5, textTransform: 'uppercase', color: 'var(--ink-3)' }}>Relay server URL</span>
+      <input
+        value={draft}
+        onInput={(e) => {
+          setDraft((e.currentTarget as HTMLInputElement).value);
+          setError(null);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') save();
+          else if (e.key === 'Escape') close();
+        }}
+        placeholder="https://relay.example.com"
+        spellcheck={false}
+        autocomplete="off"
+        autocapitalize="off"
+        style={{ width: '100%', boxSizing: 'border-box', fontFamily: 'var(--mono)', fontSize: 12.5, color: 'var(--ink)', background: 'var(--surface)', border: error ? '1px solid var(--accent)' : '1px solid var(--line)', borderRadius: 8, padding: '9px 11px' }}
+      />
+      {error && (
+        <span style={{ fontFamily: 'var(--ui)', fontSize: 11.5, color: 'var(--accent-ink)', lineHeight: 1.45 }}>{error}</span>
+      )}
+      <span style={{ fontFamily: 'var(--ui)', fontSize: 11, color: 'var(--ink-3)', lineHeight: 1.45 }}>
+        Points the app at a different server. A signed-in vault re-authenticates against it. Leave empty to use the default.
+      </span>
+      <div style={{ display: 'flex', gap: 8 }}>
+        <Btn size="sm" onClick={save} style={{ flex: 1 }}>Save</Btn>
+        <Btn size="sm" kind="ghost" onClick={close} style={{ flex: 1 }}>Cancel</Btn>
+      </div>
+    </div>
   );
 }
 
@@ -289,6 +375,7 @@ export function PreferencesSheet({ desk, theme, onClose, ownerId, status, onLock
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         <Row icon="lock" label={t('prefs.vault.lock')} onClick={handOff(onLock)} />
+        <RelayServerRow />
         <Row icon="key" label={t('prefs.vault.deviceUnlock')} value={vaultMethod === 'securityKey' ? t('prefs.vault.method.securityKey') : vaultMethod === 'passphrase' ? t('prefs.vault.method.passphrase') : t('common.off')} onClick={handOff(onDeviceUnlock)} />
         <Row icon="shield" label={t('prefs.vault.rotate')} onClick={handOff(onRotate)} />
       </div>

@@ -6,7 +6,7 @@
 //   pnpm --filter client exec tsx scripts/journal-sync-roundtrip.ts
 import { generateMnemonic } from '../src/crypto/mnemonic';
 import { identityFromMnemonic, authenticate } from '../src/sync/identity';
-import { RelayClient, defaultRelayUrl } from '../src/sync/relay';
+import { RelayClient, resolveRelayUrl } from '../src/sync/relay';
 import {
   pushEntries,
   pushJournals,
@@ -18,7 +18,7 @@ import {
 } from '../src/sync/engine';
 import { defaultAiSettings } from '../src/ai/types';
 
-const relay = new RelayClient(defaultRelayUrl());
+const relay = new RelayClient(resolveRelayUrl());
 const id = identityFromMnemonic(generateMnemonic());
 const s = await authenticate(relay, id);
 console.log('authenticated · owner', s.ownerId.slice(0, 12) + '…');

@@ -285,7 +285,16 @@ export function GuidedInterviewSheet({
             <Btn kind="primary" size="md" type="submit" style={{ opacity: input.trim() ? 1 : 0.55 }}>{t('assistant.interview.send')}</Btn>
           )}
         </form>
-        <Btn kind="ghost" size="md" onClick={() => canFinish && finishInterview()} style={{ opacity: canFinish ? 1 : 0.5 }}>
+        {/* The terminal CTA — deliberately the loudest thing in the sheet once
+            there's an answer to write up (it used to be a ghost button users
+            overlooked). */}
+        <Btn
+          kind={canFinish ? 'primary' : 'ghost'}
+          size="md"
+          icon="feather"
+          onClick={() => canFinish && finishInterview()}
+          style={{ opacity: canFinish ? 1 : 0.45 }}
+        >
           {t('assistant.interview.finish')}
         </Btn>
       </div>

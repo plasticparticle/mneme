@@ -87,6 +87,21 @@ export const assistant = {
   'assistant.interview.nothingWritten': '(nothing written)',
   'assistant.interview.save': 'Save entry',
 
+  // ── built-in interview types (data/interviews.ts seeds; pristine seeds follow
+  //     the app language via localizeBuiltinInterview, like template built-ins) ──
+  'assistant.interview.builtin.daily-checkin.name': 'Daily check-in',
+  'assistant.interview.builtin.daily-checkin.intro': 'A short, friendly look back at your day.',
+  'assistant.interview.builtin.morning-intention.name': 'Morning intention',
+  'assistant.interview.builtin.morning-intention.intro': 'Set the tone and focus for the day ahead.',
+  'assistant.interview.builtin.evening-reflection.name': 'Evening reflection',
+  'assistant.interview.builtin.evening-reflection.intro': 'Wind down and make sense of the day.',
+  'assistant.interview.builtin.gratitude.name': 'Gratitude',
+  'assistant.interview.builtin.gratitude.intro': 'Notice a few good things, big or small.',
+  'assistant.interview.builtin.weekly-review.name': 'Weekly review',
+  'assistant.interview.builtin.weekly-review.intro': 'Step back and review the past week.',
+  'assistant.interview.builtin.mood-energy.name': 'Mood & energy',
+  'assistant.interview.builtin.mood-energy.intro': 'Track how you feel and what shaped it.',
+
   // ── interview-types manager ──
   'assistant.types.title': 'Interview types',
   'assistant.types.builtin': 'built-in',

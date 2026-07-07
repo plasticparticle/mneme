@@ -3,11 +3,12 @@
 // entry. Both run client-side — what's assembled here goes browser → provider,
 // never near the relay.
 //
-// Prompt text stays English; the one locale-aware bit is the reply-language
+// Prompt text stays English; the locale-aware bits are the reply-language
 // directive, which tells the model to answer (and write synthesized entries)
-// in the app's UI language. currentLocale() is import-safe outside Vite (the
-// tsx repro scripts) — it just returns the default English locale there.
-import { currentLocale } from '../i18n';
+// in the app's UI language, and the localized finish-button label the interview
+// prompt tells the model to point at. currentLocale()/t() are import-safe
+// outside Vite (the tsx repro scripts) — they fall back to English there.
+import { currentLocale, t } from '../i18n';
 
 export type AiEditorAction = 'continue' | 'summarize' | 'title';
 
@@ -86,10 +87,10 @@ export function interviewSystemPrompt(type: { name: string; prompt: string }, hi
     'How to run the interview:',
     '- Ask exactly ONE question at a time, then wait for the answer. Never bundle several questions together.',
     '- Keep each question short, warm, and specific, and build on what the user just said.',
-    '- Aim for roughly 4–6 questions in total, then stop asking.',
+    '- Plan on about 5 questions (4–6). So the user always knows where they stand, end every question with a bare progress marker in parentheses, e.g. "(2/5)" for the second of five planned questions. You may revise the plan as answers come in — just keep the marker honest.',
     "- Don't lecture, summarize, or give advice while interviewing — just ask and briefly acknowledge.",
-    `- Ask your questions in ${currentLocale().english}.`,
-    "- Once you have enough for a good entry, don't ask another question: say you're ready to write it up and invite the user to finish.",
+    `- Conduct the entire interview in ${currentLocale().english} — every question and acknowledgment.`,
+    `- Once you have enough for a good entry — at the latest after the planned questions — do NOT ask another question. Instead say plainly that you have everything you need and that the user can press "${t('assistant.interview.finish')}" whenever they're ready.`,
     '',
     '## What this interview is about',
     type.prompt,

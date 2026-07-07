@@ -23,7 +23,7 @@ import { rotateAccount, type RotationProgress } from '../sync/rotate';
 import { newEntryId, newMediaId, newTemplateId, newRecordId } from '../sync/ids';
 import { ENTRIES, JOURNALS, type Journal, type CoverPattern } from '../data/sample';
 import { seedBuiltinTemplates, localizeBuiltinTemplate } from '../data/templates';
-import { seedBuiltinInterviews } from '../data/interviews';
+import { seedBuiltinInterviews, localizeBuiltinInterview } from '../data/interviews';
 import type { JSONContent } from '@tiptap/core';
 import { blocksToDoc, textToDoc, docToText, docMediaIds } from '../editor/doc';
 import { LocalDb, destroyOwnerDb, type MediaRecord } from '../db';
@@ -1587,7 +1587,12 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
     () => templates.map(localizeBuiltinTemplate),
     [templates, locale],
   );
+  // Same projection for the built-in interview-type seeds (name + intro).
+  const localizedInterviewTypes = useMemo(
+    () => interviewTypes.map(localizeBuiltinInterview),
+    [interviewTypes, locale],
+  );
 
-  const value: AppData = { status, hasVault, vaultMethod, ownerId, pendingCount, pendingJournalIds, syncTotal, saving, bootstrapping, entries: liveEntries, journals: journalsWithCounts, templates: localizedTemplates, interviewTypes, aiSettings, saveAiSettings, signIn, unlock, unlockWithKey, setDeviceUnlock, lock, createEntry, updateEntry, deleteEntry, newJournal, updateJournal, deleteJournal, createTemplate, updateTemplate, deleteTemplate, createInterviewType, updateInterviewType, deleteInterviewType, addMedia, removeMedia, mediaBlob, mediaThumb, rotatePhrase, deleteVault, relayUrl, setRelayUrl };
+  const value: AppData = { status, hasVault, vaultMethod, ownerId, pendingCount, pendingJournalIds, syncTotal, saving, bootstrapping, entries: liveEntries, journals: journalsWithCounts, templates: localizedTemplates, interviewTypes: localizedInterviewTypes, aiSettings, saveAiSettings, signIn, unlock, unlockWithKey, setDeviceUnlock, lock, createEntry, updateEntry, deleteEntry, newJournal, updateJournal, deleteJournal, createTemplate, updateTemplate, deleteTemplate, createInterviewType, updateInterviewType, deleteInterviewType, addMedia, removeMedia, mediaBlob, mediaThumb, rotatePhrase, deleteVault, relayUrl, setRelayUrl };
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

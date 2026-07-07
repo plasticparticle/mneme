@@ -63,6 +63,7 @@ export function GuidedInterviewSheet({
   const abortRef = useRef<AbortController | null>(null);
   const logRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
 
   const provider = useMemo(() => (aiSettings?.enabled ? makeProvider(aiSettings) : null), [aiSettings]);
   const alive = useMemo(() => interviewTypes.filter((it) => !it.deleted), [interviewTypes]);
@@ -74,6 +75,23 @@ export function GuidedInterviewSheet({
   useEffect(() => {
     if (phase === 'interview' || phase === 'brief') inputRef.current?.focus();
   }, [phase]);
+  // Auto-grow the answer/brief box with its content, capped at 65% of the
+  // sheet height (measured, so it holds on the desktop side panel and the 88%
+  // mobile sheet alike). Runs on every input change — including the reset to
+  // '' after sending, which shrinks it back down.
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    const cap = Math.round((panelRef.current?.clientHeight ?? window.innerHeight) * 0.65);
+    const prev = el.style.height;
+    el.style.height = 'auto';
+    el.style.height = `${Math.min(el.scrollHeight, cap)}px`;
+    el.style.overflowY = el.scrollHeight > cap ? 'auto' : 'hidden';
+    // Growing the box squeezes the transcript above it — keep the latest
+    // question in view, but only when the height actually changed so a reader
+    // scrolled up isn't yanked back down on every keystroke.
+    if (el.style.height !== prev) logRef.current?.scrollTo({ top: logRef.current.scrollHeight });
+  }, [input, phase]);
 
   if (!provider || !aiSettings) return null;
 
@@ -273,11 +291,11 @@ export function GuidedInterviewSheet({
           <textarea
             ref={inputRef}
             value={input}
-            rows={1}
+            rows={2}
             onInput={(e) => setInput((e.target as HTMLTextAreaElement).value)}
             onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendAnswer(); } }}
             placeholder={t('assistant.interview.answerPlaceholder')}
-            style={{ flex: 1, resize: 'none', fontFamily: 'var(--ui)', fontSize: 14, lineHeight: 1.5, color: 'var(--ink)', padding: '11px 14px', borderRadius: 12, background: 'var(--paper)', border: '1px solid var(--line)', outline: 'none', maxHeight: 120 }}
+            style={{ flex: 1, resize: 'none', fontFamily: 'var(--ui)', fontSize: 14, lineHeight: 1.5, color: 'var(--ink)', padding: '11px 14px', borderRadius: 12, background: 'var(--paper)', border: '1px solid var(--line)', outline: 'none' }}
           />
           {busy ? (
             <Btn kind="ghost" size="md" onClick={() => abortRef.current?.abort()}>{t('assistant.stop')}</Btn>
@@ -285,7 +303,16 @@ export function GuidedInterviewSheet({
             <Btn kind="primary" size="md" type="submit" style={{ opacity: input.trim() ? 1 : 0.55 }}>{t('assistant.interview.send')}</Btn>
           )}
         </form>
-        <Btn kind="ghost" size="md" onClick={() => canFinish && finishInterview()} style={{ opacity: canFinish ? 1 : 0.5 }}>
+        {/* The terminal CTA — deliberately the loudest thing in the sheet once
+            there's an answer to write up (it used to be a ghost button users
+            overlooked). */}
+        <Btn
+          kind={canFinish ? 'primary' : 'ghost'}
+          size="md"
+          icon="feather"
+          onClick={() => canFinish && finishInterview()}
+          style={{ opacity: canFinish ? 1 : 0.45 }}
+        >
           {t('assistant.interview.finish')}
         </Btn>
       </div>
@@ -307,7 +334,7 @@ export function GuidedInterviewSheet({
             onInput={(e) => setInput((e.target as HTMLTextAreaElement).value)}
             onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submitBrief(); } }}
             placeholder={t('assistant.interview.briefPlaceholder')}
-            style={{ flex: 1, resize: 'none', fontFamily: 'var(--ui)', fontSize: 14, lineHeight: 1.5, color: 'var(--ink)', padding: '11px 14px', borderRadius: 12, background: 'var(--paper)', border: '1px solid var(--line)', outline: 'none', maxHeight: 160 }}
+            style={{ flex: 1, resize: 'none', fontFamily: 'var(--ui)', fontSize: 14, lineHeight: 1.5, color: 'var(--ink)', padding: '11px 14px', borderRadius: 12, background: 'var(--paper)', border: '1px solid var(--line)', outline: 'none' }}
           />
           <Btn kind="primary" size="md" type="submit" style={{ opacity: input.trim() ? 1 : 0.55 }}>{t('assistant.interview.draft')}</Btn>
         </form>
@@ -349,6 +376,7 @@ export function GuidedInterviewSheet({
 
   const panel = (
     <div
+      ref={panelRef}
       onClick={(e) => e.stopPropagation()}
       style={{ width: desk ? 'min(440px, 40vw)' : '100%', flexShrink: 0, height: desk ? '100%' : '88%', boxSizing: 'border-box', display: 'flex', flexDirection: 'column', background: 'var(--surface)', borderRadius: desk ? 0 : '24px 24px 0 0', border: desk ? 'none' : '1px solid var(--line)', borderInlineStart: '1px solid var(--line)', boxShadow: desk ? 'none' : '0 20px 60px rgba(30,20,12,.3)', overflow: 'hidden' }}
     >

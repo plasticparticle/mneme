@@ -322,7 +322,7 @@ with [`docs/README.md`](./docs/README.md):
 | [`docs/MAINTENANCE.md`](./docs/MAINTENANCE.md) | Day-two operations: backups, restore, upgrades, health checks, troubleshooting. |
 | [`docs/CONTRIBUTING.md`](./docs/CONTRIBUTING.md) | Setup, the quality gates, conventions, and where things live. |
 | [`server/README.md`](./server/README.md) | Running, configuring, and testing the Go relay specifically. |
-| [`CLAUDE.md`](./CLAUDE.md) | The decision document and source of truth (German; §0 is an English operating guide). |
+| [`CLAUDE.md`](./CLAUDE.md) | The decision document and source of truth (§0 is the operating guide; §1–§12 the binding decisions). |
 
 ---
 

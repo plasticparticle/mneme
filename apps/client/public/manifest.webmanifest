@@ -2,13 +2,14 @@
   "name": "Mneme — encrypted journal",
   "short_name": "Mneme",
   "description": "Local-first, end-to-end-encrypted journal.",
-  "start_url": "/",
+  "start_url": "./",
+  "scope": "./",
   "display": "standalone",
   "background_color": "#f4eee2",
   "theme_color": "#f4eee2",
   "icons": [
-    { "src": "/favicon-192.png", "sizes": "192x192", "type": "image/png" },
-    { "src": "/favicon-512.png", "sizes": "512x512", "type": "image/png" },
-    { "src": "/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+    { "src": "./favicon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "./favicon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "./icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
   ]
 }

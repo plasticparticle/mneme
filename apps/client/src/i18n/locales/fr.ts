@@ -689,6 +689,9 @@ const fr: Partial<Record<MessageKey, string>> = {
   'templates.builtin.weekly.h1': 'Ce qui a avancé',
   'templates.builtin.weekly.h2': 'Ce qui a stagné',
   'templates.builtin.weekly.h3': 'La semaine prochaine',
+  'shell.iosNotice.body':
+    'Pour protéger votre vie privée, l’iPhone et l’iPad effacent automatiquement les données hors ligne d’une application web après environ 7 jours d’inactivité. Votre journal reste chiffré de bout en bout sur le serveur : reconnectez-vous simplement pour le restaurer. Une application iOS native est en préparation.',
+  'shell.iosNotice.dismiss': 'Fermer',
 };
 
 export default fr;

@@ -701,6 +701,9 @@ const es: Partial<Record<MessageKey, string>> = {
   'templates.builtin.weekly.h1': 'Lo que avanzó',
   'templates.builtin.weekly.h2': 'Lo que se estancó',
   'templates.builtin.weekly.h3': 'La próxima semana',
+  'shell.iosNotice.body':
+    'Para proteger tu privacidad, el iPhone y el iPad borran automáticamente los datos sin conexión de una aplicación web tras unos 7 días de inactividad. Tu diario permanece cifrado de extremo a extremo en el servidor, así que solo tienes que volver a iniciar sesión para restaurarlo. Una aplicación nativa para iOS está en camino.',
+  'shell.iosNotice.dismiss': 'Cerrar',
 };
 
 export default es;

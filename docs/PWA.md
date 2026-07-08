@@ -23,6 +23,17 @@ the warning and *use* the site, but you still cannot *install* it.
 
 The upshot: to test install on a phone you need HTTPS with a certificate the phone actually trusts.
 
+### iOS also evicts storage — and we say so in-app
+
+Even once installed, iOS clears a web app's offline storage (OPFS, IndexedDB) after roughly **7 days of
+inactivity** — a genuine privacy safeguard, but one that matters for a local-first journal. Mneme shows
+iOS users a small, dismissible banner about this on open (`src/ui/IOSNotice.tsx`, gated by
+`isIOS() && !isTauri()` in `platform/shell.ts`), reassuring them that entries stay encrypted on the
+relay and restore on next sign-in. It is **never** shown on Android or desktop (they don't evict) nor
+in the Tauri shell (persistent storage). To preview it on a non-iOS dev machine, set
+`localStorage['mneme.iosNotice.force'] = '1'`. This is a stopgap; the durable fix is the native iOS
+shell (see [ROADMAP.md](./ROADMAP.md)).
+
 ---
 
 ## What's wired

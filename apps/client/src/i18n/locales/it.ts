@@ -707,6 +707,9 @@ const it: Partial<Record<MessageKey, string>> = {
   'templates.builtin.weekly.h1': 'Cosa è andato avanti',
   'templates.builtin.weekly.h2': 'Cosa si è arenato',
   'templates.builtin.weekly.h3': 'La prossima settimana',
+  'shell.iosNotice.body':
+    'Per tutelare la tua privacy, iPhone e iPad cancellano automaticamente i dati offline di un’app web dopo circa 7 giorni di inattività. Il tuo diario resta cifrato end-to-end sul server, quindi ti basta accedere di nuovo per ripristinarlo. Un’app iOS nativa è in arrivo.',
+  'shell.iosNotice.dismiss': 'Chiudi',
 };
 
 export default it;

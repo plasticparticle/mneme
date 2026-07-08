@@ -696,6 +696,9 @@ const fi: Partial<Record<MessageKey, string>> = {
   'templates.builtin.weekly.h1': 'Mikä eteni',
   'templates.builtin.weekly.h2': 'Mikä juuttui',
   'templates.builtin.weekly.h3': 'Ensi viikko',
+  'shell.iosNotice.body':
+    'Yksityisyytesi suojaamiseksi iPhone ja iPad tyhjentävät verkkosovelluksen offline-tiedot automaattisesti noin 7 käyttämättömän päivän jälkeen. Päiväkirjasi säilyy palvelimella päästä päähän salattuna, joten palauta se vain kirjautumalla uudelleen sisään. Natiivi iOS-sovellus on tekeillä.',
+  'shell.iosNotice.dismiss': 'Sulje',
 };
 
 export default fi;

@@ -52,6 +52,11 @@ export const shell = {
   'shell.photo': 'photo',
   'shell.removeLabel': 'Remove "{name}"',
 
+  // ── iOS PWA caveat notice (ui/IOSNotice.tsx) — iOS only ──
+  'shell.iosNotice.body':
+    'For your privacy, iPhone and iPad automatically clear a web app’s offline data after about 7 days of inactivity. Your journal stays end-to-end encrypted on the server, so just sign back in to restore it — and a native iOS app is on the way.',
+  'shell.iosNotice.dismiss': 'Dismiss',
+
   // ── Relative day labels (state/data.tsx relativeDay) ──
   'shell.daysAgo#one': '{count} day ago',
   'shell.daysAgo#other': '{count} days ago',

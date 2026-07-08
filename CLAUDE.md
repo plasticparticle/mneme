@@ -269,7 +269,12 @@ the HTTPS "test the install" mode. Because a service worker + install need a **s
 opt-in: `pnpm --filter client dev:https` (self-signed via `@vitejs/plugin-basic-ssl`, good for
 localhost) or `DEV_TLS_CERT`/`DEV_TLS_KEY` pointing at a locally-trusted `mkcert` cert (the only thing
 a phone's Chrome registers a SW under). Full phone recipe: **docs/PWA.md**. Production hosts serve real
-HTTPS, so install works there with no extra config.
+HTTPS, so install works there with no extra config. An **iOS-only, dismissible caveat notice**
+(`ui/IOSNotice.tsx`, gated `isIOS() && !isTauri()` in `platform/shell.ts`, `shell.iosNotice.*` i18n
+keys in all 12 locales) tells iPhone/iPad users that iOS clears offline storage after ~7 days idle
+(framed as the privacy safeguard it is) and their entries restore from the relay on next sign-in —
+never shown on Android/desktop or in the Tauri shell; force-preview via
+`localStorage['mneme.iosNotice.force']='1'`.
 
 Not yet: FTS5 (blocked on a custom wa-sqlite wasm build), push transport + reminders UI (step 6),
 export + non-Day-One import (step 7), Tauri shells (step 8) and their OS-keychain at-rest storage (§6).

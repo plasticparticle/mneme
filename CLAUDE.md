@@ -259,6 +259,18 @@ direction-bearing icons opt into mirroring via `<Icon dirFlip>` + the `[dir='rtl
 languages get neutral phrasing around the shared `{noun}` media-delete placeholder; Arabic plurals use
 one/other with an `#other` fallback for two/few/many.
 
+**Installable PWA** is in: `vite-plugin-pwa` (Workbox `generateSW`) precaches the app shell — JS/CSS/
+HTML, the wa-sqlite wasm, the bundled fonts, and the icons — and injects a `registerType:'autoUpdate'`
+service worker (`apps/client/vite.config.ts`), so paired with the existing
+`public/manifest.webmanifest` the app satisfies Chrome/Android installability and runs offline. The SW
+is disabled in ordinary `pnpm dev` (keeps day-to-day dev free of asset caching) and turns on only in
+the HTTPS "test the install" mode. Because a service worker + install need a **secure context**
+(HTTPS or `localhost` — a `http://LAN-IP` dev URL is never installable on a phone), dev HTTPS is
+opt-in: `pnpm --filter client dev:https` (self-signed via `@vitejs/plugin-basic-ssl`, good for
+localhost) or `DEV_TLS_CERT`/`DEV_TLS_KEY` pointing at a locally-trusted `mkcert` cert (the only thing
+a phone's Chrome registers a SW under). Full phone recipe: **docs/PWA.md**. Production hosts serve real
+HTTPS, so install works there with no extra config.
+
 Not yet: FTS5 (blocked on a custom wa-sqlite wasm build), push transport + reminders UI (step 6),
 export + non-Day-One import (step 7), Tauri shells (step 8) and their OS-keychain at-rest storage (§6).
 
@@ -318,6 +330,7 @@ docker compose --profile fullstack up   # also runs the client dev server in com
 # Client dev — pnpm workspace
 pnpm install
 pnpm --filter client dev --host      # PWA on :5173 (relay on :8080; override VITE_RELAY_URL)
+pnpm --filter client dev:https       # HTTPS dev (self-signed) so the PWA is installable — see docs/PWA.md
 pnpm --filter client typecheck       # strict tsc
 pnpm --filter client build           # typecheck + production build
 

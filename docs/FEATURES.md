@@ -118,6 +118,8 @@ server still can't read or use the key. Full analysis in
   other device.
 - **Offline-first** — the real database lives on *your* device. Lose the network and you keep writing;
   it syncs when it can. The vault chip just shrugs and says "offline."
+- **Installable** — served over HTTPS, Mneme installs to your home screen or dock as a Progressive Web
+  App: its own window, offline-capable, no app store. ([How to install](./PWA.md).)
 
 ## For the operator (if you self-host the relay)
 

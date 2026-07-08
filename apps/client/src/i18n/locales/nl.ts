@@ -699,6 +699,9 @@ const nl: Partial<Record<MessageKey, string>> = {
   'templates.builtin.weekly.h1': 'Wat vooruitging',
   'templates.builtin.weekly.h2': 'Wat stokte',
   'templates.builtin.weekly.h3': 'Volgende week',
+  'shell.iosNotice.body':
+    'Om je privacy te beschermen wissen iPhone en iPad de offlinegegevens van een web-app automatisch na ongeveer 7 dagen zonder gebruik. Je dagboek blijft end-to-end versleuteld op de server, dus meld je gewoon opnieuw aan om het te herstellen. Een native iOS-app is in de maak.',
+  'shell.iosNotice.dismiss': 'Sluiten',
 };
 
 export default nl;

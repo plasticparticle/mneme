@@ -703,6 +703,9 @@ const hi: Partial<Record<MessageKey, string>> = {
   'templates.builtin.weekly.h1': 'क्या आगे बढ़ा',
   'templates.builtin.weekly.h2': 'क्या ठहरा रहा',
   'templates.builtin.weekly.h3': 'अगला सप्ताह',
+  'shell.iosNotice.body':
+    'आपकी निजता की सुरक्षा के लिए, iPhone और iPad किसी वेब ऐप का ऑफ़लाइन डेटा लगभग 7 दिन तक उपयोग न होने पर अपने आप हटा देते हैं। आपकी डायरी सर्वर पर एंड-टू-एंड एन्क्रिप्टेड रहती है, इसलिए उसे वापस पाने के लिए बस दोबारा साइन इन करें। एक नेटिव iOS ऐप भी जल्द आ रहा है।',
+  'shell.iosNotice.dismiss': 'बंद करें',
 };
 
 export default hi;

@@ -648,6 +648,9 @@ const zh: Partial<Record<MessageKey, string>> = {
   'templates.builtin.weekly.h1': '有进展的',
   'templates.builtin.weekly.h2': '停滞的',
   'templates.builtin.weekly.h3': '下周',
+  'shell.iosNotice.body':
+    '为保护你的隐私，iPhone 和 iPad 会在网页应用约 7 天未使用后自动清除其离线数据。你的日记在服务器上始终采用端到端加密，只需重新登录即可恢复。原生 iOS 应用也正在开发中。',
+  'shell.iosNotice.dismiss': '关闭',
 };
 
 export default zh;

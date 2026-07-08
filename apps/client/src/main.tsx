@@ -13,6 +13,7 @@ import '@fontsource-variable/spline-sans-mono/index.css';
 import './styles/tokens.css';
 import { App } from './app';
 import { AppDataProvider } from './state/data';
+import { IOSNotice } from './ui/IOSNotice';
 import { I18nProvider, initI18n, useI18n } from './i18n';
 
 const root = document.getElementById('app');
@@ -23,9 +24,14 @@ if (!root) throw new Error('Missing #app root element');
 function Root(): VNode {
   useI18n();
   return (
-    <AppDataProvider>
-      <App />
-    </AppDataProvider>
+    <>
+      {/* iOS-only, dismissible storage-eviction notice — a fixed overlay above
+          both the onboarding and the unlocked app; no-ops elsewhere. */}
+      <IOSNotice />
+      <AppDataProvider>
+        <App />
+      </AppDataProvider>
+    </>
   );
 }
 

@@ -703,6 +703,9 @@ const ar: Partial<Record<MessageKey, string>> = {
   'templates.builtin.weekly.h1': 'ما تقدّم',
   'templates.builtin.weekly.h2': 'ما تعثّر',
   'templates.builtin.weekly.h3': 'الأسبوع القادم',
+  'shell.iosNotice.body':
+    'للحفاظ على خصوصيتك، يمسح iPhone وiPad تلقائيًا بيانات تطبيق الويب دون اتصال بعد نحو 7 أيام من عدم الاستخدام. تبقى مذكراتك مشفّرة تشفيرًا تامًّا بين الطرفين على الخادم، لذا ما عليك سوى تسجيل الدخول مجددًا لاستعادتها. كما يجري إعداد تطبيق iOS أصلي.',
+  'shell.iosNotice.dismiss': 'إغلاق',
 };
 
 export default ar;

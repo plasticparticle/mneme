@@ -11,3 +11,17 @@
 export function isTauri(): boolean {
   return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 }
+
+/**
+ * True on iPhone / iPad / iPod — where every browser is forced onto Apple's
+ * WebKit, so the PWA inherits iOS's ~7-day storage eviction and unreliable web
+ * push regardless of which browser is used (see docs/PWA.md, docs/ROADMAP.md).
+ * Used to surface a one-time caveat notice that must NOT appear on Android or
+ * desktop. iPadOS 13+ reports a desktop-Safari UA, so fall back to the
+ * touch-capable "MacIntel" heuristic to still catch iPads.
+ */
+export function isIOS(): boolean {
+  if (typeof navigator === 'undefined' || typeof window === 'undefined') return false;
+  if (/iP(hone|od|ad)/.test(navigator.userAgent)) return true;
+  return navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1;
+}

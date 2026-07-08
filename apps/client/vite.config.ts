@@ -1,6 +1,9 @@
 import { defineConfig } from 'vite';
 import preact from '@preact/preset-vite';
+import { VitePWA } from 'vite-plugin-pwa';
+import basicSsl from '@vitejs/plugin-basic-ssl';
 import { execSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import pkg from './package.json';
 
 // Git-derived build identifier appended to the semver, e.g. "0.0.0+5c2fdd8"
@@ -18,10 +21,56 @@ function appVersion(): string {
   }
 }
 
+// --- Dev HTTPS (for installing the PWA on a phone) ---------------------------
+// A service worker + PWA install are gated behind a *secure context*: only HTTPS
+// or `localhost` qualify, so a LAN URL like http://192.168.x.x:5173 is never
+// installable on a phone. Two opt-in ways to serve dev over HTTPS:
+//   • DEV_TLS_CERT + DEV_TLS_KEY point at a cert (e.g. from `mkcert`) — a
+//     locally-*trusted* cert is the only thing a phone's Chrome will register a
+//     service worker under (a self-signed cert error blocks the SW → no install).
+//   • DEV_HTTPS=1 alone falls back to @vitejs/plugin-basic-ssl (self-signed) —
+//     fine for localhost verification on the dev machine, not for a phone.
+// See docs/PWA.md for the full phone-testing recipe.
+const tlsCert = process.env.DEV_TLS_CERT;
+const tlsKey = process.env.DEV_TLS_KEY;
+const hasCustomCert = Boolean(tlsCert && tlsKey);
+const httpsRequested = process.env.DEV_HTTPS === '1' || hasCustomCert;
+const useBasicSsl = httpsRequested && !hasCustomCert;
+
+// The service worker is disabled in ordinary `pnpm dev` (http://localhost) so
+// day-to-day development stays free of SW asset caching; it turns on only in the
+// HTTPS "test the install" mode, where the whole point is to exercise the PWA.
+const pwaDevEnabled = httpsRequested;
+
 // The single web codebase for the PWA and (later) the Tauri shells.
-// PWA/Workbox plugin and wa-sqlite COOP-free OPFS wiring land in later build steps (§10).
 export default defineConfig({
-  plugins: [preact()],
+  plugins: [
+    preact(),
+    // Generates a Workbox service worker that precaches the app shell (JS/CSS/
+    // HTML/wasm/fonts/icons) and injects its registration. This — together with
+    // the hand-written public/manifest.webmanifest — is what makes the app
+    // installable as a PWA and available offline. `manifest: false` keeps our
+    // existing manifest as the source of truth (the plugin only owns the SW).
+    VitePWA({
+      registerType: 'autoUpdate',
+      injectRegister: 'auto',
+      manifest: false,
+      workbox: {
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2,wasm}'],
+        // wa-sqlite's wasm + the bundled variable fonts exceed the 2 MiB default.
+        maximumFileSizeToCacheInBytes: 8 * 1024 * 1024,
+        cleanupOutdatedCaches: true,
+        // SPA: serve the cached shell for client-routed navigations offline.
+        navigateFallback: '/index.html',
+      },
+      devOptions: {
+        enabled: pwaDevEnabled,
+        type: 'module',
+        navigateFallback: '/index.html',
+      },
+    }),
+    ...(useBasicSsl ? [basicSsl()] : []),
+  ],
   // Build provenance, surfaced in src/buildinfo.ts (onboarding footer +
   // Preferences → Info). In dev the timestamp is the dev-server start.
   define: {
@@ -30,6 +79,9 @@ export default defineConfig({
   },
   server: {
     port: 5173,
+    https: hasCustomCert
+      ? { cert: readFileSync(tlsCert!), key: readFileSync(tlsKey!) }
+      : undefined,
   },
   // esbuild ≥0.28 refuses to *lower* destructuring when it's entangled with
   // private-field lowering (the wa-sqlite OPFS worker does both), erroring out

@@ -703,6 +703,9 @@ const ja: Partial<Record<MessageKey, string>> = {
   'templates.builtin.weekly.h1': '進んだこと',
   'templates.builtin.weekly.h2': '滞ったこと',
   'templates.builtin.weekly.h3': '来週',
+  'shell.iosNotice.body':
+    'プライバシー保護のため、iPhone と iPad は約 7 日間使用されなかった Web アプリのオフラインデータを自動的に消去します。あなたのジャーナルはサーバー上でエンドツーエンドの暗号化が保たれるため、再度サインインするだけで復元できます。ネイティブの iOS アプリも準備中です。',
+  'shell.iosNotice.dismiss': '閉じる',
 };
 
 export default ja;

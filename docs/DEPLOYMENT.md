@@ -96,6 +96,20 @@ its own internal CA (`tls internal`):
 
 The CA and issued certs persist in the `caddy_data` volume, so they survive restarts and redeploys.
 
+### Installing it as an app (PWA)
+
+Once the origin is served over trusted HTTPS, the client is an installable PWA — the service worker
+(precached app shell, offline-capable) plus `manifest.webmanifest` satisfy the browser's install
+criteria. On desktop Chrome/Edge an install icon appears in the address bar; on Android Chrome use
+**⋮ → Add to Home screen / Install app**; on iOS Safari use **Share → Add to Home Screen**.
+
+One catch specific to install: a service worker will **not** register on an origin with a certificate
+*error*, so the "accept the warning once" quick path above is enough to *use* the app but **not** to
+install it. For install you need the **clean path** — import Caddy's root CA so the certificate is
+actually trusted (no warning). Real public certs (a proper domain) trivially satisfy this.
+
+See [PWA.md](./PWA.md) for the developer-side story (installing from the dev server for testing).
+
 ---
 
 ## Deploying a new version

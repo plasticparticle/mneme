@@ -79,7 +79,7 @@ export const onboarding = {
   'pending.lead': 'This server approves new journals by hand. Yours is waiting for the operator to let it in.',
   'pending.hintLabel': 'Your approval code',
   'pending.hintHelp':
-    'Give this code to the operator so they can spot your journal. It comes from your recovery phrase — keep the two together.',
+    "Give this code to the operator so they can spot your journal. It's a one-way fingerprint of your vault — safe to share, and it can't be used to recover your recovery phrase.",
   'pending.checkAgain': 'Check again',
   'pending.checking': 'Checking…',
   'pending.startOver': 'Use a different recovery phrase',

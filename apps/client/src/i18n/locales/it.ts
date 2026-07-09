@@ -727,7 +727,7 @@ const it: Partial<Record<MessageKey, string>> = {
     'Questo server approva i nuovi diari a mano. Il tuo è in attesa che l’operatore lo ammetta.',
   'pending.hintLabel': 'Il tuo codice di approvazione',
   'pending.hintHelp':
-    'Fornisci questo codice all’operatore così può individuare il tuo diario. Deriva dalla tua frase di recupero — conservali insieme.',
+    'Fornisci questo codice all’operatore così può individuare il tuo diario. È un’impronta a senso unico del tuo caveau — puoi condividerlo senza rischi e non consente di recuperare la tua frase di recupero.',
   'pending.checkAgain': 'Controlla di nuovo',
   'pending.checking': 'Controllo…',
   'pending.startOver': 'Usa un’altra frase di recupero',

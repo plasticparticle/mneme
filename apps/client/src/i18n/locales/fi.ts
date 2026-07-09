@@ -716,7 +716,7 @@ const fi: Partial<Record<MessageKey, string>> = {
     'Tämä palvelin hyväksyy uudet päiväkirjat käsin. Sinun päiväkirjasi odottaa, että ylläpitäjä päästää sen sisään.',
   'pending.hintLabel': 'Hyväksyntäkoodisi',
   'pending.hintHelp':
-    'Anna tämä koodi ylläpitäjälle, jotta hän tunnistaa päiväkirjasi. Se johdetaan palautuslauseestasi — säilytä ne yhdessä.',
+    'Anna tämä koodi ylläpitäjälle, jotta hän tunnistaa päiväkirjasi. Se on holvisi yksisuuntainen sormenjälki — sen voi jakaa turvallisesti, eikä sillä voi palauttaa palautuslausettasi.',
   'pending.checkAgain': 'Tarkista uudelleen',
   'pending.checking': 'Tarkistetaan…',
   'pending.startOver': 'Käytä toista palautuslausetta',

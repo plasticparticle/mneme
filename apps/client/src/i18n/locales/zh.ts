@@ -655,7 +655,7 @@ const zh: Partial<Record<MessageKey, string>> = {
   'pending.lead': '此服务器会手动批准新日记。你的日记正在等待管理员放行。',
   'pending.hintLabel': '你的批准码',
   'pending.hintHelp':
-    '把这个码给管理员，让其能认出你的日记。它由你的恢复短语生成——请把两者放在一起保管。',
+    '把这个码给管理员，让其能认出你的日记。它是你保险库的单向指纹——可以放心分享，也无法用来还原你的恢复短语。',
   'pending.checkAgain': '重新检查',
   'pending.checking': '正在检查…',
   'pending.startOver': '使用其他恢复短语',

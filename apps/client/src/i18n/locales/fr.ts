@@ -709,7 +709,7 @@ const fr: Partial<Record<MessageKey, string>> = {
     'Ce serveur valide les nouveaux journaux à la main. Le vôtre attend que l’opérateur l’autorise.',
   'pending.hintLabel': 'Votre code d’approbation',
   'pending.hintHelp':
-    'Donnez ce code à l’opérateur pour qu’il repère votre journal. Il provient de votre phrase de récupération — gardez les deux ensemble.',
+    'Donnez ce code à l’opérateur pour qu’il repère votre journal. C’est une empreinte à sens unique de votre coffre — partageable sans risque, et elle ne permet pas de retrouver votre phrase de récupération.',
   'pending.checkAgain': 'Vérifier à nouveau',
   'pending.checking': 'Vérification…',
   'pending.startOver': 'Utiliser une autre phrase de récupération',

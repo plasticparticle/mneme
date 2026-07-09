@@ -721,7 +721,7 @@ const es: Partial<Record<MessageKey, string>> = {
     'Este servidor aprueba los diarios nuevos a mano. El tuyo está esperando a que el operador lo admita.',
   'pending.hintLabel': 'Tu código de aprobación',
   'pending.hintHelp':
-    'Dale este código al operador para que reconozca tu diario. Proviene de tu frase de recuperación: guárdalos juntos.',
+    'Dale este código al operador para que reconozca tu diario. Es una huella unidireccional de tu cofre: puedes compartirlo sin riesgo y no sirve para recuperar tu frase de recuperación.',
   'pending.checkAgain': 'Comprobar de nuevo',
   'pending.checking': 'Comprobando…',
   'pending.startOver': 'Usar otra frase de recuperación',

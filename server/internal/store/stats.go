@@ -79,6 +79,8 @@ func (s *Store) UsageHistory(ctx context.Context, days int) ([]UsageDay, error) 
 // opaque pubkey hash — pseudonymous by construction, never an identity.
 type VaultStats struct {
 	OwnerID      string
+	Status       string // pending | approved | rejected (migration 0003)
+	ApprovalHint string // client-derived operator hint; '' unless approval is used
 	CreatedAt    time.Time
 	Devices      int64
 	Records      int64 // live oplog rows (entries + templates — indistinguishable by design)
@@ -93,6 +95,8 @@ type VaultStats struct {
 func (s *Store) ListVaultStats(ctx context.Context) ([]VaultStats, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT o.owner_id,
+		       o.status,
+		       o.approval_hint,
 		       o.created_at,
 		       (SELECT count(*) FROM devices d WHERE d.owner_id = o.owner_id),
 		       coalesce(e.records, 0),
@@ -121,7 +125,7 @@ func (s *Store) ListVaultStats(ctx context.Context) ([]VaultStats, error) {
 	var out []VaultStats
 	for rows.Next() {
 		var v VaultStats
-		if err := rows.Scan(&v.OwnerID, &v.CreatedAt, &v.Devices, &v.Records,
+		if err := rows.Scan(&v.OwnerID, &v.Status, &v.ApprovalHint, &v.CreatedAt, &v.Devices, &v.Records,
 			&v.RecordBytes, &v.MediaObjects, &v.MediaBytes, &v.LastActivity); err != nil {
 			return nil, err
 		}

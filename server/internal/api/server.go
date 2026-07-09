@@ -75,6 +75,8 @@ func (s *Server) Routes() http.Handler {
 	mux.Handle("GET /admin/stats", s.adminAuth(http.HandlerFunc(s.handleAdminStats)))
 	mux.Handle("GET /admin/version", s.adminAuth(http.HandlerFunc(s.handleAdminVersion)))
 	mux.Handle("DELETE /admin/vaults/{id}", s.adminAuth(http.HandlerFunc(s.handleAdminDeleteVault)))
+	mux.Handle("POST /admin/owners/{id}/approve", s.adminAuth(http.HandlerFunc(s.handleAdminApproveOwner)))
+	mux.Handle("POST /admin/owners/{id}/reject", s.adminAuth(http.HandlerFunc(s.handleAdminRejectOwner)))
 	mux.Handle("GET /admin/backups", s.adminAuth(http.HandlerFunc(s.handleAdminListBackups)))
 	mux.Handle("POST /admin/backups", s.adminAuth(http.HandlerFunc(s.handleAdminCreateBackup)))
 	mux.Handle("GET /admin/backups/{name}", s.adminAuth(http.HandlerFunc(s.handleAdminDownloadBackup)))
@@ -111,9 +113,16 @@ func (s *Server) auth(next http.Handler) http.Handler {
 			return
 		}
 		hash := sha256.Sum256([]byte(token))
-		ownerID, deviceID, err := s.store.LookupSession(r.Context(), hash[:])
+		ownerID, deviceID, status, err := s.store.LookupSession(r.Context(), hash[:])
 		if err != nil {
 			writeError(w, http.StatusUnauthorized, "invalid or expired session")
+			return
+		}
+		// Approval gate (REQUIRE_APPROVAL): read on every request so an operator's
+		// reject/revoke takes effect on the owner's next call, not when the session
+		// expires. With approval off, every owner is 'approved' and this never trips.
+		if status != store.OwnerStatusApproved {
+			writeError(w, http.StatusForbidden, "vault has not been approved by the operator")
 			return
 		}
 		ctx := context.WithValue(r.Context(), principalKey, principal{OwnerID: ownerID, DeviceID: deviceID})

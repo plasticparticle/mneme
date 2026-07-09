@@ -90,6 +90,18 @@
     border: 1px solid var(--line); background: transparent; color: var(--ink-soft);
   }
   .rowdel:hover { border-color: var(--accent); color: var(--accent); }
+  .rowok, .rowrej {
+    font: inherit; font-size: 12px; padding: 3px 9px; border-radius: 6px; cursor: pointer;
+    border: 1px solid var(--line); background: transparent; color: var(--ink-soft);
+  }
+  .rowok:hover { border-color: #3f8a52; color: #3f8a52; }
+  .rowrej:hover { border-color: var(--accent); color: var(--accent); }
+  .rowacts { display: flex; gap: 6px; flex-wrap: wrap; }
+  .badge { font-size: 11px; padding: 2px 8px; border-radius: 999px; text-transform: capitalize; border: 1px solid transparent; white-space: nowrap; }
+  .badge.b-pending  { color: #9a6a00; background: rgba(200,150,0,.12); border-color: rgba(200,150,0,.4); }
+  .badge.b-approved { color: #2f7d43; background: rgba(60,140,70,.12); border-color: rgba(60,140,70,.35); }
+  .badge.b-rejected { color: #b23342; background: rgba(190,40,50,.1); border-color: rgba(190,40,50,.35); }
+  .hint { font-size: 12px; color: var(--ink-soft); }
 
   /* backups */
   .bk-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
@@ -167,10 +179,7 @@
 
     <h2>Vaults &amp; storage</h2>
     <table>
-      <thead><tr>
-        <th>Vault</th><th>Created</th><th>Devices</th><th>Records</th>
-        <th>Record data</th><th>Media</th><th>Media data</th><th>Last activity</th><th></th>
-      </tr></thead>
+      <thead id="vaultHead"></thead>
       <tbody id="vaultRows"></tbody>
     </table>
 
@@ -294,8 +303,17 @@
     daily = d.daily;
     chart();
 
+    // The approval column + Approve/Reject controls only appear when the relay
+    // runs with REQUIRE_APPROVAL — an open deployment sees the table unchanged.
+    const approval = !!d.require_approval;
+    $('vaultHead').innerHTML = `<tr>
+      <th>Vault</th>${approval ? '<th>Status</th>' : ''}<th>Created</th><th>Devices</th><th>Records</th>
+      <th>Record data</th><th>Media</th><th>Media data</th><th>Last activity</th><th></th>
+    </tr>`;
+    const cols = approval ? 10 : 9;
     $('vaultRows').innerHTML = d.vaults.map(v => `<tr>
       <td class="mono">${v.vault}</td>
+      ${approval ? `<td>${statusCell(v)}</td>` : ''}
       <td>${fmtDate(v.created_at)}</td>
       <td class="mono">${fmtNum(v.devices)}</td>
       <td class="mono">${fmtNum(v.records)}</td>
@@ -303,8 +321,30 @@
       <td class="mono">${fmtNum(v.media_objects)}</td>
       <td class="mono">${fmtBytes(v.media_bytes)}</td>
       <td>${fmtDate(v.last_activity)}</td>
-      <td><button class="rowdel" data-owner="${v.owner_id}" data-label="${v.vault}">Delete</button></td>
-    </tr>`).join('') || '<tr><td colspan="9">No vaults yet.</td></tr>';
+      <td class="rowacts">${approval ? actionButtons(v) : ''}<button class="rowdel" data-owner="${v.owner_id}" data-label="${v.vault}">Delete</button></td>
+    </tr>`).join('') || `<tr><td colspan="${cols}">No vaults yet.</td></tr>`;
+  }
+
+  // status badge + the client-derived operator hint. Both are server-constrained
+  // (fixed enum / [a-z0-9-]), so this is safe to interpolate as HTML.
+  function statusCell(v) {
+    const hint = v.approval_hint ? ` <span class="mono hint">${v.approval_hint}</span>` : '';
+    return `<span class="badge b-${v.status}">${v.status}</span>${hint}`;
+  }
+  function actionButtons(v) {
+    let html = '';
+    if (v.status !== 'approved') html += `<button class="rowok" data-approve="${v.owner_id}">Approve</button>`;
+    if (v.status !== 'rejected') html += `<button class="rowrej" data-reject="${v.owner_id}">Reject</button>`;
+    return html;
+  }
+  async function setOwnerStatus(owner, action) {
+    try {
+      const res = await fetch(API + '/owners/' + encodeURIComponent(owner) + '/' + action, {
+        method: 'POST', headers: { Authorization: 'Bearer ' + sessionStorage.getItem(KEY) },
+      });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      load();
+    } catch (e) { alert(action + ' failed: ' + e.message); }
   }
 
   // ── backups & recovery ──
@@ -479,8 +519,12 @@
     }
   }
   $('vaultRows').addEventListener('click', e => {
-    const btn = e.target.closest('.rowdel');
-    if (btn) openDelete(btn.dataset.owner, btn.dataset.label);
+    const del = e.target.closest('.rowdel');
+    if (del) { openDelete(del.dataset.owner, del.dataset.label); return; }
+    const ok = e.target.closest('.rowok');
+    if (ok) { setOwnerStatus(ok.dataset.approve, 'approve'); return; }
+    const rej = e.target.closest('.rowrej');
+    if (rej) { setOwnerStatus(rej.dataset.reject, 'reject'); return; }
   });
   $('modalInput').addEventListener('input', () => {
     $('modalGo').disabled = $('modalInput').value.trim() !== 'delete';

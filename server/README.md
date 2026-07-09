@@ -40,7 +40,7 @@ Binary fields are standard base64. Authenticated routes need
 |---|---|---|---|
 | GET  | `/healthz` | – | liveness |
 | GET  | `/readyz` | – | readiness (DB ping) |
-| POST | `/v1/register` | – | create owner (TOFU) + bind a device |
+| POST | `/v1/register` | – | create owner (TOFU) + bind a device; returns `status` (see approval below) |
 | POST | `/v1/auth/challenge` | – | get a random challenge for a device |
 | POST | `/v1/auth/verify` | – | sign the challenge → session token |
 | POST | `/v1/sync/push` | ✅ | upload encrypted entry blobs (LWW on `lww_clock`) |
@@ -57,6 +57,8 @@ Binary fields are standard base64. Authenticated routes need
 | GET  | `/admin` | – | admin dashboard page (404 unless `ADMIN_TOKEN` is set) |
 | GET  | `/admin/stats` | 🔑 | aggregate stats JSON (`Bearer <ADMIN_TOKEN>`) |
 | DELETE | `/admin/vaults/{id}` | 🔑 | operator vault wipe (`{"confirm":"delete"}` body required) |
+| POST | `/admin/owners/{id}/approve` | 🔑 | approve a pending vault (see approval below) |
+| POST | `/admin/owners/{id}/reject` | 🔑 | reject / revoke a vault (immediate) |
 
 The full request/response shapes live in [`../docs/API.md`](../docs/API.md). Media endpoints
 answer `503` when `S3_ENDPOINT` is unset; with it set, chunks stream to S3/MinIO (the bucket is
@@ -88,6 +90,30 @@ Then open `http://<relay>/admin` and paste the token (kept in `sessionStorage` o
 - `owner_id` / `device_id` = `base64url(sha256(pubkey))`.
 - Session tokens are random strings, stored only as `sha256(token)` — **not** content keys.
   Verifying a signature is the *only* crypto the server does; it never decrypts anything.
+
+### Restricting who can journal (`REQUIRE_APPROVAL`)
+
+Because the mnemonic *is* the account (no signup), a default relay is open: anyone who can reach it
+can register an owner and store their own encrypted journals. They can never read yours (E2EE), but
+they can use your storage. To run a **single-tenant** (or hand-picked) relay, set:
+
+```
+REQUIRE_APPROVAL=true
+```
+
+Then a newly registered owner is created **`pending`** and cannot obtain a session — every
+authenticated call is `403` — until you approve it in `/admin` (or via
+`POST /admin/owners/{id}/approve`). Enforcement is immediate on the next request, so
+`.../reject` also revokes an already-signed-in owner. Owners that already existed when you turn the
+flag on are **grandfathered to `approved`** (migration `0003`), so enabling it never locks out
+anyone already using the relay.
+
+To help you tell one pending vault from another, the client sends a short, memorable **hint** it
+derives from the seed (e.g. `amber-otter-07`, `[a-z0-9-]`, never free text) which the dashboard shows
+next to the pending vault; the user reads it off their "pending approval" screen. With this in place
+you generally don't need a separate network auth gate (reverse-proxy Basic auth, Cloudflare Access,
+…) in front of the relay — and such gates tend to break the PWA's install + offline sync. Full
+request/response details in [`../docs/API.md`](../docs/API.md) "Admin".
 
 ## Layout
 

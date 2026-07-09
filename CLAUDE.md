@@ -36,7 +36,18 @@ project. Scaffolded so far:
   XChaCha20-Poly1305 encrypted client-side before push.
 - **`server/`** — the Go relay (`journald`): `/healthz` + `/readyz`, embedded forward-only migrations,
   device challenge-response auth (Ed25519), the LWW oplog `sync/push`+`sync/pull`, and CORS. Owner-scoped,
-  opaque blobs only. Reminders CRUD + scheduler (logs, no push transport yet). Media is **implemented
+  opaque blobs only. **Optional operator approval** (`REQUIRE_APPROVAL`, opt-in, default off — the
+  relay stays open TOFU): with it on, a newly registered owner is `pending` (migration 0003 adds
+  `owners.status` pending|approved|rejected, existing owners grandfathered to approved) and `/v1/auth/verify`
+  won't mint a session (403) — the auth middleware also reads live status every request so
+  `POST /admin/owners/{id}/reject` cuts an owner off immediately. Approve/reject live on the admin
+  surface (dashboard Status column + buttons). The register call carries an optional `approval_hint`
+  the client derives from the seed (`[a-z0-9-]{0,32}`, e.g. `amber-otter-07`, `crypto/hintwords.ts`) so
+  the operator can tell pending vaults apart; the client shows a blocking "pending approval" screen
+  (`ui/PendingApproval.tsx`, `pending.*` i18n in all 12 locales) quoting it, with a Check-again retry
+  (`PendingApprovalError` → `pendingApproval` in `state/data.tsx`). This is the intended way to run a
+  single-tenant/family relay — the mnemonic-is-the-account model has no signup to gate otherwise (e2e
+  `TestApprovalFlow`; docs/API.md "Admin", docs/SECURITY.md §6.8). Reminders CRUD + scheduler (logs, no push transport yet). Media is **implemented
   server-relayed** (§12 resolved): `internal/blobs` streams client-encrypted ~1 MiB chunks to S3/MinIO
   (minio-go, bucket auto-provisioned) under `/v1/media/*`; `503` when `S3_ENDPOINT` is unset. Push
   delivery is still a stub. **Operator admin surface** (`/admin`, only when `ADMIN_TOKEN` is set,

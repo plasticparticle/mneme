@@ -57,6 +57,7 @@ This is a deliberate availability tradeoff in exchange for confidentiality.
 | — | — | ⚠️ edit timing (via `lww_clock`, see §7) |
 | — | — | ⚠️ reminder times (`fire_at` is cleartext) |
 | — | — | ⚠️ `owner_id` (links a person's devices together) |
+| — | — | ⚠️ approval hint (only on a `REQUIRE_APPROVAL` relay; see §6.8) |
 | — | — | ⚠️ IP address / connection timing |
 
 **E2EE protects content, not shape.** The server learns *that* you wrote, roughly *how often*, and
@@ -250,6 +251,17 @@ A malicious server can refuse to return blobs or drop them. E2EE is about confid
 ### 6.8 Metadata & traffic analysis — ⚠️ Accepted
 Entry counts, blob sizes, edit cadence, reminder times, and `owner_id`↔device linkage are visible (§2).
 We do not pad, batch, or cover-traffic these. E2EE protects content, not shape.
+
+**Approval hint** (only when the operator runs `REQUIRE_APPROVAL`): at registration the client sends
+a short `[a-z0-9-]{0,32}` code it derives one-way from the seed (e.g. `amber-otter-07`) so the
+operator can tell which *pending* vault to approve. It is the one user-adjacent, non-ciphertext string
+the relay stores — a deliberate, minimal accepted leak. It is **not** free text (the charset is
+enforced server-side, so it can't smuggle PII or markup — also closing stored-XSS in the dashboard),
+**not** a secret, and reveals nothing about the seed (a one-way projection, exactly like `owner_id`).
+`REQUIRE_APPROVAL` itself is an access-control feature, not a confidentiality one: it stops *strangers
+storing* their journals on your relay (see API.md / server README), enforced at the API — approve/
+reject at `/admin`, immediate on the next request. It does not change what the operator can see of an
+approved vault (still nothing but §2 metadata).
 
 ### 6.9 `lww_clock` leaks edit timestamps — 🔧 Open (sharper than "edit frequency")
 `lww_clock` is currently wall-clock `Date.now()` in milliseconds, so the server learns the **real time**

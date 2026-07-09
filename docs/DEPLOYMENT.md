@@ -112,6 +112,32 @@ See [PWA.md](./PWA.md) for the developer-side story (installing from the dev ser
 
 ---
 
+## The operator admin dashboard
+
+Set `ADMIN_TOKEN` and an operator dashboard appears at `https://<host>/mneme/admin` (authenticate
+with the token as a bearer). Leave `ADMIN_TOKEN` empty and the surface does not exist — every
+`/admin` path returns a plain `404`. Set it to a real secret in production (`openssl rand -base64 32`).
+
+Crucially, the dashboard shows **health and growth, never people**. It is built so the operator gains
+*no* ability to read or even identify anyone's content:
+
+- **Per-vault storage footprints** — how much space each vault uses, keyed by a **truncated,
+  pseudonymous** owner id (a hash, not a name or email).
+- **Daily aggregate counters** — request, record, media, and vault metrics, stored deliberately
+  **without any owner column**, so they can't be tied back to an individual.
+- **Vault deletion** — wipe a vault by id, gated behind a typed `"delete"` confirmation. (Users can
+  also delete their own vault from inside the app.)
+- **Backups & disaster recovery** — trigger, list, download, and restore archives (restore gated
+  behind a typed `"restore"` confirmation, since it replaces all relay data). A backup is one gzipped
+  archive of every vault's **encrypted** blobs and media chunks — **no keys, no plaintext**, because
+  the relay never had any. See [MAINTENANCE.md](./MAINTENANCE.md) for the full backup and restore
+  runbook.
+
+What the dashboard fundamentally *cannot* do is tell you what anyone wrote — that data never reaches
+the server in readable form. Full API details in [API.md](./API.md#admin).
+
+---
+
 ## Deploying a new version
 
 ```bash

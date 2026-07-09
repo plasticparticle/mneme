@@ -58,6 +58,9 @@ services:
       CORS_ORIGINS: ""
       # Operator dashboard at /admin; unset to disable it entirely.
       ADMIN_TOKEN: ${ADMIN_TOKEN:-}
+      # Gate new vaults behind operator approval (needs ADMIN_TOKEN to approve).
+      # Default off = open relay. Set true for a single-tenant / hand-picked relay.
+      REQUIRE_APPROVAL: ${REQUIRE_APPROVAL:-false}
       # Dashboard update check (GitHub releases); set off for air-gapped hosts.
       UPDATE_CHECK: ${UPDATE_CHECK:-on}
       # Rolling encrypted-blob archives of every vault (see deploy/README.md).

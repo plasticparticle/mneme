@@ -369,5 +369,6 @@ findings 10–12 (polish).
 ## 8. Reporting
 
 No private data should ever reach the server in plaintext — if you find a way it can, that's a
-top-severity bug. Until a dedicated channel exists, report security issues privately to the maintainer
+top-severity bug. Until a dedicated channel exists, report security issues privately to the maintaine. 
+Report to [weber.lars+mnemeSecurity@gmail.com](weber.lars+mnemeSecurity@gmail.com)
 rather than opening a public issue.

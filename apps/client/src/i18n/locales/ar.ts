@@ -420,6 +420,11 @@ const ar: Partial<Record<MessageKey, string>> = {
   'assistant.interview.writing': 'جارٍ كتابة مدخلك…',
   'assistant.interview.nothingWritten': '(لم يُكتب شيء)',
   'assistant.interview.save': 'احفظ المدخل',
+  'assistant.compose.title': 'مدخل جديد',
+  'assistant.compose.intro':
+    'ابدأ بصفحة فارغة، أو دع المساعد يجري معك مقابلة ويصيغ المدخل.',
+  'assistant.compose.blank': 'مدخل فارغ',
+  'assistant.compose.blankHint': 'افتح صفحة جديدة فارغة.',
   'assistant.interview.builtin.daily-checkin.name': 'مراجعة يومية',
   'assistant.interview.builtin.daily-checkin.intro': 'نظرة قصيرة وودّية على يومك.',
   'assistant.interview.builtin.morning-intention.name': 'نيّة الصباح',

@@ -42,6 +42,8 @@ export function GuidedInterviewSheet({
   onClose,
   onOpenEntry,
   onManageTypes,
+  onBlank,
+  journalId,
 }: {
   desk: boolean;
   onClose: () => void;
@@ -49,6 +51,14 @@ export function GuidedInterviewSheet({
   onOpenEntry: (id: string) => void;
   /** Hand off to the interview-types manager (the sheet closes first). */
   onManageTypes: () => void;
+  /** When set, the sheet acts as the compose chooser (opened from the mobile
+      compose FAB while the AI assistant is on): the pick screen leads with a
+      "Blank entry" choice that calls this. Absent for the standalone "Daily
+      interview" entry point, which has no blank option. */
+  onBlank?: () => void;
+  /** Notebook a saved interview entry lands in; defaults to the first journal
+      (matches the standalone interview and a normal blank new entry). */
+  journalId?: string;
 }): VNode | null {
   const { entries, journals, interviewTypes, aiSettings, createEntry } = useAppData();
   const [phase, setPhase] = useState<Phase>('pick');
@@ -199,8 +209,9 @@ export function GuidedInterviewSheet({
     if (!text) return;
     const doc = markdownToDoc(text);
     const entry = createEntry({
-      // Same default notebook as a normal new entry (app.tsx newEntry).
-      journalId: journals[0]?.id ?? 'j-personal',
+      // The notebook the compose FAB was in, else the same default as a normal
+      // new entry (app.tsx newEntry).
+      journalId: journalId ?? journals[0]?.id ?? 'j-personal',
       bodyJson: JSON.stringify(doc),
       bodyText: docToText(doc),
       // Tag with the interview type's name so future runs of the same type can
@@ -235,8 +246,20 @@ export function GuidedInterviewSheet({
   const pickBody = (
     <div style={{ flex: 1, overflowY: 'auto', padding: desk ? '16px 22px' : '14px 18px', display: 'flex', flexDirection: 'column', gap: 9 }}>
       <p style={{ ...pStyle, marginBottom: 4 }}>
-        {t('assistant.interview.pickIntro')}
+        {t(onBlank ? 'assistant.compose.intro' : 'assistant.interview.pickIntro')}
       </p>
+      {onBlank && (
+        <button
+          onClick={onBlank}
+          style={{ textAlign: 'start', cursor: 'pointer', padding: '12px 14px', borderRadius: 12, background: 'var(--accent-soft)', border: '1px solid var(--accent-line)', display: 'flex', alignItems: 'center', gap: 11 }}
+        >
+          <Icon name="feather" size={17} color="var(--accent)" />
+          <span style={{ display: 'flex', flexDirection: 'column', gap: 3, minWidth: 0 }}>
+            <span style={{ fontFamily: 'var(--serif)', fontSize: 15.5, fontWeight: 500, color: 'var(--ink)' }}>{t('assistant.compose.blank')}</span>
+            <span style={{ ...pStyle, fontSize: 12.5, color: 'var(--ink-3)' }}>{t('assistant.compose.blankHint')}</span>
+          </span>
+        </button>
+      )}
       {alive.map((it) => (
         <button
           key={it.id}
@@ -369,7 +392,7 @@ export function GuidedInterviewSheet({
   );
 
   const title =
-    phase === 'pick' ? t('assistant.interview.title')
+    phase === 'pick' ? (onBlank ? t('assistant.compose.title') : t('assistant.interview.title'))
     : phase === 'brief' ? t('assistant.interview.freeform')
     : phase === 'review' ? (type ? type.name : t('assistant.interview.yourDraft'))
     : type?.name || t('assistant.interview.fallbackTitle');

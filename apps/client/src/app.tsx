@@ -235,6 +235,9 @@ export function App(): VNode {
   const [askOpen, setAskOpen] = useState(false);
   const [interviewOpen, setInterviewOpen] = useState(false);
   const [interviewTypesOpen, setInterviewTypesOpen] = useState(false);
+  // Compose chooser (mobile FAB, only when the AI assistant is on): holds the
+  // target notebook while the "blank vs. guided interview" sheet is open.
+  const [composeCtx, setComposeCtx] = useState<{ journalId?: string } | null>(null);
   // Which notebook the typed-"delete" confirmation sheet is for (null → closed).
   const [deleteJournalId, setDeleteJournalId] = useState<string | null>(null);
   const [editJournalId, setEditJournalId] = useState<string | null>(null);
@@ -277,6 +280,7 @@ export function App(): VNode {
     setAskOpen(false);
     setInterviewOpen(false);
     setInterviewTypesOpen(false);
+    setComposeCtx(null);
     setDeleteJournalId(null);
     setOpenEntryId(null);
     setOpenJournalId(null);
@@ -321,6 +325,14 @@ export function App(): VNode {
   const newEntry = (journalId?: string) => {
     const entry = createEntry({ journalId: journalId ?? journals[0]?.id ?? 'j-personal' });
     openEntry(entry.id);
+  };
+
+  // The mobile compose FAB. With the AI assistant on, offer a choice — a blank
+  // entry or one of the guided interviews (setComposeCtx opens that sheet);
+  // otherwise create a blank entry straight away, the unchanged behaviour.
+  const startCompose = (journalId?: string) => {
+    if (aiSettings?.enabled) setComposeCtx({ journalId });
+    else newEntry(journalId);
   };
 
   // Start a new entry pre-filled from a template ("Use" in the templates sheet,
@@ -472,7 +484,7 @@ export function App(): VNode {
       {/* Inside a notebook the Journals tab stays lit and compose writes into it. */}
       {/* Settings in the bottom nav goes straight to the preferences sheet —
           it holds the journal/assistant/vault rows the old settings sheet had. */}
-      {showNav && <MobileNav flow={flow === 'journal' ? 'journals' : flow} setFlow={setFlow} onCompose={() => newEntry(flow === 'journal' ? openJournalObj?.id : undefined)} onSettings={() => setPrefsOpen(true)} onSearch={() => setSearchOpen(true)} />}
+      {showNav && <MobileNav flow={flow === 'journal' ? 'journals' : flow} setFlow={setFlow} onCompose={() => startCompose(flow === 'journal' ? openJournalObj?.id : undefined)} onSettings={() => setPrefsOpen(true)} onSearch={() => setSearchOpen(true)} />}
       {searchSheet}
       {deleteJournalSheet}
       {modal && <NewJournalSheet desk={false} templates={templates.filter((t) => !t.deleted)} onClose={() => setModal(false)} onCreate={onCreateJournal} />}
@@ -485,6 +497,7 @@ export function App(): VNode {
       {aiSettingsOpen && <AiSettingsSheet desk={false} onClose={() => setAiSettingsOpen(false)} />}
       {askOpen && <AskJournalSheet desk={false} onClose={() => setAskOpen(false)} />}
       {interviewOpen && <GuidedInterviewSheet desk={false} onClose={() => setInterviewOpen(false)} onOpenEntry={openEntry} onManageTypes={() => setInterviewTypesOpen(true)} />}
+      {composeCtx && <GuidedInterviewSheet desk={false} journalId={composeCtx.journalId} onBlank={() => { const j = composeCtx.journalId; setComposeCtx(null); newEntry(j); }} onClose={() => setComposeCtx(null)} onOpenEntry={openEntry} onManageTypes={() => setInterviewTypesOpen(true)} />}
       {interviewTypesOpen && <InterviewTypesSheet desk={false} onClose={() => setInterviewTypesOpen(false)} />}
     </div>
   );

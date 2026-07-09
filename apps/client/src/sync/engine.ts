@@ -191,7 +191,15 @@ export function toPushEntry(dataKey: Uint8Array, e: JournalEntry): PushEntry {
   };
 }
 
-/** Push entries; returns the set of entry ids the relay accepted (newer than stored). */
+/**
+ * Push entries; returns the set of entry ids the relay acknowledged. An
+ * acknowledgment is any per-record result — applied, or rejected because the
+ * stored lww_clock is already >= ours (a retry after a lost ack, or a newer
+ * copy from another device). Both settle the record: the relay durably holds
+ * this version or newer, so the outbox must retire it and let the pull path
+ * reconcile. Retiring only `applied` ids wedged the outbox forever on an
+ * equal-clock retry.
+ */
 export async function pushEntries(
   relay: RelayClient,
   token: string,
@@ -200,7 +208,7 @@ export async function pushEntries(
 ): Promise<Set<string>> {
   if (entries.length === 0) return new Set();
   const resp = await relay.push(token, entries.map((e) => toPushEntry(dataKey, e)));
-  return new Set(resp.results.filter((r) => r.applied).map((r) => r.entry_id));
+  return new Set(resp.results.map((r) => r.entry_id));
 }
 
 export function toPushTemplate(dataKey: Uint8Array, t: TemplateRecord): PushEntry {
@@ -221,7 +229,7 @@ export function toPushTemplate(dataKey: Uint8Array, t: TemplateRecord): PushEntr
   };
 }
 
-/** Push templates through the same oplog; returns the accepted template ids. */
+/** Push templates through the same oplog; returns the acknowledged template ids (see pushEntries). */
 export async function pushTemplates(
   relay: RelayClient,
   token: string,
@@ -230,7 +238,7 @@ export async function pushTemplates(
 ): Promise<Set<string>> {
   if (templates.length === 0) return new Set();
   const resp = await relay.push(token, templates.map((t) => toPushTemplate(dataKey, t)));
-  return new Set(resp.results.filter((r) => r.applied).map((r) => r.entry_id));
+  return new Set(resp.results.map((r) => r.entry_id));
 }
 
 export function toPushInterviewType(dataKey: Uint8Array, t: InterviewType): PushEntry {
@@ -251,7 +259,7 @@ export function toPushInterviewType(dataKey: Uint8Array, t: InterviewType): Push
   };
 }
 
-/** Push interview types through the same oplog; returns the accepted ids. */
+/** Push interview types through the same oplog; returns the acknowledged ids (see pushEntries). */
 export async function pushInterviewTypes(
   relay: RelayClient,
   token: string,
@@ -260,7 +268,7 @@ export async function pushInterviewTypes(
 ): Promise<Set<string>> {
   if (types.length === 0) return new Set();
   const resp = await relay.push(token, types.map((t) => toPushInterviewType(dataKey, t)));
-  return new Set(resp.results.filter((r) => r.applied).map((r) => r.entry_id));
+  return new Set(resp.results.map((r) => r.entry_id));
 }
 
 export function toPushJournal(dataKey: Uint8Array, j: JournalRecord): PushEntry {
@@ -283,7 +291,7 @@ export function toPushJournal(dataKey: Uint8Array, j: JournalRecord): PushEntry 
   };
 }
 
-/** Push journals through the same oplog; returns the accepted RECORD ids (not journal ids). */
+/** Push journals through the same oplog; returns the acknowledged RECORD ids, not journal ids (see pushEntries). */
 export async function pushJournals(
   relay: RelayClient,
   token: string,
@@ -292,7 +300,7 @@ export async function pushJournals(
 ): Promise<Set<string>> {
   if (journals.length === 0) return new Set();
   const resp = await relay.push(token, journals.map((j) => toPushJournal(dataKey, j)));
-  return new Set(resp.results.filter((r) => r.applied).map((r) => r.entry_id));
+  return new Set(resp.results.map((r) => r.entry_id));
 }
 
 export function toPushAiSettings(dataKey: Uint8Array, rec: AiSettingsRecord): PushEntry {

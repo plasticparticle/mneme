@@ -14,6 +14,7 @@ import type { JSX, VNode } from 'preact';
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { Icon } from './Icon';
 import { Btn } from './primitives';
+import { useVisualViewport } from '../hooks/useVisualViewport';
 import { t } from '../i18n';
 import { useAppData } from '../state/data';
 import type { InterviewType } from '../sync/engine';
@@ -77,11 +78,16 @@ export function GuidedInterviewSheet({
 
   const provider = useMemo(() => (aiSettings?.enabled ? makeProvider(aiSettings) : null), [aiSettings]);
   const alive = useMemo(() => interviewTypes.filter((it) => !it.deleted), [interviewTypes]);
+  // Size the mobile sheet to the visible area so the input stays above the
+  // keyboard (see useVisualViewport) instead of being pushed off-screen.
+  const vp = useVisualViewport();
 
   useEffect(() => () => abortRef.current?.abort(), []);
   useEffect(() => {
     logRef.current?.scrollTo({ top: logRef.current.scrollHeight });
-  }, [messages, phase]);
+    // vp.height is a dep so opening the keyboard (which shrinks the sheet) keeps
+    // the latest question pinned in view right above the answer box.
+  }, [messages, phase, vp.height]);
   useEffect(() => {
     if (phase === 'interview' || phase === 'brief') inputRef.current?.focus();
   }, [phase]);
@@ -412,7 +418,10 @@ export function GuidedInterviewSheet({
   return (
     <div
       onClick={onClose}
-      style={{ position: 'absolute', inset: 0, zIndex: 60, background: 'rgba(30,22,16,.34)', backdropFilter: 'blur(2px)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}
+      // Fixed + sized to the visual viewport: the overlay spans only the area
+      // above the keyboard, so the flex-end panel pins its input right on top of
+      // the keyboard and the transcript scrolls within — a messenger-like layout.
+      style={{ position: 'fixed', left: 0, right: 0, top: vp.offsetTop, height: vp.height, zIndex: 60, background: 'rgba(30,22,16,.34)', backdropFilter: 'blur(2px)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}
     >
       {panel}
     </div>

@@ -7,6 +7,7 @@ import type { JSX, VNode } from 'preact';
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { Icon } from './Icon';
 import { Btn } from './primitives';
+import { useVisualViewport } from '../hooks/useVisualViewport';
 import { t, tp } from '../i18n';
 import { useAppData } from '../state/data';
 import { makeProvider } from '../ai/provider';
@@ -29,6 +30,9 @@ export function AskJournalSheet({ desk, onClose }: { desk: boolean; onClose: () 
   const inputRef = useRef<HTMLInputElement>(null);
 
   const provider = useMemo(() => (aiSettings?.enabled ? makeProvider(aiSettings) : null), [aiSettings]);
+  // Size the mobile sheet to the visible area so the input stays above the
+  // keyboard (see useVisualViewport) instead of being pushed off-screen.
+  const vp = useVisualViewport();
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -38,7 +42,8 @@ export function AskJournalSheet({ desk, onClose }: { desk: boolean; onClose: () 
 
   useEffect(() => {
     logRef.current?.scrollTo({ top: logRef.current.scrollHeight });
-  }, [transcript]);
+    // vp.height is a dep so opening the keyboard keeps the latest answer in view.
+  }, [transcript, vp.height]);
 
   if (!provider || !aiSettings) return null;
 
@@ -168,7 +173,9 @@ export function AskJournalSheet({ desk, onClose }: { desk: boolean; onClose: () 
   return (
     <div
       onClick={onClose}
-      style={{ position: 'absolute', inset: 0, zIndex: 60, background: 'rgba(30,22,16,.34)', backdropFilter: 'blur(2px)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}
+      // Fixed + sized to the visual viewport so the panel's input pins above the
+      // keyboard and the transcript scrolls within (see useVisualViewport).
+      style={{ position: 'fixed', left: 0, right: 0, top: vp.offsetTop, height: vp.height, zIndex: 60, background: 'rgba(30,22,16,.34)', backdropFilter: 'blur(2px)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}
     >
       {panel}
     </div>

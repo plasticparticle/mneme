@@ -16,6 +16,14 @@ export const shell = {
   'shell.footer.syncing': 'syncing…',
   'shell.footer.syncingCount': 'syncing {count}…',
 
+  // ── Mobile compose chooser (ui/ComposeChooser.tsx) ──
+  'shell.compose.empty': 'Empty entry',
+  'shell.compose.emptyHint': 'Start with a blank page',
+  'shell.compose.interview': 'AI interview',
+  'shell.compose.interviewHint': 'Answer a few questions and get a draft',
+  'shell.compose.template': 'Use a template',
+  'shell.compose.templateHint': 'Start from one of your templates',
+
   // ── Connection status (connLabel) ──
   'shell.conn.online': 'Connected',
   'shell.conn.offline': 'Offline',

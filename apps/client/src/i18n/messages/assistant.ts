@@ -87,13 +87,6 @@ export const assistant = {
   'assistant.interview.nothingWritten': '(nothing written)',
   'assistant.interview.save': 'Save entry',
 
-  // ── compose chooser (mobile compose FAB, only when the AI assistant is on) ──
-  'assistant.compose.title': 'New entry',
-  'assistant.compose.intro':
-    'Start with a blank page, or let the assistant interview you and draft the entry.',
-  'assistant.compose.blank': 'Blank entry',
-  'assistant.compose.blankHint': 'Open a fresh, empty page.',
-
   // ── built-in interview types (data/interviews.ts seeds; pristine seeds follow
   //     the app language via localizeBuiltinInterview, like template built-ins) ──
   'assistant.interview.builtin.daily-checkin.name': 'Daily check-in',
@@ -108,6 +101,24 @@ export const assistant = {
   'assistant.interview.builtin.weekly-review.intro': 'Step back and review the past week.',
   'assistant.interview.builtin.mood-energy.name': 'Mood & energy',
   'assistant.interview.builtin.mood-energy.intro': 'Track how you feel and what shaped it.',
+  'assistant.interview.builtin.work-standup.name': 'Work standup',
+  'assistant.interview.builtin.work-standup.intro': "Log what moved, what's blocked, and what's next.",
+  'assistant.interview.builtin.one-on-one-prep.name': '1:1 prep',
+  'assistant.interview.builtin.one-on-one-prep.intro': 'Gather what to raise in your next 1:1.',
+  'assistant.interview.builtin.project-retro.name': 'Project retro',
+  'assistant.interview.builtin.project-retro.intro': 'Look back on a project — wins, misses, lessons.',
+  'assistant.interview.builtin.study-recap.name': 'Study recap',
+  'assistant.interview.builtin.study-recap.intro': 'Capture what you studied and what stuck.',
+  'assistant.interview.builtin.lecture-reflection.name': 'Lecture reflection',
+  'assistant.interview.builtin.lecture-reflection.intro': 'Make sense of a class or lecture.',
+  'assistant.interview.builtin.exam-prep.name': 'Exam prep',
+  'assistant.interview.builtin.exam-prep.intro': 'Check where you stand before an exam.',
+  'assistant.interview.builtin.experiment-debrief.name': 'Experiment debrief',
+  'assistant.interview.builtin.experiment-debrief.intro': 'Record a run — hypothesis, method, results.',
+  'assistant.interview.builtin.research-progress.name': 'Research progress',
+  'assistant.interview.builtin.research-progress.intro': 'Track where your research stands this week.',
+  'assistant.interview.builtin.lab-troubleshooting.name': 'Troubleshooting log',
+  'assistant.interview.builtin.lab-troubleshooting.intro': 'Work through what went wrong and why.',
 
   // ── interview-types manager ──
   'assistant.types.title': 'Interview types',

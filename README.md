@@ -230,86 +230,26 @@ pnpm --filter client exec tsx scripts/integration.ts   # register → auth → e
 
 ---
 
-## Running the server (for operators)
+## Running it for real (self-hosted)
 
-The server is a single Go binary called `journald` — a deliberately clueless relay that stores
-opaque encrypted blobs and coordinates encrypted media into S3/MinIO. The `docker-compose.yml` at
-the repo root brings up Postgres, MinIO, and the relay together. It's I/O-bound and featherweight;
-your homelab will not notice it (several hundred users of an E2EE journal is, server-side, basically
-free — there's nothing to index or render).
+Everything above is the **dev** stack — published ports, `_dev` passwords, plain HTTP — the fastest
+way to *see* Mneme, and emphatically not how to *keep* your journal. For a real deployment the server
+is a single featherweight Go binary (`journald`, a deliberately clueless relay for opaque encrypted
+blobs) fronted by Caddy for HTTPS: a four-container stack (Caddy + relay + Postgres + MinIO) that
+restarts on crash and rolls its own encrypted backups. Several hundred users of an E2EE journal is,
+server-side, basically free — there's nothing to index or render.
 
-For the API surface and the relay's own test suite, see
-[`server/README.md`](./server/README.md) and [`docs/API.md`](./docs/API.md).
+- **[docs/DEPLOYMENT.md](./docs/DEPLOYMENT.md)** — the full production runbook: the Docker + Caddy
+  stack, HTTPS on a LAN, first start, the `.env.prod` secrets, and the optional operator admin
+  dashboard.
+- **[docs/MAINTENANCE.md](./docs/MAINTENANCE.md)** — day-two operations: backups, restore, upgrades,
+  health checks, and troubleshooting.
+- **[server/README.md](./server/README.md)** and **[docs/API.md](./docs/API.md)** — the relay's API
+  surface and its own test suite.
 
-### Production deployment (self-hosted, LAN)
-
-The root `docker-compose.yml` is the **dev** stack (published ports, `_dev` default
-secrets, HTTP). For a real self-hosted deployment there's a separate production stack —
-`docker-compose.prod.yml` plus the `./deploy/prod.sh` wrapper — that adds Caddy in front
-to serve the built client and the relay on **one HTTPS origin**, `restart: unless-stopped`
-on every service, and rolling encrypted backups. The full runbook (HTTPS on a LAN, first
-start, staying up) lives in **[`docs/DEPLOYMENT.md`](./docs/DEPLOYMENT.md)**, and day-two
-operations (backups, restore, upgrades, troubleshooting) in
-**[`docs/MAINTENANCE.md`](./docs/MAINTENANCE.md)**.
-
-**Prerequisites on the host:** Docker Engine + the Compose plugin, enabled at boot, and a
-clone of this repo.
-
-```bash
-# one-time: Docker (Debian/Ubuntu; see docs.docker.com for other distros)
-curl -fsSL https://get.docker.com | sh
-sudo systemctl enable --now docker
-sudo usermod -aG docker "$USER"   # then log out/in so `docker` works without sudo
-
-git clone <this-repo> mneme && cd mneme
-```
-
-Then configure secrets and bring the stack up:
-
-```bash
-cp .env.prod.example .env.prod    # fill in POSTGRES_PASSWORD, MINIO_ROOT_PASSWORD,
-                                  # ADMIN_TOKEN, SITE_ADDRESS, DEFAULT_SNI, BACKUP_HOST_DIR
-./deploy/prod.sh up -d --build    # build images + start Postgres, MinIO, relay, Caddy
-./deploy/prod.sh ps               # everything Up / healthy?
-```
-
-Open `https://<host>/mneme/`. Because the client needs a secure context (OPFS + media
-capture), Caddy issues certificates from its own internal CA — accept the browser warning
-once per device, or install its root cert (details in the runbook). Deploying a new version
-is the same `./deploy/prod.sh up -d --build`; `./deploy/prod.sh down` stops the stack while
-keeping all data. **See [`docs/DEPLOYMENT.md`](./docs/DEPLOYMENT.md) for the full setup runbook
-and [`docs/MAINTENANCE.md`](./docs/MAINTENANCE.md) for backups, disaster recovery, and the
-operations crib sheet.**
-
-### The admin dashboard
-
-If you host the relay, there's an **operator dashboard** at **http://localhost:8080/admin** (dev
-token: `admin_dev`, set in `docker-compose.yml`).
-
-It is **disabled by default**: every `/admin` route returns a plain `404` until you set the
-`ADMIN_TOKEN` environment variable. Set it to a real secret in production — or leave it unset and
-the admin surface simply does not exist.
-
-Crucially, the dashboard shows **health and growth, never people**. It is built so that the operator
-gains *no* ability to read or even identify anyone's content:
-
-- **Per-vault storage footprints** — how much space each vault uses, keyed by a **truncated,
-  pseudonymous** owner id (a hash, not a name or email).
-- **Daily aggregate counters** — request, record, media, and vault metrics, stored deliberately
-  **without any owner column**, so they can't be tied back to an individual.
-- **Vault deletion** — an operator can wipe a vault by id, gated behind a typed `"delete"`
-  confirmation. (Users can also delete their own vault from inside the app.)
-- **Backups & disaster recovery** — trigger a backup, list and download archives, and restore from
-  one (gated behind a typed `"restore"` confirmation, since restore replaces all relay data). A
-  backup is one gzipped archive of every vault's **encrypted** blobs and media chunks — **no keys,
-  no plaintext**, because the relay never had any. The same operations are available as CLI
-  subcommands (`journald backup` / `restore` / `list-backups`), which is the recommended path for a
-  real recovery against a stopped server.
-
-What the dashboard fundamentally *cannot* do is tell you what anyone wrote — that data never reaches
-the server in readable form. Full details in [`docs/API.md`](./docs/API.md#admin) and
-[`server/README.md`](./server/README.md#admin-dashboard), and the security analysis in
-[`docs/SECURITY.md`](./docs/SECURITY.md).
+The whole point survives the move to a server: an archive, a database dump, or a full MinIO bucket is
+**useless without a user's 12-word recovery phrase**. You host encrypted blobs beautifully and still
+can't read a word.
 
 ---
 

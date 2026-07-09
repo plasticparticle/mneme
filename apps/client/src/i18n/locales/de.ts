@@ -425,11 +425,6 @@ const de: Partial<Record<MessageKey, string>> = {
   'assistant.interview.writing': 'Schreibe deinen Eintrag…',
   'assistant.interview.nothingWritten': '(nichts geschrieben)',
   'assistant.interview.save': 'Eintrag speichern',
-  'assistant.compose.title': 'Neuer Eintrag',
-  'assistant.compose.intro':
-    'Mit einer leeren Seite beginnen – oder dich vom Assistenten interviewen lassen, der den Eintrag entwirft.',
-  'assistant.compose.blank': 'Leerer Eintrag',
-  'assistant.compose.blankHint': 'Eine frische, leere Seite öffnen.',
   'assistant.interview.builtin.daily-checkin.name': 'Täglicher Check-in',
   'assistant.interview.builtin.daily-checkin.intro': 'Ein kurzer, freundlicher Blick zurück auf deinen Tag.',
   'assistant.interview.builtin.morning-intention.name': 'Morgenintention',

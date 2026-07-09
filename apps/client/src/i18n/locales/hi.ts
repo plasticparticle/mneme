@@ -421,11 +421,6 @@ const hi: Partial<Record<MessageKey, string>> = {
   'assistant.interview.writing': 'आपकी प्रविष्टि लिखी जा रही है…',
   'assistant.interview.nothingWritten': '(कुछ नहीं लिखा गया)',
   'assistant.interview.save': 'प्रविष्टि सहेजें',
-  'assistant.compose.title': 'नई प्रविष्टि',
-  'assistant.compose.intro':
-    'खाली पृष्ठ से शुरू करें, या सहायक से साक्षात्कार करवाकर प्रविष्टि का मसौदा तैयार कराएँ।',
-  'assistant.compose.blank': 'खाली प्रविष्टि',
-  'assistant.compose.blankHint': 'एक नया, खाली पृष्ठ खोलें।',
   'assistant.interview.builtin.daily-checkin.name': 'दैनिक चेक-इन',
   'assistant.interview.builtin.daily-checkin.intro': 'अपने दिन पर एक छोटी, दोस्ताना नज़र।',
   'assistant.interview.builtin.morning-intention.name': 'सुबह का संकल्प',

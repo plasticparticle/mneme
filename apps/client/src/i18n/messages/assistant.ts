@@ -87,13 +87,6 @@ export const assistant = {
   'assistant.interview.nothingWritten': '(nothing written)',
   'assistant.interview.save': 'Save entry',
 
-  // ── compose chooser (mobile compose FAB, only when the AI assistant is on) ──
-  'assistant.compose.title': 'New entry',
-  'assistant.compose.intro':
-    'Start with a blank page, or let the assistant interview you and draft the entry.',
-  'assistant.compose.blank': 'Blank entry',
-  'assistant.compose.blankHint': 'Open a fresh, empty page.',
-
   // ── built-in interview types (data/interviews.ts seeds; pristine seeds follow
   //     the app language via localizeBuiltinInterview, like template built-ins) ──
   'assistant.interview.builtin.daily-checkin.name': 'Daily check-in',

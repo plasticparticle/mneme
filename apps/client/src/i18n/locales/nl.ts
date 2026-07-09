@@ -417,11 +417,6 @@ const nl: Partial<Record<MessageKey, string>> = {
   'assistant.interview.writing': 'Je notitie schrijven…',
   'assistant.interview.nothingWritten': '(niets geschreven)',
   'assistant.interview.save': 'Notitie opslaan',
-  'assistant.compose.title': 'Nieuwe notitie',
-  'assistant.compose.intro':
-    'Begin met een lege pagina, of laat de assistent je interviewen en de notitie opstellen.',
-  'assistant.compose.blank': 'Lege notitie',
-  'assistant.compose.blankHint': 'Open een verse, lege pagina.',
   'assistant.interview.builtin.daily-checkin.name': 'Dagelijkse check-in',
   'assistant.interview.builtin.daily-checkin.intro': 'Een korte, vriendelijke terugblik op je dag.',
   'assistant.interview.builtin.morning-intention.name': 'Ochtendintentie',

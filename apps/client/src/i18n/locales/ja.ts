@@ -420,11 +420,6 @@ const ja: Partial<Record<MessageKey, string>> = {
   'assistant.interview.writing': 'エントリーを書いています…',
   'assistant.interview.nothingWritten': '（何も書かれませんでした）',
   'assistant.interview.save': 'エントリーを保存',
-  'assistant.compose.title': '新しいエントリー',
-  'assistant.compose.intro':
-    '白紙から始めるか、アシスタントにインタビューしてもらってエントリーを下書きします。',
-  'assistant.compose.blank': '空白のエントリー',
-  'assistant.compose.blankHint': '新しい空白のページを開きます。',
   'assistant.interview.builtin.daily-checkin.name': '毎日のチェックイン',
   'assistant.interview.builtin.daily-checkin.intro': '一日を短くやさしく振り返ります。',
   'assistant.interview.builtin.morning-intention.name': '朝のインテンション',

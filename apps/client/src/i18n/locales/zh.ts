@@ -389,11 +389,6 @@ const zh: Partial<Record<MessageKey, string>> = {
   'assistant.interview.writing': '正在撰写你的记录…',
   'assistant.interview.nothingWritten': '（未写出任何内容）',
   'assistant.interview.save': '保存记录',
-  'assistant.compose.title': '新记录',
-  'assistant.compose.intro':
-    '从空白页开始，或让助手对你进行访谈并起草记录。',
-  'assistant.compose.blank': '空白记录',
-  'assistant.compose.blankHint': '打开一个全新的空白页。',
   'assistant.interview.builtin.daily-checkin.name': '每日签到',
   'assistant.interview.builtin.daily-checkin.intro': '简短友好地回顾你的一天。',
   'assistant.interview.builtin.morning-intention.name': '晨间意图',

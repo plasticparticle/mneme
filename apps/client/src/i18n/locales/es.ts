@@ -425,11 +425,6 @@ const es: Partial<Record<MessageKey, string>> = {
   'assistant.interview.writing': 'Escribiendo tu entrada…',
   'assistant.interview.nothingWritten': '(no se escribió nada)',
   'assistant.interview.save': 'Guardar entrada',
-  'assistant.compose.title': 'Nueva entrada',
-  'assistant.compose.intro':
-    'Empieza con una página en blanco, o deja que el asistente te entreviste y redacte la entrada.',
-  'assistant.compose.blank': 'Entrada en blanco',
-  'assistant.compose.blankHint': 'Abrir una página nueva y vacía.',
   'assistant.interview.builtin.daily-checkin.name': 'Repaso diario',
   'assistant.interview.builtin.daily-checkin.intro': 'Una mirada breve y amable a tu día.',
   'assistant.interview.builtin.morning-intention.name': 'Intención matutina',

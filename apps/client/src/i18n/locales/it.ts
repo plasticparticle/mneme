@@ -429,6 +429,11 @@ const it: Partial<Record<MessageKey, string>> = {
   'assistant.interview.writing': 'Sto scrivendo la tua voce…',
   'assistant.interview.nothingWritten': '(niente scritto)',
   'assistant.interview.save': 'Salva voce',
+  'assistant.compose.title': 'Nuova voce',
+  'assistant.compose.intro':
+    'Inizia da una pagina bianca, oppure lascia che l’assistente ti intervisti e rediga la voce.',
+  'assistant.compose.blank': 'Voce vuota',
+  'assistant.compose.blankHint': 'Apri una pagina nuova e vuota.',
   'assistant.interview.builtin.daily-checkin.name': 'Check-in quotidiano',
   'assistant.interview.builtin.daily-checkin.intro': 'Un breve sguardo amichevole alla tua giornata.',
   'assistant.interview.builtin.morning-intention.name': 'Intenzione del mattino',

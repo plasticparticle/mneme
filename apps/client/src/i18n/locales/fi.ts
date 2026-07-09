@@ -423,6 +423,11 @@ const fi: Partial<Record<MessageKey, string>> = {
   'assistant.interview.writing': 'Kirjoitetaan merkintääsi…',
   'assistant.interview.nothingWritten': '(mitään ei kirjoitettu)',
   'assistant.interview.save': 'Tallenna merkintä',
+  'assistant.compose.title': 'Uusi merkintä',
+  'assistant.compose.intro':
+    'Aloita tyhjältä sivulta tai anna avustajan haastatella sinua ja laatia merkintä.',
+  'assistant.compose.blank': 'Tyhjä merkintä',
+  'assistant.compose.blankHint': 'Avaa uusi, tyhjä sivu.',
   'assistant.interview.builtin.daily-checkin.name': 'Päivän kuulumiset',
   'assistant.interview.builtin.daily-checkin.intro': 'Lyhyt, lempeä katsaus päivääsi.',
   'assistant.interview.builtin.morning-intention.name': 'Aamun aikomus',

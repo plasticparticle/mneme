@@ -389,6 +389,11 @@ const ko: Partial<Record<MessageKey, string>> = {
   'assistant.interview.writing': '항목을 작성하는 중…',
   'assistant.interview.nothingWritten': '(작성된 내용 없음)',
   'assistant.interview.save': '항목 저장',
+  'assistant.compose.title': '새 항목',
+  'assistant.compose.intro':
+    '빈 페이지로 시작하거나, 어시스턴트가 인터뷰하여 항목 초안을 작성하도록 하세요.',
+  'assistant.compose.blank': '빈 항목',
+  'assistant.compose.blankHint': '새 빈 페이지를 엽니다.',
   'assistant.interview.builtin.daily-checkin.name': '데일리 체크인',
   'assistant.interview.builtin.daily-checkin.intro': '하루를 짧고 편안하게 돌아봅니다.',
   'assistant.interview.builtin.morning-intention.name': '아침 다짐',

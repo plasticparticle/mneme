@@ -9,7 +9,7 @@ import { createContext } from 'preact';
 import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'preact/hooks';
 
 import { RelayClient, RelayError, resolveRelayUrl, buildDefaultRelayUrl, setStoredRelayUrl } from '../sync/relay';
-import { authenticate, type Session } from '../sync/identity';
+import { authenticate, PendingApprovalError, type Session } from '../sync/identity';
 import { deriveIdentity, type Identity } from '../crypto/keys';
 import { mnemonicToSeed } from '../crypto/mnemonic';
 import { sealSeed, sealSeedWithPrfSecret, sealWithKey, openSeed, openSeedWithPrfSecret, type WrapKey } from '../crypto/seedlock';
@@ -49,6 +49,16 @@ interface AppData {
   // already cleartext on the relay, so showing it leaks nothing). Its first 8
   // chars match the truncated vault label in the operator admin dashboard.
   ownerId: string | null;
+  // True when the relay accepted this device but the operator has not yet approved
+  // the vault (a relay running REQUIRE_APPROVAL). The identity is valid and held;
+  // the app shows a blocking "pending approval" screen instead of the timeline.
+  pendingApproval: boolean;
+  // The vault's memorable, non-secret operator hint (e.g. "amber-otter-07"),
+  // derived from the seed — shown on the pending screen so the user can quote it
+  // to the operator. null while locked.
+  approvalHint: string | null;
+  /** Retry authentication from the pending screen (after the operator approves). */
+  retryApproval(): void;
   // How many local entries still wait to be pushed to the relay (the outbox depth).
   pendingCount: number;
   // Notebook ids that still have entries waiting in the push outbox — drives the
@@ -340,6 +350,8 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
   const hasVault = sealMethod === null ? null : sealMethod !== 'none';
   const vaultMethod = sealMethod === 'none' ? null : sealMethod;
   const [ownerId, setOwnerId] = useState<string | null>(null);
+  const [pendingApproval, setPendingApproval] = useState(false);
+  const [approvalHint, setApprovalHint] = useState<string | null>(null);
   const [pendingCount, setPendingCount] = useState(0);
   const [pendingJournalIds, setPendingJournalIds] = useState<Set<string>>(new Set());
   // High-water mark of the outbox for the progress bar; the ref is the live value
@@ -650,11 +662,20 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
       if (announce) setStatusLive('connecting');
       try {
         session.current = await authenticate(relay, id);
+        setPendingApproval(false);
         cursor.current = 0;
         await flush();
         await pull();
         setStatusLive('online');
-      } catch {
+      } catch (e) {
+        if (e instanceof PendingApprovalError) {
+          // The relay knows this device but the operator hasn't approved the vault.
+          // Distinct from offline: the app shows the pending screen (with the hint),
+          // and retryApproval() re-runs this once the operator approves.
+          setPendingApproval(true);
+          setStatusLive('offline');
+          return;
+        }
         // Local-first: identity is valid; the relay is just unreachable right now.
         setStatusLive('offline');
       }
@@ -686,6 +707,7 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
       seedRef.current = seed;
       identity.current = id;
       setOwnerId(id.ownerId);
+      setApprovalHint(id.approvalHint);
       // Restore the AI settings, if this vault sealed any on this device. A
       // record sealed by a different vault fails the AEAD tag → stays null.
       void loadAiSettingsRecord().then((rec) => {
@@ -885,6 +907,12 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
     setSealMethod('passphrase');
   }, []);
 
+  // Pending-approval screen "Check again": re-run the authenticate → sync path.
+  // A success clears pendingApproval (in connect); a still-pending relay re-sets it.
+  const retryApproval = useCallback(() => {
+    void connect(true);
+  }, [connect]);
+
   const lock: AppData['lock'] = useCallback(() => {
     // Drop references rather than zeroing the key bytes: an in-flight flush
     // still holds them, and zeroing under a running encrypt would push garbage
@@ -894,6 +922,8 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
     wrap.current = null;
     seedRef.current = null;
     setOwnerId(null);
+    setPendingApproval(false);
+    setApprovalHint(null);
     cursor.current = 0;
     pending.current.clear();
     pendingTemplates.current.clear();
@@ -1593,6 +1623,6 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
     [interviewTypes, locale],
   );
 
-  const value: AppData = { status, hasVault, vaultMethod, ownerId, pendingCount, pendingJournalIds, syncTotal, saving, bootstrapping, entries: liveEntries, journals: journalsWithCounts, templates: localizedTemplates, interviewTypes: localizedInterviewTypes, aiSettings, saveAiSettings, signIn, unlock, unlockWithKey, setDeviceUnlock, lock, createEntry, updateEntry, deleteEntry, newJournal, updateJournal, deleteJournal, createTemplate, updateTemplate, deleteTemplate, createInterviewType, updateInterviewType, deleteInterviewType, addMedia, removeMedia, mediaBlob, mediaThumb, rotatePhrase, deleteVault, relayUrl, setRelayUrl };
+  const value: AppData = { status, hasVault, vaultMethod, ownerId, pendingApproval, approvalHint, retryApproval, pendingCount, pendingJournalIds, syncTotal, saving, bootstrapping, entries: liveEntries, journals: journalsWithCounts, templates: localizedTemplates, interviewTypes: localizedInterviewTypes, aiSettings, saveAiSettings, signIn, unlock, unlockWithKey, setDeviceUnlock, lock, createEntry, updateEntry, deleteEntry, newJournal, updateJournal, deleteJournal, createTemplate, updateTemplate, deleteTemplate, createInterviewType, updateInterviewType, deleteInterviewType, addMedia, removeMedia, mediaBlob, mediaThumb, rotatePhrase, deleteVault, relayUrl, setRelayUrl };
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

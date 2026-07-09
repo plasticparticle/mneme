@@ -72,4 +72,15 @@ export const onboarding = {
   'onboarding.unlock.unlocking': 'Unlocking…',
   'onboarding.unlock.unlock': 'Unlock',
   'onboarding.unlock.usePhrase': 'Use my recovery phrase instead',
+
+  // Pending-approval screen (ui/PendingApproval.tsx) — shown when the relay runs
+  // with operator approval and this vault hasn't been approved yet.
+  'pending.title': 'Almost there',
+  'pending.lead': 'This server approves new journals by hand. Yours is waiting for the operator to let it in.',
+  'pending.hintLabel': 'Your approval code',
+  'pending.hintHelp':
+    'Give this code to the operator so they can spot your journal. It comes from your recovery phrase — keep the two together.',
+  'pending.checkAgain': 'Check again',
+  'pending.checking': 'Checking…',
+  'pending.startOver': 'Use a different recovery phrase',
 } as const;

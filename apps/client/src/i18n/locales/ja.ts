@@ -706,6 +706,14 @@ const ja: Partial<Record<MessageKey, string>> = {
   'shell.iosNotice.body':
     'プライバシー保護のため、iPhone と iPad は約 7 日間使用されなかった Web アプリのオフラインデータを自動的に消去します。あなたのジャーナルはサーバー上でエンドツーエンドの暗号化が保たれるため、再度サインインするだけで復元できます。ネイティブの iOS アプリも準備中です。',
   'shell.iosNotice.dismiss': '閉じる',
+  'pending.title': 'あと少しです',
+  'pending.lead': 'このサーバーは新しいジャーナルを手動で承認します。あなたのジャーナルは運営者の許可を待っています。',
+  'pending.hintLabel': '承認コード',
+  'pending.hintHelp':
+    'このコードを運営者に伝えると、あなたのジャーナルを見分けられます。リカバリーフレーズから生成されるため、両方を一緒に保管してください。',
+  'pending.checkAgain': 'もう一度確認',
+  'pending.checking': '確認中…',
+  'pending.startOver': '別のリカバリーフレーズを使う',
 };
 
 export default ja;

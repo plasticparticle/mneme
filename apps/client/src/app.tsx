@@ -20,6 +20,7 @@ import { ImportDayOneSheet } from './ui/ImportDayOne';
 import { TemplatesSheet } from './ui/Templates';
 import { SearchSheet } from './ui/Search';
 import { PreferencesSheet } from './ui/Preferences';
+import { PendingApproval } from './ui/PendingApproval';
 import { DeleteJournalSheet } from './ui/DeleteJournal';
 import { AiSettingsSheet } from './ui/AiSettings';
 import { AskJournalSheet } from './ui/AskJournal';
@@ -220,7 +221,7 @@ function MobileNav({ flow, setFlow, onCompose, onSettings, onSearch }: {
 export function App(): VNode {
   const desk = useIsDesktop();
   const theme = useTheme();
-  const { status, hasVault, vaultMethod, ownerId, bootstrapping, entries, journals, templates, aiSettings, newJournal, updateJournal, deleteJournal, signIn, unlock, unlockWithKey, setDeviceUnlock, lock, createEntry, rotatePhrase, deleteVault } = useAppData();
+  const { status, hasVault, vaultMethod, ownerId, pendingApproval, approvalHint, retryApproval, bootstrapping, entries, journals, templates, aiSettings, newJournal, updateJournal, deleteJournal, signIn, unlock, unlockWithKey, setDeviceUnlock, lock, createEntry, rotatePhrase, deleteVault } = useAppData();
   const [flow, setFlowRaw] = useState<Flow>('journals');
   const [modal, setModal] = useState(false);
   const [rotateOpen, setRotateOpen] = useState(false);
@@ -291,6 +292,19 @@ export function App(): VNode {
       <div style={{ height: '100%' }}>
         <Onboarding desk={desk} hasVault={hasVault} unlockMethod={vaultMethod} onEnter={signIn} onUnlock={unlock} onUnlockWithKey={unlockWithKey} />
       </div>
+    );
+  }
+
+  // The relay (REQUIRE_APPROVAL) accepted this device but the operator hasn't
+  // approved the vault yet — block the app behind the pending screen until they do.
+  if (pendingApproval) {
+    return (
+      <PendingApproval
+        hint={approvalHint}
+        checking={status === 'connecting'}
+        onRetry={retryApproval}
+        onSignOut={lock}
+      />
     );
   }
 

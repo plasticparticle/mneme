@@ -4,7 +4,20 @@ import { deriveIdentity, signWithDevice, type Identity } from '../crypto/keys';
 import { mnemonicToSeed } from '../crypto/mnemonic';
 import { toBase64, fromBase64 } from '../crypto/base64';
 import { concat, utf8 } from '../crypto/bytes';
-import type { RelayClient } from './relay';
+import { RelayError, type RelayClient } from './relay';
+
+/**
+ * The relay accepted the device but the operator has not approved this vault
+ * (REQUIRE_APPROVAL). The identity is valid — the caller should show the
+ * "pending approval" state (quoting identity.approvalHint) and retry later,
+ * NOT treat this as a plain network failure.
+ */
+export class PendingApprovalError extends Error {
+  constructor() {
+    super('vault pending operator approval');
+    this.name = 'PendingApprovalError';
+  }
+}
 
 export interface Session {
   token: string;
@@ -24,15 +37,30 @@ const REGISTER_PREFIX = utf8('mneme:register:');
 export async function authenticate(relay: RelayClient, identity: Identity): Promise<Session> {
   const regMsg = concat(REGISTER_PREFIX, identity.ownerPub, identity.devicePub);
   const regSig = signWithDevice(identity.devicePriv, regMsg);
-  const { device_id } = await relay.register(
+  const { device_id, status } = await relay.register(
     toBase64(identity.ownerPub),
     toBase64(identity.devicePub),
     toBase64(regSig),
+    identity.approvalHint,
   );
+
+  // Approval-gated relay: don't bother exchanging a challenge we can't complete —
+  // surface pending straight away so the UI can show the approval screen.
+  if (status && status !== 'approved') {
+    throw new PendingApprovalError();
+  }
 
   const { challenge } = await relay.challenge(device_id);
   const challengeSig = signWithDevice(identity.devicePriv, fromBase64(challenge));
-  const { token, owner_id } = await relay.verify(device_id, challenge, toBase64(challengeSig));
+  let verified;
+  try {
+    verified = await relay.verify(device_id, challenge, toBase64(challengeSig));
+  } catch (e) {
+    // A 403 here means the same thing (older relay without the register status
+    // field, or an owner rejected between register and verify).
+    if (e instanceof RelayError && e.status === 403) throw new PendingApprovalError();
+    throw e;
+  }
 
-  return { token, ownerId: owner_id, deviceId: device_id, identity };
+  return { token: verified.token, ownerId: verified.owner_id, deviceId: device_id, identity };
 }

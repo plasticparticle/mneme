@@ -4,6 +4,8 @@
 export interface RegisterResp {
   owner_id: string;
   device_id: string;
+  /** 'approved' | 'pending' | 'rejected'. Absent on relays predating approval. */
+  status?: string;
 }
 export interface ChallengeResp {
   challenge: string;
@@ -61,8 +63,13 @@ export class RelayClient {
     this.baseUrl = baseUrl.replace(/\/+$/, '');
   }
 
-  register(ownerPubkey: string, devicePubkey: string, signature: string): Promise<RegisterResp> {
-    return this.post('/v1/register', { owner_pubkey: ownerPubkey, device_pubkey: devicePubkey, signature });
+  register(ownerPubkey: string, devicePubkey: string, signature: string, approvalHint?: string): Promise<RegisterResp> {
+    return this.post('/v1/register', {
+      owner_pubkey: ownerPubkey,
+      device_pubkey: devicePubkey,
+      signature,
+      approval_hint: approvalHint ?? '',
+    });
   }
 
   challenge(deviceId: string): Promise<ChallengeResp> {

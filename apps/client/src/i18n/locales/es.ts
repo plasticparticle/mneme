@@ -716,6 +716,15 @@ const es: Partial<Record<MessageKey, string>> = {
   'shell.iosNotice.body':
     'Para proteger tu privacidad, el iPhone y el iPad borran automáticamente los datos sin conexión de una aplicación web tras unos 7 días de inactividad. Tu diario permanece cifrado de extremo a extremo en el servidor, así que solo tienes que volver a iniciar sesión para restaurarlo. Una aplicación nativa para iOS está en camino.',
   'shell.iosNotice.dismiss': 'Cerrar',
+  'pending.title': 'Ya casi',
+  'pending.lead':
+    'Este servidor aprueba los diarios nuevos a mano. El tuyo está esperando a que el operador lo admita.',
+  'pending.hintLabel': 'Tu código de aprobación',
+  'pending.hintHelp':
+    'Dale este código al operador para que reconozca tu diario. Proviene de tu frase de recuperación: guárdalos juntos.',
+  'pending.checkAgain': 'Comprobar de nuevo',
+  'pending.checking': 'Comprobando…',
+  'pending.startOver': 'Usar otra frase de recuperación',
 };
 
 export default es;

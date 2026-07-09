@@ -704,6 +704,15 @@ const fr: Partial<Record<MessageKey, string>> = {
   'shell.iosNotice.body':
     'Pour protéger votre vie privée, l’iPhone et l’iPad effacent automatiquement les données hors ligne d’une application web après environ 7 jours d’inactivité. Votre journal reste chiffré de bout en bout sur le serveur : reconnectez-vous simplement pour le restaurer. Une application iOS native est en préparation.',
   'shell.iosNotice.dismiss': 'Fermer',
+  'pending.title': 'Presque terminé',
+  'pending.lead':
+    'Ce serveur valide les nouveaux journaux à la main. Le vôtre attend que l’opérateur l’autorise.',
+  'pending.hintLabel': 'Votre code d’approbation',
+  'pending.hintHelp':
+    'Donnez ce code à l’opérateur pour qu’il repère votre journal. Il provient de votre phrase de récupération — gardez les deux ensemble.',
+  'pending.checkAgain': 'Vérifier à nouveau',
+  'pending.checking': 'Vérification…',
+  'pending.startOver': 'Utiliser une autre phrase de récupération',
 };
 
 export default fr;

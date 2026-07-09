@@ -20,6 +20,33 @@ recurring reflection stays continuous.
 
 ---
 
+## What it looks like
+
+A warm, paper-coloured place to think — on a big screen and in your pocket. (Six theme skins and
+dark mode included; this is the default "Paper" look.)
+
+**The editor.** A zen writing surface with a quiet toolbar and a `/` command palette — headings,
+checklists, tables, code, KaTeX math, galleries, and cross-entry links, every bit of it encrypted
+before it leaves the device:
+
+![The Mneme editor on desktop: a three-pane layout with notebooks, an entry list, and a serif writing surface showing rich text, inline math, and lists.](docs/screenshots/desktop-editor.png)
+
+**The calendar.** A month grid with your entries in place, a day view beside it, and a writing
+heatmap for the season:
+
+![The calendar on desktop: a June month grid with entries on their days, a selected day showing its entry, and a writing heatmap.](docs/screenshots/desktop-calendar.png)
+
+**And on your phone.** The same app, responsive down to a mobile shell with bottom navigation —
+installable as a PWA today, native shells on the way:
+
+<p align="center">
+  <img src="docs/screenshots/mobile-journal.png" alt="A notebook on mobile: the Tutorial journal's entry timeline with previews and dates." width="44%">
+  &nbsp;&nbsp;&nbsp;
+  <img src="docs/screenshots/mobile-editor.png" alt="The editor on mobile: an entry with rendered KaTeX math formulas and the floating formatting toolbar." width="44%">
+</p>
+
+---
+
 ## Why this exists
 
 Your journal is the most honest thing you own. It's where the unfiltered version of you lives — the

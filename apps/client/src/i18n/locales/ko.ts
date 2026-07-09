@@ -655,7 +655,7 @@ const ko: Partial<Record<MessageKey, string>> = {
   'pending.lead': '이 서버는 새 일기를 수동으로 승인합니다. 회원님의 일기는 운영자가 허용하기를 기다리고 있습니다.',
   'pending.hintLabel': '승인 코드',
   'pending.hintHelp':
-    '이 코드를 운영자에게 알려주면 회원님의 일기를 알아볼 수 있습니다. 복구 문구에서 생성되므로 둘을 함께 보관하세요.',
+    '이 코드를 운영자에게 알려주면 회원님의 일기를 알아볼 수 있습니다. 이는 볼트의 단방향 지문으로, 공유해도 안전하며 복구 문구를 되찾는 데는 사용할 수 없습니다.',
   'pending.checkAgain': '다시 확인',
   'pending.checking': '확인 중…',
   'pending.startOver': '다른 복구 문구 사용',

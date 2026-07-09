@@ -707,7 +707,7 @@ const nl: Partial<Record<MessageKey, string>> = {
     'Deze server keurt nieuwe dagboeken met de hand goed. Dat van jou wacht tot de beheerder het toelaat.',
   'pending.hintLabel': 'Je goedkeuringscode',
   'pending.hintHelp':
-    'Geef deze code aan de beheerder zodat die je dagboek kan herkennen. Hij komt uit je herstelzin — bewaar ze samen.',
+    'Geef deze code aan de beheerder zodat die je dagboek kan herkennen. Het is een eenrichtingsvingerafdruk van je kluis — veilig te delen en niet te gebruiken om je herstelzin te achterhalen.',
   'pending.checkAgain': 'Opnieuw controleren',
   'pending.checking': 'Bezig met controleren…',
   'pending.startOver': 'Een andere herstelzin gebruiken',

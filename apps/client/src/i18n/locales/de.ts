@@ -721,7 +721,7 @@ const de: Partial<Record<MessageKey, string>> = {
     'Dieser Server gibt neue Journale von Hand frei. Deins wartet darauf, dass der Betreiber es hereinlässt.',
   'pending.hintLabel': 'Dein Freigabecode',
   'pending.hintHelp':
-    'Gib dem Betreiber diesen Code, damit er dein Journal erkennt. Er stammt aus deiner Wiederherstellungsphrase — bewahre beides zusammen auf.',
+    'Gib dem Betreiber diesen Code, damit er dein Journal erkennt. Er ist ein Einweg-Fingerabdruck deines Tresors — gefahrlos teilbar und lässt sich nicht nutzen, um deine Wiederherstellungsphrase zurückzugewinnen.',
   'pending.checkAgain': 'Erneut prüfen',
   'pending.checking': 'Wird geprüft…',
   'pending.startOver': 'Andere Wiederherstellungsphrase verwenden',

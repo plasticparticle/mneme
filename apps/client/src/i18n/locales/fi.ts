@@ -711,6 +711,15 @@ const fi: Partial<Record<MessageKey, string>> = {
   'shell.iosNotice.body':
     'Yksityisyytesi suojaamiseksi iPhone ja iPad tyhjentävät verkkosovelluksen offline-tiedot automaattisesti noin 7 käyttämättömän päivän jälkeen. Päiväkirjasi säilyy palvelimella päästä päähän salattuna, joten palauta se vain kirjautumalla uudelleen sisään. Natiivi iOS-sovellus on tekeillä.',
   'shell.iosNotice.dismiss': 'Sulje',
+  'pending.title': 'Melkein valmista',
+  'pending.lead':
+    'Tämä palvelin hyväksyy uudet päiväkirjat käsin. Sinun päiväkirjasi odottaa, että ylläpitäjä päästää sen sisään.',
+  'pending.hintLabel': 'Hyväksyntäkoodisi',
+  'pending.hintHelp':
+    'Anna tämä koodi ylläpitäjälle, jotta hän tunnistaa päiväkirjasi. Se johdetaan palautuslauseestasi — säilytä ne yhdessä.',
+  'pending.checkAgain': 'Tarkista uudelleen',
+  'pending.checking': 'Tarkistetaan…',
+  'pending.startOver': 'Käytä toista palautuslausetta',
 };
 
 export default fi;

@@ -8,6 +8,7 @@ import { sha256 } from '@noble/hashes/sha256';
 import { ed25519, x25519 } from '@noble/curves/ed25519';
 import { utf8 } from './bytes';
 import { toBase64Url } from './base64';
+import { HINT_ADJECTIVES, HINT_NOUNS } from './hintwords';
 
 const SALT = utf8('journal-v1');
 const KEY_LEN = 32;
@@ -23,6 +24,14 @@ export interface Identity {
   ownerPub: Uint8Array;
   /** base64url(sha256(ownerPub)) — must match the relay's derivation. */
   ownerId: string;
+  /**
+   * Memorable, non-secret operator hint derived one-way from the seed (like a
+   * friendly sibling of ownerId), e.g. "amber-otter-07". Sent at registration so
+   * an operator running REQUIRE_APPROVAL can tell which pending vault is which;
+   * shown to the user so they can quote it. Never used for auth. See
+   * crypto/hintwords.ts and docs/SECURITY.md (accepted leaks).
+   */
+  approvalHint: string;
   /** Ed25519 device private key (seed) for challenge-response auth. */
   devicePriv: Uint8Array;
   /** Ed25519 device public key. */
@@ -51,9 +60,24 @@ export function deriveIdentity(seed: Uint8Array): Identity {
     aiKey,
     ownerPub,
     ownerId: toBase64Url(sha256(ownerPub)),
+    approvalHint: deriveApprovalHint(seed),
     devicePriv: deviceSeed,
     devicePub,
   };
+}
+
+/**
+ * Derive the memorable operator hint from the seed: 3 HKDF bytes → an adjective,
+ * a noun, and a two-digit number, e.g. "amber-otter-07". Deterministic (the same
+ * mnemonic always yields the same hint) and one-way, so it reveals nothing about
+ * the seed — exactly like ownerId.
+ */
+export function deriveApprovalHint(seed: Uint8Array): string {
+  const b = hkdf(sha256, seed, SALT, utf8('approval-hint'), 3);
+  const adj = HINT_ADJECTIVES[b[0] % HINT_ADJECTIVES.length];
+  const noun = HINT_NOUNS[b[1] % HINT_NOUNS.length];
+  const num = (b[2] % 100).toString().padStart(2, '0');
+  return `${adj}-${noun}-${num}`;
 }
 
 /** Ed25519 signature for challenge-response auth and registration. */

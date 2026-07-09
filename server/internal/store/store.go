@@ -38,11 +38,22 @@ func (s *Store) Migrate(ctx context.Context) error { return Migrate(ctx, s.pool)
 
 // ── Owners & devices ────────────────────────────────────────────────────────
 
+// Owner approval states (migration 0003). An owner may authenticate only while
+// StatusApproved. With REQUIRE_APPROVAL off, owners are created approved.
+const (
+	OwnerStatusPending  = "pending"
+	OwnerStatusApproved = "approved"
+	OwnerStatusRejected = "rejected"
+)
+
 // RegisterOwnerDevice creates the owner if absent (trust-on-first-use) and binds
-// the device to it. Idempotent: re-registering the same keys is a no-op.
-// ownerCreated reports whether this call created a brand-new owner (vault), so
-// the caller can count vault creations without storing who created what.
-func (s *Store) RegisterOwnerDevice(ctx context.Context, ownerID string, ownerPub []byte, deviceID string, devicePub []byte) (ownerCreated bool, err error) {
+// the device to it. Idempotent: re-registering the same keys is a no-op — in
+// particular ON CONFLICT DO NOTHING means status/hint are set only when the owner
+// is first created and never overwritten (an approved owner can't be silently
+// reset to pending by re-registering). ownerCreated reports whether this call
+// created a brand-new owner (vault), so the caller can count vault creations
+// without storing who created what.
+func (s *Store) RegisterOwnerDevice(ctx context.Context, ownerID string, ownerPub []byte, deviceID string, devicePub []byte, status, approvalHint string) (ownerCreated bool, err error) {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return false, err
@@ -50,8 +61,9 @@ func (s *Store) RegisterOwnerDevice(ctx context.Context, ownerID string, ownerPu
 	defer tx.Rollback(ctx) //nolint:errcheck // rollback after commit is a no-op
 
 	tag, err := tx.Exec(ctx,
-		`INSERT INTO owners (owner_id, owner_pubkey) VALUES ($1, $2) ON CONFLICT (owner_id) DO NOTHING`,
-		ownerID, ownerPub)
+		`INSERT INTO owners (owner_id, owner_pubkey, status, approval_hint)
+		 VALUES ($1, $2, $3, $4) ON CONFLICT (owner_id) DO NOTHING`,
+		ownerID, ownerPub, status, approvalHint)
 	if err != nil {
 		return false, err
 	}
@@ -62,6 +74,28 @@ func (s *Store) RegisterOwnerDevice(ctx context.Context, ownerID string, ownerPu
 		return false, err
 	}
 	return ownerCreated, tx.Commit(ctx)
+}
+
+// OwnerStatus returns an owner's approval status, or ErrNotFound if it is absent.
+func (s *Store) OwnerStatus(ctx context.Context, ownerID string) (string, error) {
+	var status string
+	err := s.pool.QueryRow(ctx, `SELECT status FROM owners WHERE owner_id = $1`, ownerID).Scan(&status)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", ErrNotFound
+	}
+	return status, err
+}
+
+// SetOwnerStatus records an operator's approve/reject decision. found=false when
+// no such owner exists. Enforcement is immediate: the auth middleware reads the
+// live status on every request, so a rejected owner is cut off on its next call
+// rather than when its session eventually expires.
+func (s *Store) SetOwnerStatus(ctx context.Context, ownerID, status string) (found bool, err error) {
+	tag, err := s.pool.Exec(ctx, `UPDATE owners SET status = $2 WHERE owner_id = $1`, ownerID, status)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() == 1, nil
 }
 
 var ErrNotFound = errors.New("not found")
@@ -105,15 +139,19 @@ func (s *Store) CreateSession(ctx context.Context, tokenHash []byte, deviceID, o
 	return err
 }
 
-// LookupSession returns the owner/device for a valid, unexpired session token hash.
-func (s *Store) LookupSession(ctx context.Context, tokenHash []byte) (ownerID, deviceID string, err error) {
+// LookupSession returns the owner/device (and the owner's live approval status)
+// for a valid, unexpired session token hash. The status ride-along lets the auth
+// middleware enforce approval/revocation on every request without a second query.
+func (s *Store) LookupSession(ctx context.Context, tokenHash []byte) (ownerID, deviceID, status string, err error) {
 	err = s.pool.QueryRow(ctx,
-		`SELECT owner_id, device_id FROM sessions WHERE token_hash = $1 AND expires_at > now()`,
-		tokenHash).Scan(&ownerID, &deviceID)
+		`SELECT s.owner_id, s.device_id, o.status
+		   FROM sessions s JOIN owners o ON o.owner_id = s.owner_id
+		  WHERE s.token_hash = $1 AND s.expires_at > now()`,
+		tokenHash).Scan(&ownerID, &deviceID, &status)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return "", "", ErrNotFound
+		return "", "", "", ErrNotFound
 	}
-	return ownerID, deviceID, err
+	return ownerID, deviceID, status, err
 }
 
 // ── Account deletion (mnemonic rotation) ────────────────────────────────────

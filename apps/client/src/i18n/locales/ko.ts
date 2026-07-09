@@ -651,6 +651,14 @@ const ko: Partial<Record<MessageKey, string>> = {
   'shell.iosNotice.body':
     '개인정보 보호를 위해 iPhone과 iPad는 약 7일 동안 사용하지 않은 웹 앱의 오프라인 데이터를 자동으로 삭제합니다. 일기는 서버에 종단 간 암호화된 상태로 유지되므로 다시 로그인하기만 하면 복원됩니다. 네이티브 iOS 앱도 준비 중입니다.',
   'shell.iosNotice.dismiss': '닫기',
+  'pending.title': '거의 다 됐어요',
+  'pending.lead': '이 서버는 새 일기를 수동으로 승인합니다. 회원님의 일기는 운영자가 허용하기를 기다리고 있습니다.',
+  'pending.hintLabel': '승인 코드',
+  'pending.hintHelp':
+    '이 코드를 운영자에게 알려주면 회원님의 일기를 알아볼 수 있습니다. 복구 문구에서 생성되므로 둘을 함께 보관하세요.',
+  'pending.checkAgain': '다시 확인',
+  'pending.checking': '확인 중…',
+  'pending.startOver': '다른 복구 문구 사용',
 };
 
 export default ko;

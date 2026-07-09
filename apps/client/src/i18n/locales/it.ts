@@ -722,6 +722,15 @@ const it: Partial<Record<MessageKey, string>> = {
   'shell.iosNotice.body':
     'Per tutelare la tua privacy, iPhone e iPad cancellano automaticamente i dati offline di un’app web dopo circa 7 giorni di inattività. Il tuo diario resta cifrato end-to-end sul server, quindi ti basta accedere di nuovo per ripristinarlo. Un’app iOS nativa è in arrivo.',
   'shell.iosNotice.dismiss': 'Chiudi',
+  'pending.title': 'Ci siamo quasi',
+  'pending.lead':
+    'Questo server approva i nuovi diari a mano. Il tuo è in attesa che l’operatore lo ammetta.',
+  'pending.hintLabel': 'Il tuo codice di approvazione',
+  'pending.hintHelp':
+    'Fornisci questo codice all’operatore così può individuare il tuo diario. Deriva dalla tua frase di recupero — conservali insieme.',
+  'pending.checkAgain': 'Controlla di nuovo',
+  'pending.checking': 'Controllo…',
+  'pending.startOver': 'Usa un’altra frase di recupero',
 };
 
 export default it;

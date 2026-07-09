@@ -651,6 +651,14 @@ const zh: Partial<Record<MessageKey, string>> = {
   'shell.iosNotice.body':
     '为保护你的隐私，iPhone 和 iPad 会在网页应用约 7 天未使用后自动清除其离线数据。你的日记在服务器上始终采用端到端加密，只需重新登录即可恢复。原生 iOS 应用也正在开发中。',
   'shell.iosNotice.dismiss': '关闭',
+  'pending.title': '就快好了',
+  'pending.lead': '此服务器会手动批准新日记。你的日记正在等待管理员放行。',
+  'pending.hintLabel': '你的批准码',
+  'pending.hintHelp':
+    '把这个码给管理员，让其能认出你的日记。它由你的恢复短语生成——请把两者放在一起保管。',
+  'pending.checkAgain': '重新检查',
+  'pending.checking': '正在检查…',
+  'pending.startOver': '使用其他恢复短语',
 };
 
 export default zh;

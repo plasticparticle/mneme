@@ -34,6 +34,8 @@ the auth model.
 | GET | `/admin/stats` | 🔑 | aggregate stats JSON (`Bearer <ADMIN_TOKEN>`) |
 | GET | `/admin/version` | 🔑 | running build vs. latest GitHub release |
 | DELETE | `/admin/vaults/{id}` | 🔑 | operator vault wipe (requires `{"confirm":"delete"}` body) |
+| POST | `/admin/owners/{id}/approve` | 🔑 | approve a pending vault (`REQUIRE_APPROVAL`) |
+| POST | `/admin/owners/{id}/reject` | 🔑 | reject / revoke a vault (immediate) |
 | GET | `/admin/backups` | 🔑 | backup service status + stored archive listing |
 | POST | `/admin/backups` | 🔑 | trigger a backup now (202, runs detached) |
 | GET | `/admin/backups/{name}` | 🔑 | download one archive (gzip tar) |
@@ -49,14 +51,21 @@ Errors are `{ "error": "message" }` with an appropriate status (400/401/404/500)
 
 ### `POST /v1/register`
 The device signs `"mneme:register:" || ownerPub || devicePub` (Ed25519) to prove key possession.
+`approval_hint` is optional — a short `[a-z0-9-]{0,32}` code the client derives from the seed (e.g.
+`amber-otter-07`), only used when the relay runs with `REQUIRE_APPROVAL` (see "Admin"); it is not a
+secret and never free text.
 ```jsonc
 // request
 { "owner_pubkey": "<base64 X25519, 32B>",
   "device_pubkey": "<base64 Ed25519, 32B>",
-  "signature":     "<base64 Ed25519 sig>" }
+  "signature":     "<base64 Ed25519 sig>",
+  "approval_hint": "amber-otter-07" }   // optional
 // 200
-{ "owner_id": "<base64url>", "device_id": "<base64url>" }
+{ "owner_id": "<base64url>", "device_id": "<base64url>",
+  "status": "approved" }                // "pending" on a REQUIRE_APPROVAL relay
 ```
+On a `REQUIRE_APPROVAL` relay a new owner is `pending`: `/v1/auth/verify` then returns `403` (after
+the signature verifies) and every authenticated call `403`s until the operator approves the vault.
 
 ### `POST /v1/auth/challenge`
 ```jsonc
@@ -193,12 +202,14 @@ Requires `Authorization: Bearer <ADMIN_TOKEN>` (constant-time compared; wrong to
 {
   "totals":  { "vaults": 4, "devices": 6, "records": 120, "record_bytes": 51234,
                "media_objects": 9, "media_bytes": 20801466 },
-  "vaults":  [ { "vault": "GGnnHixG…", "created_at": "…", "devices": 1,
+  "vaults":  [ { "vault": "GGnnHixG…", "owner_id": "…", "status": "approved",
+                 "approval_hint": "amber-otter-07", "created_at": "…", "devices": 1,
                  "records": 4, "record_bytes": 6798,
                  "media_objects": 6, "media_bytes": 16599319, "last_activity": "…" } ],
   "daily":   [ { "day": "2026-06-12", "counts": { "requests": 23, "requests_failed": 2,
                  "records_created": 2, "media_uploaded": 1, "media_bytes": 1048576,
                  "vaults_created": 3, "vaults_deleted": 1 } } ],
+  "require_approval": false,
   "runtime": { "started_at": "…", "uptime_seconds": 45, "requests": 23,
                "failed_4xx": 1, "failed_5xx": 1, "avg_latency_ms": 2.3, "max_latency_ms": 10.1 }
 }
@@ -257,6 +268,28 @@ its S3 chunks, reminders, push subscriptions, devices, and sessions. It does **n
 device's local copy — the relay has no access to clients, by design — and the same recovery phrase
 can re-register afterwards as an empty vault (TOFU). The dashboard exposes this per vault row behind
 a type-"delete" modal.
+
+### `POST /admin/owners/{id}/approve` · `POST /admin/owners/{id}/reject` → `204 No Content`
+
+Operator approval controls, meaningful when the relay runs with **`REQUIRE_APPROVAL=true`** (an
+opt-in, default off). With it on, a newly registered owner is created **`pending`** and cannot obtain
+a session (nor make any authenticated call) until approved. `{id}` is the full `owner_id`;
+`/admin/stats` reports each vault's `status` and `approval_hint`, and `require_approval` at the top.
+
+- **approve** sets the vault to `approved` — it can now authenticate normally.
+- **reject** sets it to `rejected`. Enforcement is **immediate**: the auth middleware reads live
+  status on every request, so an already-signed-in owner is cut off on its next call (not when its
+  session expires). Rejecting keeps the vault's (opaque) data; use `DELETE /admin/vaults/{id}` to wipe.
+
+404 when the owner doesn't exist. Owners that already existed when `REQUIRE_APPROVAL` was first
+enabled are grandfathered to `approved` (migration `0003`), so turning it on never locks anyone out.
+
+Why this exists: the mnemonic is the account (no signup), so an open relay lets anyone store their own
+(encrypted) journals on it. `REQUIRE_APPROVAL` makes the relay single-tenant (or hand-picked) at the
+layer that matters — the API — rather than wrapping the whole site in a network auth gate, which
+would break the PWA's install and offline sync. The `approval_hint` (a memorable `[a-z0-9-]` code the
+client derives from the seed, e.g. `amber-otter-07`) lets the operator tell one pending vault from
+another; the user reads it off their in-app "pending approval" screen. See SECURITY.md.
 
 Authorization note: vault deletion is two strictly separated capabilities. A **user session** can
 only ever delete its own vault — `DELETE /v1/account` takes no vault id; the owner comes from the

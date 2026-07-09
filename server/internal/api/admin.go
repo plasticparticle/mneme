@@ -6,6 +6,8 @@ import (
 	"log"
 	"net/http"
 	"time"
+
+	"github.com/plasticparticle/mneme/server/internal/store"
 )
 
 // The admin surface shows only what the relay already stores as accepted
@@ -73,6 +75,8 @@ func (s *Server) handleAdminStats(w http.ResponseWriter, r *http.Request) {
 	type vaultRow struct {
 		Vault        string     `json:"vault"`    // truncated opaque id for display, not an identity
 		OwnerID      string     `json:"owner_id"` // full opaque id — needed to address a vault for deletion
+		Status       string     `json:"status"`   // pending | approved | rejected
+		ApprovalHint string     `json:"approval_hint"`
 		CreatedAt    time.Time  `json:"created_at"`
 		Devices      int64      `json:"devices"`
 		Records      int64      `json:"records"`
@@ -106,6 +110,8 @@ func (s *Server) handleAdminStats(w http.ResponseWriter, r *http.Request) {
 		rows = append(rows, vaultRow{
 			Vault:        vaultLabel(v.OwnerID),
 			OwnerID:      v.OwnerID,
+			Status:       v.Status,
+			ApprovalHint: v.ApprovalHint,
 			CreatedAt:    v.CreatedAt.UTC(),
 			Devices:      v.Devices,
 			Records:      v.Records,
@@ -122,11 +128,42 @@ func (s *Server) handleAdminStats(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{
-		"totals":  t,
-		"vaults":  rows,
-		"daily":   days,
-		"runtime": s.metrics.runtime(),
+		"totals":           t,
+		"vaults":           rows,
+		"daily":            days,
+		"runtime":          s.metrics.runtime(),
+		"require_approval": s.cfg.RequireApproval,
 	})
+}
+
+// setOwnerStatus is the shared body of the approve/reject admin endpoints.
+func (s *Server) setOwnerStatus(w http.ResponseWriter, r *http.Request, status string) {
+	ownerID := r.PathValue("id")
+	found, err := s.store.SetOwnerStatus(r.Context(), ownerID, status)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "status update failed")
+		return
+	}
+	if !found {
+		writeError(w, http.StatusNotFound, "no such vault")
+		return
+	}
+	log.Printf("admin: vault %s -> %s", vaultLabel(ownerID), status)
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// POST /admin/owners/{id}/approve — let a pending (or previously rejected) vault
+// authenticate. Only meaningful when REQUIRE_APPROVAL gated it in the first place;
+// harmless otherwise (owners are already approved).
+func (s *Server) handleAdminApproveOwner(w http.ResponseWriter, r *http.Request) {
+	s.setOwnerStatus(w, r, store.OwnerStatusApproved)
+}
+
+// POST /admin/owners/{id}/reject — deny a vault. Enforcement is immediate: the
+// auth middleware reads the live status, so an already-signed-in owner is cut off
+// on its next request. Rejecting keeps the (opaque) data; use DELETE to wipe it.
+func (s *Server) handleAdminRejectOwner(w http.ResponseWriter, r *http.Request) {
+	s.setOwnerStatus(w, r, store.OwnerStatusRejected)
 }
 
 // DELETE /admin/vaults/{id} — operator-initiated vault wipe (e.g. reclaiming

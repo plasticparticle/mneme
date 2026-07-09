@@ -702,6 +702,15 @@ const nl: Partial<Record<MessageKey, string>> = {
   'shell.iosNotice.body':
     'Om je privacy te beschermen wissen iPhone en iPad de offlinegegevens van een web-app automatisch na ongeveer 7 dagen zonder gebruik. Je dagboek blijft end-to-end versleuteld op de server, dus meld je gewoon opnieuw aan om het te herstellen. Een native iOS-app is in de maak.',
   'shell.iosNotice.dismiss': 'Sluiten',
+  'pending.title': 'Bijna klaar',
+  'pending.lead':
+    'Deze server keurt nieuwe dagboeken met de hand goed. Dat van jou wacht tot de beheerder het toelaat.',
+  'pending.hintLabel': 'Je goedkeuringscode',
+  'pending.hintHelp':
+    'Geef deze code aan de beheerder zodat die je dagboek kan herkennen. Hij komt uit je herstelzin — bewaar ze samen.',
+  'pending.checkAgain': 'Opnieuw controleren',
+  'pending.checking': 'Bezig met controleren…',
+  'pending.startOver': 'Een andere herstelzin gebruiken',
 };
 
 export default nl;

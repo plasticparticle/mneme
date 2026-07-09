@@ -7,6 +7,8 @@ import (
 	"encoding/base64"
 	"net/http"
 	"time"
+
+	"github.com/plasticparticle/mneme/server/internal/store"
 )
 
 const (
@@ -31,8 +33,17 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 		OwnerPubkey  string `json:"owner_pubkey"`  // base64, X25519 (32 bytes)
 		DevicePubkey string `json:"device_pubkey"` // base64, Ed25519 (32 bytes)
 		Signature    string `json:"signature"`     // base64, device-signed registerMessage
+		// Optional operator hint (only meaningful when REQUIRE_APPROVAL is on): a
+		// short code the client DERIVES from the seed so the operator can tell which
+		// pending vault is which. Constrained to [a-z0-9-]{0,32} so it can never carry
+		// markup or free-form text — it is not a secret and not user-typed.
+		ApprovalHint string `json:"approval_hint"`
 	}
 	if !decodeJSON(w, r, &req) {
+		return
+	}
+	if !validApprovalHint(req.ApprovalHint) {
+		writeError(w, http.StatusBadRequest, "approval_hint must match [a-z0-9-]{0,32}")
 		return
 	}
 
@@ -58,7 +69,13 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 
 	ownerID := deriveID(ownerPub)
 	deviceID := deriveID(devicePub)
-	ownerCreated, err := s.store.RegisterOwnerDevice(r.Context(), ownerID, ownerPub, deviceID, devicePub)
+	// A brand-new owner is 'pending' when approval is required, else 'approved'.
+	// (The status is applied only if this creates the owner — see the store.)
+	status := store.OwnerStatusApproved
+	if s.cfg.RequireApproval {
+		status = store.OwnerStatusPending
+	}
+	ownerCreated, err := s.store.RegisterOwnerDevice(r.Context(), ownerID, ownerPub, deviceID, devicePub, status, req.ApprovalHint)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "registration failed")
 		return
@@ -66,7 +83,34 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 	if ownerCreated {
 		s.metrics.bump(metricVaultsCreated, 1)
 	}
-	writeJSON(w, http.StatusOK, map[string]string{"owner_id": ownerID, "device_id": deviceID})
+	// Report the owner's effective status so the client can show a "pending
+	// approval" screen instead of failing an auth it can't yet pass. For an owner
+	// that already existed we return its live status, not the would-be initial one.
+	effective := status
+	if !ownerCreated {
+		if cur, err := s.store.OwnerStatus(r.Context(), ownerID); err == nil {
+			effective = cur
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]string{
+		"owner_id":  ownerID,
+		"device_id": deviceID,
+		"status":    effective,
+	})
+}
+
+// validApprovalHint enforces the constrained charset for the operator hint.
+// Empty is always valid (the field is optional / unused when approval is off).
+func validApprovalHint(h string) bool {
+	if len(h) > 32 {
+		return false
+	}
+	for _, c := range h {
+		if !((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-') {
+			return false
+		}
+	}
+	return true
 }
 
 // POST /v1/auth/challenge
@@ -126,6 +170,14 @@ func (s *Server) handleVerify(w http.ResponseWriter, r *http.Request) {
 	}
 	if !ed25519.Verify(ed25519.PublicKey(pub), challenge, sig) {
 		writeError(w, http.StatusUnauthorized, "signature does not verify")
+		return
+	}
+	// Approval gate: don't mint a session for an owner the operator hasn't approved.
+	// Checked only after the signature verifies, so it never reveals an owner's
+	// status to a caller that doesn't hold the device key. The client turns this
+	// 403 into a "pending approval" screen rather than a hard error.
+	if status, err := s.store.OwnerStatus(r.Context(), ownerID); err == nil && status != store.OwnerStatusApproved {
+		writeError(w, http.StatusForbidden, "vault is pending operator approval")
 		return
 	}
 	// Single-use: consume the challenge only after the signature checks out.

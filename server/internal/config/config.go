@@ -16,8 +16,14 @@ type Config struct {
 	AdminToken  string // bearer token for /admin; empty disables the admin surface entirely
 	Version     string // build identifier, set by main (not from the environment)
 	UpdateCheck bool   // whether the admin surface may query GitHub for a newer release
-	S3          S3Config
-	Backup      BackupConfig
+	// RequireApproval gates new vaults behind operator approval. Off by default
+	// (open trust-on-first-use). When on, a newly registered owner is 'pending'
+	// and cannot authenticate until approved in /admin; owners already on the
+	// relay are grandfathered to 'approved' by migration 0003, so turning this on
+	// never locks out an existing user. See CLAUDE.md §3 / docs/API.md "Admin".
+	RequireApproval bool
+	S3              S3Config
+	Backup          BackupConfig
 }
 
 // S3Config is consumed by the (not-yet-wired) media blob coordination — §10 step 5.
@@ -48,7 +54,8 @@ func Load() Config {
 		CORSOrigins: env("CORS_ORIGINS", "*"),
 		AdminToken:  env("ADMIN_TOKEN", ""),
 		// Version is stamped in by main via -ldflags; not an env value.
-		UpdateCheck: envBool("UPDATE_CHECK", true),
+		UpdateCheck:     envBool("UPDATE_CHECK", true),
+		RequireApproval: envBool("REQUIRE_APPROVAL", false),
 		S3: S3Config{
 			Endpoint:  env("S3_ENDPOINT", ""),
 			AccessKey: env("S3_ACCESS_KEY", ""),

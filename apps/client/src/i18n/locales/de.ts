@@ -716,6 +716,15 @@ const de: Partial<Record<MessageKey, string>> = {
   'shell.iosNotice.body':
     'Zum Schutz deiner Privatsphäre löschen iPhone und iPad die Offline-Daten einer Web-App automatisch nach etwa 7 Tagen ohne Nutzung. Dein Journal bleibt Ende-zu-Ende-verschlüsselt auf dem Server – melde dich einfach wieder an, um es wiederherzustellen. Eine native iOS-App ist in Arbeit.',
   'shell.iosNotice.dismiss': 'Schließen',
+  'pending.title': 'Fast geschafft',
+  'pending.lead':
+    'Dieser Server gibt neue Journale von Hand frei. Deins wartet darauf, dass der Betreiber es hereinlässt.',
+  'pending.hintLabel': 'Dein Freigabecode',
+  'pending.hintHelp':
+    'Gib dem Betreiber diesen Code, damit er dein Journal erkennt. Er stammt aus deiner Wiederherstellungsphrase — bewahre beides zusammen auf.',
+  'pending.checkAgain': 'Erneut prüfen',
+  'pending.checking': 'Wird geprüft…',
+  'pending.startOver': 'Andere Wiederherstellungsphrase verwenden',
 };
 
 export default de;

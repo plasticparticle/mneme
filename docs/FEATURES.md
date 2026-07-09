@@ -127,6 +127,12 @@ server still can't read or use the key. Full analysis in
   (keyed by pseudonymous hashes, never names) and owner-less daily aggregate counters. It shows
   **health and growth, never people**, because the data to identify anyone simply isn't there.
 - **Operator vault deletion** — wipe a vault by id, behind a typed `"delete"` confirmation.
+- **New-vault approval** — because the mnemonic *is* the account (no signup), an open relay lets
+  anyone store their own encrypted journals on it. Set `REQUIRE_APPROVAL=true` and a new vault lands
+  **pending** and can't sync until you approve it in the dashboard — turning the relay single-tenant
+  (or hand-picked) without a separate login gate. Each pending vault shows a memorable code
+  (`amber-otter-07`) the user reads off their own "waiting for approval" screen, so you can tell which
+  is which. Existing vaults are grandfathered, and reject cuts a vault off immediately.
 - **Backups & disaster recovery** — one gzipped archive of every vault's ciphertext (no keys, no
   plaintext), via the dashboard *or* the `journald backup` / `restore` / `list-backups` CLI. See
   [MAINTENANCE.md](./MAINTENANCE.md).

@@ -8,7 +8,12 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="alternate icon" sizes="48x48" href="/favicon.ico" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
-    <link rel="manifest" href="/manifest.webmanifest" />
+    <!-- `crossorigin="use-credentials"` makes the browser send cookies with the
+         manifest request. Required when the app is served behind an auth gate
+         (e.g. Cloudflare Access): without it the credential-less manifest fetch
+         is bounced to the auth origin and the manifest silently fails to load,
+         so the PWA is not installable. Harmless on unauthenticated hosts. -->
+    <link rel="manifest" href="/manifest.webmanifest" crossorigin="use-credentials" />
     <!-- Fonts are self-hosted and bundled via @fontsource-variable (imported in
          src/main.tsx) — no external CDN, so the app works offline and under the
          Tauri custom-scheme origin. -->

@@ -46,6 +46,24 @@
 		# Everything else is the client SPA.
 		handle {
 			root * /srv
+
+			# Fingerprinted build output (/assets/*.<hash>.js|css) never changes
+			# under its hashed name — let clients cache it forever.
+			@assets path /assets/*
+			header @assets Cache-Control "public, max-age=31536000, immutable"
+
+			# Everything else — the HTML shell, the service worker (sw.js /
+			# registerSW.js / workbox-*.js), and the web manifest — must be
+			# revalidated on every launch. Without this Caddy/Chrome may serve a
+			# cached sw.js for up to 24h, so an installed PWA keeps running the old
+			# worker (and its precached shell) even after a cold restart. `no-cache`
+			# = store but always revalidate with the origin before use, so a new
+			# build is picked up on the next launch. (Header matchers evaluate on
+			# the original request path, before try_files rewrites to /index.html,
+			# so client-routed navigations get no-cache too.)
+			@revalidate not path /assets/*
+			header @revalidate Cache-Control "no-cache"
+
 			try_files {path} /index.html
 			file_server
 		}

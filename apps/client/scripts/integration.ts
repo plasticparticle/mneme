@@ -44,15 +44,25 @@ const applied = await pushEntries(relay, sessionA.token, idA.dataKey, [entry]);
 assert.ok(applied.has(entry.id), 'push should be applied');
 console.log('pushed entry', entry.id.slice(0, 8) + '…');
 
-// Stale clock is rejected (LWW).
-const stale = await pushEntries(relay, sessionA.token, idA.dataKey, [{ ...entry, updatedAt: now - 1000 }]);
-assert.ok(!stale.has(entry.id), 'stale clock must be rejected');
+// Regression: a retry with the SAME clock (the relay stored the entry but the
+// client never saw the ack — network drop, app killed before the dirty flag
+// cleared) must be acknowledged so the outbox can retire it. This used to
+// return an empty set forever and wedge the sync banner on "N changes".
+const retry = await pushEntries(relay, sessionA.token, idA.dataKey, [entry]);
+assert.ok(retry.has(entry.id), 'equal-clock retry must be acknowledged');
+
+// A stale clock is acknowledged too — the outbox must retire it either way —
+// but LWW keeps the newer stored copy (the pull below proves the rewrite lost).
+const stale = await pushEntries(relay, sessionA.token, idA.dataKey, [
+  { ...entry, title: 'stale rewrite that must lose', updatedAt: now - 1000 },
+]);
+assert.ok(stale.has(entry.id), 'stale push must be acknowledged');
 
 // Pull + decrypt on device A.
 const pulledA = await pullEntries(relay, sessionA.token, idA.dataKey, 0);
 const gotA = pulledA.entries.find((e) => e.id === entry.id);
 assert.ok(gotA, 'entry should come back on pull');
-assert.equal(gotA.title, entry.title);
+assert.equal(gotA.title, entry.title, 'LWW keeps the newer copy over the stale rewrite');
 assert.equal(gotA.bodyText, entry.bodyText);
 console.log('device A decrypted:', JSON.stringify(gotA.bodyText));
 

@@ -499,21 +499,26 @@ export function AppDataProvider({ children }: { children: ComponentChildren }): 
     const aiBatch = pendingAi.current;
     setSaving(true);
     try {
-      const applied = await pushEntries(relay, s.token, s.identity.dataKey, batch);
-      for (const id of applied) pending.current.delete(id);
-      // Clear the dirty flag locally for exactly the versions the relay accepted.
-      if (dbReady.current) void db.markSynced(batch.filter((e) => applied.has(e.id)));
-      const appliedTpl = await pushTemplates(relay, s.token, s.identity.dataKey, tplBatch);
-      for (const id of appliedTpl) pendingTemplates.current.delete(id);
-      if (dbReady.current) void db.markTemplatesSynced(tplBatch.filter((t) => appliedTpl.has(t.id)));
-      const appliedItv = await pushInterviewTypes(relay, s.token, s.identity.dataKey, itvBatch);
-      for (const id of appliedItv) pendingInterviewTypes.current.delete(id);
-      if (dbReady.current) void db.markInterviewTypesSynced(itvBatch.filter((t) => appliedItv.has(t.id)));
+      // Any per-record answer settles that record — applied, or rejected because
+      // the relay already holds this clock or newer (e.g. a retry after a lost
+      // ack). Retire exactly the snapshotted version: the identity check keeps an
+      // edit queued if it replaced the record while the push was in flight, same
+      // as the aiBatch guard below.
+      const acked = await pushEntries(relay, s.token, s.identity.dataKey, batch);
+      for (const e of batch) if (acked.has(e.id) && pending.current.get(e.id) === e) pending.current.delete(e.id);
+      // Clear the dirty flag locally for exactly the versions the relay settled.
+      if (dbReady.current) void db.markSynced(batch.filter((e) => acked.has(e.id)));
+      const ackedTpl = await pushTemplates(relay, s.token, s.identity.dataKey, tplBatch);
+      for (const t of tplBatch) if (ackedTpl.has(t.id) && pendingTemplates.current.get(t.id) === t) pendingTemplates.current.delete(t.id);
+      if (dbReady.current) void db.markTemplatesSynced(tplBatch.filter((t) => ackedTpl.has(t.id)));
+      const ackedItv = await pushInterviewTypes(relay, s.token, s.identity.dataKey, itvBatch);
+      for (const t of itvBatch) if (ackedItv.has(t.id) && pendingInterviewTypes.current.get(t.id) === t) pendingInterviewTypes.current.delete(t.id);
+      if (dbReady.current) void db.markInterviewTypesSynced(itvBatch.filter((t) => ackedItv.has(t.id)));
       // Journals push under their random wire record ids (§3 — the journal id
       // itself stays inside the ciphertext).
-      const appliedJrn = await pushJournals(relay, s.token, s.identity.dataKey, jrnBatch.map(journalToRecord));
-      const ackedJrn = jrnBatch.filter((j) => j.recordId && appliedJrn.has(j.recordId));
-      for (const j of ackedJrn) pendingJournals.current.delete(j.id);
+      const ackedRec = await pushJournals(relay, s.token, s.identity.dataKey, jrnBatch.map(journalToRecord));
+      const ackedJrn = jrnBatch.filter((j) => j.recordId && ackedRec.has(j.recordId));
+      for (const j of ackedJrn) if (pendingJournals.current.get(j.id) === j) pendingJournals.current.delete(j.id);
       if (dbReady.current) void db.markJournalsSynced(ackedJrn);
       if (aiBatch) {
         // Either outcome retires the queued record: accepted → it's on the relay;

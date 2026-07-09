@@ -111,6 +111,19 @@ export function useTheme(): ThemeControls {
     root.style.setProperty('--accent-ink', darken(accent, dark ? 0 : 0.16));
     root.style.setProperty('--accent-soft', hexA(accent, dark ? 0.2 : 0.12));
     root.style.setProperty('--accent-line', hexA(accent, 0.28));
+    // Keep the mobile browser chrome (Android status bar / iOS Safari) matching
+    // the page background of the active skin+mode, so it no longer shows the
+    // static light cream over a dark app. --paper is the base page background.
+    const paper = getComputedStyle(root).getPropertyValue('--paper').trim();
+    if (paper) {
+      let meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
+      if (!meta) {
+        meta = document.createElement('meta');
+        meta.name = 'theme-color';
+        document.head.appendChild(meta);
+      }
+      meta.content = paper;
+    }
   }, [dark, accent, skin]);
 
   const setMode = useCallback((m: ThemeMode) => {

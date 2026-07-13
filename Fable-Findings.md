@@ -43,9 +43,13 @@ account**, **(b) defense-in-depth that the project's own threat model assumes bu
 
 Ordered by severity. Each item: what it is, where, why it matters, and the fix.
 
+> Each finding is tracked as a GitHub issue ([#40](https://github.com/plasticparticle/mneme/issues/40)–[#57](https://github.com/plasticparticle/mneme/issues/57)) in
+> `plasticparticle/mneme`, labelled `security` + `severity:*` + `area:*`. The issue link sits at the
+> start of each item below.
+
 ### 🔴 High
 
-- [ ] **H1 — A device can be bound to an existing account without proving ownership of the account
+- [ ] [#40](https://github.com/plasticparticle/mneme/issues/40) · **H1 — A device can be bound to an existing account without proving ownership of the account
   key (account takeover / remote vault destruction).**
   `server/internal/api/auth.go:31-100` (`handleRegister`), `server/internal/store/store.go:56-77`
   (`RegisterOwnerDevice`). *This is the project's own acknowledged `TODO(§6 pairing)` at auth.go:29.*
@@ -67,7 +71,7 @@ Ordered by severity. Each item: what it is, where, why it matters, and the fix.
   **owner identity key** over the new device pubkey, or an existing device session must approve it.
   First-device (new-owner) registration can remain TOFU.
 
-- [ ] **H2 — No Content-Security-Policy or security headers anywhere — the threat model's primary XSS
+- [ ] [#41](https://github.com/plasticparticle/mneme/issues/41) · **H2 — No Content-Security-Policy or security headers anywhere — the threat model's primary XSS
   mitigation is missing.**
   `apps/client/index.html` (no CSP `<meta>`), `deploy/web/Caddyfile` (no `header` for CSP /
   X-Frame-Options / X-Content-Type-Options / Referrer-Policy / Permissions-Policy), `vite.config.ts`
@@ -88,7 +92,7 @@ Ordered by severity. Each item: what it is, where, why it matters, and the fix.
 
 ### 🟠 Medium
 
-- [ ] **M1 — Untrusted Markdown produces link marks with an unvalidated `href` (`javascript:` /
+- [ ] [#42](https://github.com/plasticparticle/mneme/issues/42) · **M1 — Untrusted Markdown produces link marks with an unvalidated `href` (`javascript:` /
   `data:` stored XSS).**
   `apps/client/src/import/markdown.ts:54-57` (Day One import — the untrusted vector),
   `apps/client/src/editor/markdown.ts:443` (and `:170` on serialize).
@@ -106,7 +110,7 @@ Ordered by severity. Each item: what it is, where, why it matters, and the fix.
   explicitly with a strict `isAllowedUri`/allowlist rather than relying on defaults. Apply the same
   allowlist on the serialize side (`markdown.ts:170`) so a bad href can't round-trip.
 
-- [ ] **M2 — Un-finalized media chunks are never garbage-collected — they survive account deletion,
+- [ ] [#43](https://github.com/plasticparticle/mneme/issues/43) · **M2 — Un-finalized media chunks are never garbage-collected — they survive account deletion,
   breaking the "delete my vault" guarantee.**
   `server/internal/api/media.go:71-92` (`handlePutMediaChunk`), `server/internal/api/account.go:30-60`
   (`wipeOwner`), `media.go:158-187` (`handleDeleteMedia`).
@@ -122,7 +126,7 @@ Ordered by severity. Each item: what it is, where, why it matters, and the fix.
   prefix directly (not just indexed chunks); and/or reject chunk PUTs for a `mediaID` that was not
   pre-registered, plus an expiry sweep for un-finalized uploads.
 
-- [ ] **M3 — No rate limiting on the public auth/register endpoints; no per-owner storage quota.**
+- [ ] [#44](https://github.com/plasticparticle/mneme/issues/44) · **M3 — No rate limiting on the public auth/register endpoints; no per-owner storage quota.**
   `server/internal/api/server.go:55-57`, `server/internal/api/auth.go` (all three handlers),
   `server/internal/api/media.go`.
   **Problem:** `/v1/register`, `/v1/auth/challenge`, `/v1/auth/verify` are unauthenticated and
@@ -135,7 +139,7 @@ Ordered by severity. Each item: what it is, where, why it matters, and the fix.
   **Fix:** per-IP rate limiting on the three auth/register endpoints; a per-owner storage quota; and
   for internet-exposed deployments, default `REQUIRE_APPROVAL=on` or a registration cap.
 
-- [ ] **M4 — Argon2id at-rest KDF cost is well below the parameters the design cites.**
+- [ ] [#45](https://github.com/plasticparticle/mneme/issues/45) · **M4 — Argon2id at-rest KDF cost is well below the parameters the design cites.**
   `apps/client/src/crypto/seedlock.ts:31` — `DEFAULT_KDF = { t: 3, m: 64 MiB, p: 1 }`.
   **Problem:** §6 names libsodium `MODERATE` (256 MiB, ops 3). The code deliberately drops to 64 MiB
   (pure-JS Argon2 at 256 MiB is too slow in a browser). The sealed seed is an offline-brute-forceable
@@ -149,19 +153,19 @@ Ordered by severity. Each item: what it is, where, why it matters, and the fix.
 
 ### 🟡 Low
 
-- [ ] **L1 — The approval gate in `handleVerify` fails open on a store error.**
+- [ ] [#46](https://github.com/plasticparticle/mneme/issues/46) · **L1 — The approval gate in `handleVerify` fails open on a store error.**
   `server/internal/api/auth.go:179`: `if status, err := s.store.OwnerStatus(...); err == nil && status
   != approved`. If `OwnerStatus` errors, the guard is skipped and a session is minted for a possibly
   pending/rejected owner. The `auth` middleware is a fail-closed backstop on subsequent requests, so
   the window is narrow, but the pattern is fail-open. **Fix:** deny (500/403) on error rather than
   fall through — mirror the middleware at `server.go:116-127`.
 
-- [ ] **L2 — No `ReadTimeout` / `WriteTimeout` / `IdleTimeout` on the HTTP server (slowloris).**
+- [ ] [#47](https://github.com/plasticparticle/mneme/issues/47) · **L2 — No `ReadTimeout` / `WriteTimeout` / `IdleTimeout` on the HTTP server (slowloris).**
   `server/cmd/journald/main.go:137-141` sets only `ReadHeaderTimeout`. `decodeJSON` caps body *size*
   (32 MiB) but not *duration*, so a client can trickle a body or hold idle keep-alives to exhaust
   connections. **Fix:** set `ReadTimeout`, `WriteTimeout`, `IdleTimeout`.
 
-- [ ] **L3 — `dangerouslySetInnerHTML` on KaTeX output is only implicitly safe.**
+- [ ] [#48](https://github.com/plasticparticle/mneme/issues/48) · **L3 — `dangerouslySetInnerHTML` on KaTeX output is only implicitly safe.**
   `apps/client/src/editor/math.tsx:54,195,226`, `apps/client/src/editor/DocPreview.tsx:88,90`.
   `renderLatex` = `katex.renderToString(latex, { throwOnError: false, displayMode })` injected as raw
   HTML. Safe **only** because KaTeX defaults `trust:false` (disabling `\href`/`\includegraphics`/
@@ -169,7 +173,7 @@ Ordered by severity. Each item: what it is, where, why it matters, and the fix.
   (amplified by H2). **Fix:** pass explicit hardening —
   `{ throwOnError:false, trust:false, strict:'ignore', maxExpand:1000, maxSize:500 }`.
 
-- [ ] **L4 — Ollama `baseUrl` is used verbatim while badged "on device / nothing leaves the device."**
+- [ ] [#49](https://github.com/plasticparticle/mneme/issues/49) · **L4 — Ollama `baseUrl` is used verbatim while badged "on device / nothing leaves the device."**
   `apps/client/src/ai/ollama.ts:24,76`. Decrypted journal excerpts are POSTed to `${baseUrl}/api/chat`
   with no validation that `baseUrl` is loopback/LAN, and AI settings **sync across the vault's
   devices** — so a value set/mistyped on one device silently governs where another ships plaintext,
@@ -177,20 +181,20 @@ Ordered by severity. Each item: what it is, where, why it matters, and the fix.
   be wrong. **Fix:** validate/normalize to a local default (`127.0.0.1:11434`), warn on non-local
   hosts, and surface the effective host in settings.
 
-- [ ] **L5 — Default `CORS_ORIGINS="*"` reflects any Origin.**
+- [ ] [#50](https://github.com/plasticparticle/mneme/issues/50) · **L5 — Default `CORS_ORIGINS="*"` reflects any Origin.**
   `server/internal/api/cors.go:22-30`, `server/internal/config/config.go:54`. Genuinely safe *today*
   (auth is a `Bearer` header, `Access-Control-Allow-Credentials` is never set), but it is maximally
   permissive by default and would become an account-takeover CORS bug the day anyone adds cookies or
   `Allow-Credentials`. **Fix:** default to an explicit allowlist in production; document the invariant
   "never reflect origin with credentials."
 
-- [ ] **L6 — Error messages echo internal parser/DB detail to clients.**
+- [ ] [#51](https://github.com/plasticparticle/mneme/issues/51) · **L6 — Error messages echo internal parser/DB detail to clients.**
   `server/internal/api/respond.go:27` returns raw JSON decode errors to unauthenticated callers
   (leaks expected field names via `DisallowUnknownFields`, offsets); `server/internal/api/backup.go:119`
   returns raw internal error strings (admin-gated). Minor info disclosure. **Fix:** generic client
   messages, details to server logs only.
 
-- [ ] **L7 — `handlePush` processes an unbounded number of entries per request.**
+- [ ] [#52](https://github.com/plasticparticle/mneme/issues/52) · **L7 — `handlePush` processes an unbounded number of entries per request.**
   `server/internal/api/sync.go:14-78`. Body is size-capped (32 MiB) but the `entries` array length is
   not, and each element is an individual `PushEntry` round-trip in a loop — a 32 MiB batch of tiny
   entries becomes a large burst of sequential writes. **Fix:** cap `len(req.Entries)` (mirror
@@ -198,29 +202,29 @@ Ordered by severity. Each item: what it is, where, why it matters, and the fix.
 
 ### 🔵 Info / accepted
 
-- [ ] **I1 — Same-origin co-hosting caveat.** `deploy/web/Caddyfile` serves the app under `/mneme/`
+- [ ] [#53](https://github.com/plasticparticle/mneme/issues/53) · **I1 — Same-origin co-hosting caveat.** `deploy/web/Caddyfile` serves the app under `/mneme/`
   and comments that "the rest of the origin stays free for other services." Any other app on the same
   **origin** shares this app's `localStorage`, IndexedDB (the sealed-seed keystore), and OPFS. The
   sealed seed is encrypted, but a hostile same-origin page could still register a service worker or
   tamper with storage. **Recommendation:** host Mneme on its own dedicated origin/subdomain.
 
-- [ ] **I2 — Relay can roll back / drop / withhold blobs (no freshness guarantee).** Inherent to a
+- [ ] [#54](https://github.com/plasticparticle/mneme/issues/54) · **I2 — Relay can roll back / drop / withhold blobs (no freshness guarantee).** Inherent to a
   dumb E2EE relay with cleartext `lww_clock`: the AEAD tag prevents *forgery*, but a malicious relay
   can serve a stale ciphertext or silently omit the newest one. This is an accepted property of the
   design (E2EE protects content, not availability/freshness), worth stating explicitly in the docs.
 
-- [ ] **I3 — Prompt-injection surface in the AI assistant.** `apps/client/src/ai/prompts.ts`,
+- [ ] [#55](https://github.com/plasticparticle/mneme/issues/55) · **I3 — Prompt-injection surface in the AI assistant.** `apps/client/src/ai/prompts.ts`,
   `ai/context.ts`. Decrypted entry text is interpolated into system prompts; adversarial/imported
   entry text can attempt to steer the model. Contained (output is user-reviewed and inserted as plain
   text), inherent to the feature. Optionally delimit excerpts and instruct the model to treat them as
   data.
 
-- [ ] **I4 — Device enumeration via distinct auth error codes.** `server/internal/api/auth.go:124,166`
+- [ ] [#56](https://github.com/plasticparticle/mneme/issues/56) · **I4 — Device enumeration via distinct auth error codes.** `server/internal/api/auth.go:124,166`
   return 404 "unknown device" vs 401 "signature does not verify," letting an attacker distinguish
   existing `device_id`s. `device_id` is a pubkey hash and grants nothing without the key — noted for
   completeness.
 
-- [ ] **I5 — AI cloud path deliberately crosses the E2EE boundary.** By design and disclosed
+- [ ] [#57](https://github.com/plasticparticle/mneme/issues/57) · **I5 — AI cloud path deliberately crosses the E2EE boundary.** By design and disclosed
   (opt-in, off by default, per-request privacy copy). Not a vuln — a documented tradeoff. Worth
   keeping the disclosure prominent.
 
